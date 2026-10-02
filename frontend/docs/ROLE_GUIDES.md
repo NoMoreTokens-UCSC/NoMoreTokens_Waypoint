@@ -154,10 +154,32 @@ example for the other roles: copy its structure, not its content.
   route, delivered, receipt confirmed, issue reported) for the store's orders only; **Reset demo**
   restores everything. The states live in `application/storeDemoStates.ts`.
 
+**Checked against the challenge booklet**
+
+| Booklet says                                                                      | In the store module                                                                                          |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Place and confirm the order before the 4 PM cutoff; later orders wait (l.90, 214) | Cutoff countdown, cutoff-passed screen, draft for the next run                                               |
+| Fresh orders dry every operating day, chilled on several days a week (l.88)       | Each order has an Ordering switch; a dry-only day is one order (the service accepts one or two)              |
+| Fresh must arrive before the stores open at 08:00 (l.62, 136)                     | The window picker offers only valid times: start 4-7 AM, end by 8 AM, at least an hour (`lib/windows.ts`)    |
+| Stores place orders by phone with no confirmation (l.188)                         | Order references and a status on every order (awaiting allocation, scheduled, en route, delivered, deferred) |
+| Needs an expected arrival time to staff the dock (l.194)                          | Planned/expected arrival, receiving window and "Ready by" on tracking                                        |
+| Clear notice of a deferral (l.196)                                                | Alert with reason, next run and an acknowledgment step; bell count                                           |
+| Confirm receipt and report issues (l.196, 219)                                    | Confirm receipt, missing/damaged report with counts, issue reference                                         |
+| Work away from the depot must remain usable offline (l.154)                       | Orders are saved on the device and an offline notice says what that means; the map keeps the route offline   |
+
+Making ordering friendlier: cases use a stepper, and weight and volume follow the number of cases
+(`estimateLoad`) until they are edited; windows are chosen from From/To lists in 12-hour form (AM/PM), never typed.
+
 **Still to do**
 
-- Offline: orders and receipts made without a connection are not queued (booklet requirement). Agree the
-  approach with the backend developers (same pattern as driver proof).
+- Offline sending: an order made offline is saved on the device and the notice says dispatch cannot
+  see it until the connection returns, but nothing queues and sends it yet. That needs the backend
+  and an outbox (same pattern as driver proof).
+- Style and Tech outlets: the module is Fresh-only, as in the design. Style orders weekly for a
+  scheduled day, Tech as needed, often one large item; those forms and any mall access window
+  (`mall_window` in `outlets.csv`) are not built. Window limits are fixed for Fresh in
+  `lib/windows.ts`; a backend should return each outlet's own limits.
+- Cancelling an order is not offered; leaving an order out only means "no change to it".
 - Orders history (past orders) is not in the Figma frames; add it if the team wants it.
 - The business clock is fixed on Friday 25 September, 15:42 (`session/useBusinessClock`); with a backend
   it returns server time and the real cutoff.
@@ -165,8 +187,7 @@ example for the other roles: copy its structure, not its content.
   outlet, its depot and the vehicle. There is no telemetry yet, so the vehicle is drawn on the route as
   an illustration while en route; "Refresh" only reloads data. Live position, ETA updates and "minutes
   away" need telemetry from the backend.
-- The local adapter accepts outlet `OUT001` only for writes (the seed models one store). The search
-  and identity line use the session's outlet.
+- The local adapter accepts outlet `OUT001` only for writes (the seed models one store).
 - Compare against Figma again after the dispatcher publish bug is fixed, using real flow data.
 
 ## Loader

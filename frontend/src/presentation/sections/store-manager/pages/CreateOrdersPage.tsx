@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { formatClock, formatLongDate, formatWeekday } from '../../../../domain/calendar'
 import { useStoreAction } from '../lib/useStoreAction'
 import { useApis } from '../../../providers/ApisContext'
+import { Switch } from '../../../shared/atoms/switch'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { useBusinessClock } from '../../../session/useBusinessClock'
 import {
@@ -10,15 +11,19 @@ import {
   ActionLink,
   Callout,
   FieldInput,
+  OfflineNotice,
   PageIntro,
   Pill,
+  StepperField,
   StorePage,
   Tile,
 } from '../components/StoreKit'
 import { ParcelIcon } from '../components/StoreIcons'
+import { WindowPicker } from '../components/WindowPicker'
 import { cutoffLabel } from '../lib/cutoff'
-import { parseForm, useOrderForm, type FieldValues } from '../lib/orderForm'
+import { parseForm, useOrderForm } from '../lib/orderForm'
 import { orderKinds, temperatures, totals } from '../lib/orderView'
+import { useOnline } from '../lib/useOnline'
 import { useStoreOrders } from '../lib/useStore'
 
 /** Create orders (before the cutoff) or the cutoff-passed screen (after it). */
@@ -30,11 +35,13 @@ export default function CreateOrdersPage() {
 function CreateOrders() {
   const navigate = useNavigate()
   const clock = useBusinessClock()
-  const { orders, outletId } = useStoreOrders()
+  const online = useOnline()
+  const { orders, outletId, byTemperature } = useStoreOrders()
   const form = useOrderForm(orders)
-  const parsed = parseForm(form.values)
+  const parsed = parseForm(form.values, form.included)
+  const placing = temperatures.filter((temperature) => form.included[temperature])
   const typed = totals(
-    temperatures.map((temperature) => ({
+    placing.map((temperature) => ({
       cases: Number(form.values[temperature].cases) || 0,
       weight: Number(form.values[temperature].weight) || 0,
       volume: Number(form.values[temperature].volume) || 0,
@@ -42,7 +49,11 @@ function CreateOrders() {
   )
   const review = () => {
     if (!parsed.valid) {
-      toast.error('Check the highlighted quantities and receiving windows.')
+      toast.error(
+        placing.length
+          ? 'Check the highlighted quantities and receiving windows.'
+          : 'Include at least one order to review.',
+      )
       return
     }
     navigate('/store-manager/orders/review')
@@ -54,54 +65,98 @@ function CreateOrders() {
         title="Create orders"
         context={`Delivery ${formatLongDate(clock.deliveryDate)} · ${outletId}`}
       />
+      {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
       <Callout title={`Confirm before ${cutoffLabel(clock.cutoff)}`}>
-        {outletId} · Fresh only. Create separate dry and chilled orders; check quantities and
-        receiving windows.
+        {outletId} · Fresh only. Dry groceries are ordered every operating day; chilled groceries
+        only on the days you need them. Check quantities and receiving windows.
       </Callout>
       <div className="sm-composer">
         {temperatures.map((temperature) => {
           const kind = orderKinds[temperature]
           const values = form.values[temperature]
-          const problems = showErrors ? parsed.errors[temperature] : undefined
-          const field = (
-            key: keyof FieldValues,
-            label: string,
-            inputMode?: 'numeric' | 'decimal',
-          ) => (
-            <FieldInput
-              label={label}
-              value={values[key]}
-              inputMode={inputMode}
-              error={problems?.[key]}
-              onChange={(event) => form.change(temperature, key, event.target.value)}
-            />
-          )
+          const included = form.included[temperature]
+          const problems = showErrors && included ? parsed.errors[temperature] : undefined
+          const existing = byTemperature(temperature)
           return (
-            <section className="sm-card" key={temperature} aria-label={kind.title}>
+            <section
+              className={`sm-card${included ? '' : ' sm-card-off'}`}
+              key={temperature}
+              aria-label={kind.title}
+            >
               <div className="sm-heading-row">
                 <ParcelIcon />
                 <h2>{kind.title}</h2>
+                <label className="sm-include">
+                  <span>{included ? 'Ordering' : 'Not ordering'}</span>
+                  <Switch
+                    checked={included}
+                    aria-label={`Order ${kind.short.toLowerCase()} groceries for this delivery`}
+                    onCheckedChange={(next) => form.setIncluded(temperature, next)}
+                  />
+                </label>
               </div>
               <Pill>{kind.subtitle}</Pill>
-              <div className="sm-quantities">
-                {field('cases', 'Cases', 'numeric')}
-                {field('weight', 'Weight · kg', 'decimal')}
-                {field('volume', 'Volume · m³', 'decimal')}
-              </div>
-              {field('window', 'Receiving window')}
-              <p className="sm-note">{kind.rule}</p>
+              {included ? (
+                <>
+                  <div className="sm-quantities">
+                    <StepperField
+                      label="Cases"
+                      unit="case"
+                      value={values.cases}
+                      error={problems?.cases}
+                      onChange={(next) => form.change(temperature, 'cases', next)}
+                      onStep={(by) => form.stepCases(temperature, by)}
+                    />
+                    <FieldInput
+                      label="Weight · kg"
+                      inputMode="decimal"
+                      value={values.weight}
+                      error={problems?.weight}
+                      onChange={(event) => form.change(temperature, 'weight', event.target.value)}
+                    />
+                    <FieldInput
+                      label="Volume · m³"
+                      inputMode="decimal"
+                      value={values.volume}
+                      error={problems?.volume}
+                      onChange={(event) => form.change(temperature, 'volume', event.target.value)}
+                    />
+                  </div>
+                  <p className="sm-note">
+                    {values.adjusted
+                      ? 'Weight and volume are as you entered them.'
+                      : 'Weight and volume follow the number of cases. Change them if you know the exact figures.'}
+                  </p>
+                  <WindowPicker
+                    value={values.window}
+                    error={problems?.window}
+                    onChange={(next) => form.setWindow(temperature, next)}
+                  />
+                  <p className="sm-note">{kind.rule}</p>
+                </>
+              ) : (
+                <p className="sm-muted">
+                  {existing
+                    ? `No change to your ${kind.short.toLowerCase()} order ${existing.id}. It stays as it is.`
+                    : `You are not placing a ${kind.short.toLowerCase()} order for this delivery.`}
+                </p>
+              )}
             </section>
           )
         })}
       </div>
       <section className="sm-panel" aria-label="Order totals">
         <div className="sm-totals">
-          <Tile size="sm" label="Orders" value={temperatures.length} />
+          <Tile size="sm" label="Orders" value={placing.length} />
           <Tile size="sm" label="Cases" value={typed.cases} />
           <Tile size="sm" label="Volume" value={`${Number(typed.volume.toFixed(2))} m³`} />
         </div>
         <p className="sm-muted sm-small">Combined weight · {Number(typed.weight.toFixed(2))} kg</p>
-        <Action onClick={review}>Review {temperatures.length} orders</Action>
+        <Action onClick={review} disabled={placing.length === 0}>
+          {placing.length === 0
+            ? 'Choose an order to place'
+            : `Review ${placing.length} order${placing.length === 1 ? '' : 's'}`}
+        </Action>
       </section>
     </StorePage>
   )
@@ -114,7 +169,7 @@ function CutoffPassed() {
   const clock = useBusinessClock()
   const { orders, outletId } = useStoreOrders()
   const form = useOrderForm(orders)
-  const parsed = parseForm(form.values)
+  const parsed = parseForm(form.values, form.included)
   const draft = totals(parsed.inputs)
   const missed = formatWeekday(clock.deliveryDate)
   const next = formatWeekday(clock.nextRunDate)
@@ -145,7 +200,7 @@ function CutoffPassed() {
       <section className="sm-panel" aria-label="Draft for the next run">
         <h2>Keep your draft for the next run</h2>
         <p className="sm-muted">
-          {draft.orders} draft orders · {draft.cases} cases
+          {draft.orders} draft order{draft.orders === 1 ? '' : 's'} · {draft.cases} cases
           <br />
           Next eligible run: {formatLongDate(clock.nextRunDate)}
           <br />

@@ -64,6 +64,20 @@ export function storeStatus(order: Order) {
       return 'Awaiting allocation'
   }
 }
+/** The pill colour for a store-facing status. */
+export function statusTone(order: Order) {
+  switch (order.status) {
+    case 'Deferred':
+      return 'red'
+    case 'Delivered':
+      return 'green'
+    case 'En route':
+    case 'Scheduled':
+      return 'orange'
+    default:
+      return 'amber'
+  }
+}
 /** A short issue reference, e.g. ORD1042 + Missing → "ISS-1042-M". */
 export const issueReference = (order: Order, kind: 'Missing' | 'Damaged') =>
   `ISS-${order.id.replace(/^ORD/, '')}-${kind[0]}`

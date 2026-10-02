@@ -24,6 +24,10 @@ export function createLocalApis(service: OperationsService): Apis {
             (!filter.outletId || order.outlet === filter.outletId) &&
             (!filter.status || order.status === filter.status),
         ),
+      listHistory: async (filter = {}) =>
+        ((await snapshot()).orderHistory ?? [])
+          .filter((order) => !filter.outletId || order.outlet === filter.outletId)
+          .sort((a, b) => (b.deliveryDate ?? '').localeCompare(a.deliveryDate ?? '')),
       listDrafts: async () => (await snapshot()).drafts,
       getIntakeStatus: async () => {
         const { cutoffClosed, published } = (await snapshot()).settings
