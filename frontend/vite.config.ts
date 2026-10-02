@@ -29,6 +29,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,json,svg,png,jpg,webp,woff,woff2}'],
+        // Exported Figma frames are no longer routed; see docs/FIGMA_DEAD_CODE.md.
+        globIgnores: ['figma/**'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: '/index.html',
         // Basemap tiles are intentionally not prefetched or promised offline.

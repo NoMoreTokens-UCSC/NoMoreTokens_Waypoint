@@ -5,7 +5,7 @@ import { cn } from 'cn'
 import { XIcon } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { motion, useReducedMotion } from 'framer-motion'
-import { revealEase } from '../../design/motion'
+import { revealEase } from '../lib/motion'
 
 import { Button } from '@/presentation/shared/atoms/button'
 
