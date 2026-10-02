@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { entryRedirects } from '../sections/entry-account'
 import { appModules, appRoutes, roleModules } from './registry'
 
 describe('module registry', () => {
   it('gives every URL exactly one owner', () => {
-    const paths = [...appRoutes.map((route) => route.path), ...Object.keys(entryRedirects)]
+    const paths = appRoutes.map((route) => route.path)
     expect(new Set(paths).size).toBe(paths.length)
   })
   it('uses unique module keys', () => {
@@ -20,8 +19,9 @@ describe('module registry', () => {
       for (const path of paths) expect(path.startsWith(`${module.basePath}/`)).toBe(true)
     },
   )
-  it('redirects only to registered routes', () => {
+  it('registers the public entry pages', () => {
     const paths = appRoutes.map((route) => route.path)
-    for (const target of Object.values(entryRedirects)) expect(paths).toContain(target)
+    for (const path of ['/welcome', '/how-it-works', '/login', '/workspaces'])
+      expect(paths).toContain(path)
   })
 })

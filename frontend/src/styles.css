@@ -343,18 +343,6 @@ h3 {
   align-items: center;
   gap: 16px;
 }
-.demo-badge {
-  font-size: 10px;
-  letter-spacing: 1px;
-  line-height: 1;
-  background: #f5f4f2;
-  border: 1px solid #e5e2dd;
-  border-radius: 5px;
-  padding: 7px 9px;
-  white-space: nowrap;
-  font-weight: 700;
-  color: #6e737b;
-}
 .icon-button {
   display: grid;
   place-items: center;
@@ -868,34 +856,6 @@ h3 {
   flex-shrink: 0;
   margin-top: 6px;
 }
-.workspace-card {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 26px;
-  border: 1px solid #e5e2dd;
-  background: white;
-  border-radius: 10px;
-  text-decoration: none;
-  transition:
-    border-color 0.15s,
-    transform 0.15s;
-}
-.workspace-card:hover {
-  border-color: #f26a2e;
-  transform: translateY(-2px);
-}
-.workspace-card p {
-  color: #6e737b;
-  font-size: 12px;
-  line-height: 1.6;
-  margin-top: 5px;
-}
-.welcome-page {
-  max-width: 880px;
-  margin: 36px auto;
-  padding: 32px;
-}
 .mobile-menu {
   display: none;
 }
@@ -1087,10 +1047,6 @@ h3 {
   }
   .operations-map {
     height: 320px;
-  }
-  .welcome-page {
-    padding: 16px;
-    margin: 20px auto;
   }
   .queue-record {
     padding: 16px;

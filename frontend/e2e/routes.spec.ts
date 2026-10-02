@@ -3,6 +3,8 @@ import { test, expect } from '@playwright/test'
 // Keep in step with the module definitions in src/presentation/sections/*/index.ts.
 const routes = [
   '/welcome',
+  '/how-it-works',
+  '/login',
   '/workspaces',
   '/dispatcher/orders',
   '/dispatcher/planning',
@@ -59,9 +61,16 @@ for (const [width, height] of [
   })
 }
 
-test('legacy entry paths redirect to the workspace chooser', async ({ page }) => {
-  for (const path of ['/login', '/how-it-works']) {
-    await page.goto(path)
-    await expect(page).toHaveURL(/\/welcome$/)
-  }
+test('the root opens the welcome page and leads to sign-in and workspaces', async ({ page }) => {
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/welcome$/)
+  await page.getByRole('link', { name: 'Log in' }).click()
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Incorrect email or password')
+  await page.getByLabel('Email or employee ID').fill('nimal@example.test')
+  await page.getByLabel('Password').fill('demo-password')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page).toHaveURL(/\/workspaces$/)
+  await page.getByRole('link', { name: /Store manager/ }).click()
+  await expect(page).toHaveURL(/\/store-manager\/orders$/)
 })

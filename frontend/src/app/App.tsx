@@ -2,7 +2,6 @@ import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react
 import { BrowserRouter, Navigate, Route, Routes, Link } from 'react-router-dom'
 import WorkspaceLayout from '../presentation/shared/templates/WorkspaceLayout'
 import { appRoutes } from '../presentation/roles/registry'
-import { entryRedirects } from '../presentation/sections/entry-account'
 
 import { Button } from '../presentation/shared/atoms/button'
 
@@ -46,10 +45,7 @@ export function App() {
           <Routes>
             <Route path="/demo/map" element={<DemoMapPage />} />
             <Route path="/demo" element={<DemoPage />} />
-            <Route path="/" element={<Navigate to="/dispatcher/orders" replace />} />
-            {Object.entries(entryRedirects).map(([path, target]) => (
-              <Route key={path} path={path} element={<Navigate to={target} replace />} />
-            ))}
+            <Route path="/" element={<Navigate to="/welcome" replace />} />
             {standaloneRoutes.map(({ path, component: Page }) => (
               <Route key={path} path={path} element={<Page />} />
             ))}
