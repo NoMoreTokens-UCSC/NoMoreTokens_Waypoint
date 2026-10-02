@@ -52,7 +52,7 @@ test.describe('store manager', () => {
 
   test('weight and volume follow the cases until they are edited', async ({ page }) => {
     await clearStorage(page)
-    await page.goto('/store-manager/orders')
+    await page.goto('/store-manager/orders/new')
     const dry = page.getByRole('region', { name: 'Fresh · Dry' })
     await dry.getByRole('button', { name: 'Add one case' }).click()
     await expect(dry.getByLabel('Weight · kg')).toHaveValue('250')
@@ -65,7 +65,7 @@ test.describe('store manager', () => {
 
   test('receiving windows can only be chosen within the Fresh rules', async ({ page }) => {
     await clearStorage(page)
-    await page.goto('/store-manager/orders')
+    await page.goto('/store-manager/orders/new')
     const dry = page.getByRole('region', { name: 'Fresh · Dry' })
     const from = dry.getByLabel('From')
     const to = dry.getByLabel('To')
@@ -87,7 +87,7 @@ test.describe('store manager', () => {
 
   test('chilled is optional: a dry-only day is one order', async ({ page }) => {
     await clearStorage(page)
-    await page.goto('/store-manager/orders')
+    await page.goto('/store-manager/orders/new')
     await page.getByRole('switch', { name: 'Order chilled groceries for this delivery' }).click()
     await expect(page.getByText('No change to your chilled order ORD1042')).toBeVisible()
     // The switched-off card must not stretch its content (the tag once became a tall circle).
@@ -102,7 +102,7 @@ test.describe('store manager', () => {
     await expect(page.getByText('Not included: Fresh · Chilled')).toBeVisible()
     await page.getByRole('button', { name: 'Confirm 1 order' }).click()
     await expect(page.getByRole('heading', { name: 'Orders confirmed' })).toBeVisible()
-    await page.goto('/store-manager/orders')
+    await page.goto('/store-manager/orders/new')
     await page.getByRole('switch', { name: 'Order dry groceries for this delivery' }).click()
     await page.getByRole('switch', { name: 'Order chilled groceries for this delivery' }).click()
     await expect(page.getByRole('button', { name: 'Choose an order to place' })).toBeDisabled()
@@ -113,7 +113,7 @@ test.describe('store manager', () => {
     await page.goto('/demo')
     await page.getByRole('switch', { name: 'Simulate offline' }).click()
     await expect(page.getByRole('switch', { name: 'Simulate offline' })).toBeChecked()
-    await page.goto('/store-manager/orders')
+    await page.goto('/store-manager/orders/new')
     await expect(page.getByText('You’re offline')).toBeVisible()
     await expect(
       page.getByText(/Dispatch cannot see it until your connection returns/),
@@ -135,7 +135,7 @@ test.describe('store manager', () => {
     await page.goto('/demo')
     await page.getByRole('switch', { name: 'Intake cutoff passed' }).click()
     await expect(page.getByRole('switch', { name: 'Intake cutoff passed' })).toBeChecked()
-    await page.goto('/store-manager/orders')
+    await page.goto('/store-manager/orders/new')
     await expect(page.getByRole('heading', { name: 'Today’s cutoff has passed' })).toBeVisible()
     await expect(page.getByText('Saturday’s intake is locked')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Confirm for Saturday' })).toBeDisabled()
@@ -233,5 +233,61 @@ test.describe('store manager', () => {
     await expect(menu.getByRole('link', { name: 'Delivery tracking' })).toBeVisible()
     await menu.getByRole('link', { name: 'Alerts' }).click()
     await expect(page).toHaveURL(/\/store-manager\/alerts$/)
+  })
+
+  test('orders lists the next delivery and every earlier order', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/orders')
+    await expect(page.getByRole('heading', { name: /Next delivery/ })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Tuesday, 22 September' })).toContainText(
+      'ORD0910',
+    )
+    await page.getByRole('button', { name: 'Needs attention' }).last().click()
+    await expect(page.getByText('ORD0910')).toBeVisible()
+    await expect(page.getByText('ORD0901')).toHaveCount(0)
+    await page.getByRole('link', { name: /ORD0910/ }).click()
+    await expect(page.getByRole('heading', { name: 'Order ORD0910' })).toBeVisible()
+    await expect(page.getByText('ISS-0910-M')).toBeVisible()
+    await expect(page.getByText('16 received · 2 missing')).toBeVisible()
+  })
+
+  test('a deferred earlier order shows its reason and acknowledgment', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/orders/ORD0906')
+    await expect(page.getByText('Deferred to the next run')).toBeVisible()
+    await expect(page.getByText('Insufficient Volume Capacity')).toBeVisible()
+    await expect(page.getByText(/You acknowledged this/)).toBeVisible()
+  })
+
+  test('search finds earlier orders', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/overview')
+    // Wait for the page and its data, or the typed text is lost when the page finishes loading.
+    await expect(page.getByText('Awaiting allocation')).toHaveCount(2)
+    await page.getByPlaceholder('Search orders, deliveries or issues').fill('ORD0903')
+    await page
+      .getByRole('link', { name: /ORD0903/ })
+      .first()
+      .click()
+    await expect(page).toHaveURL(/\/store-manager\/orders\/ORD0903$/)
+  })
+
+  test('the order list can be searched and paged', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/orders')
+    await expect(page.getByText('Page 1 of 2')).toBeVisible()
+    await expect(page.getByText('ORD0913')).toHaveCount(1)
+    await expect(page.getByText('ORD0901')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByText('Page 2 of 2')).toBeVisible()
+    await expect(page.getByText('ORD0901')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled()
+    // A search starts again from the first page and needs no paging when it is short.
+    await page.getByLabel('Search orders').fill('issue')
+    await expect(page.getByText('ORD0910')).toBeVisible()
+    await expect(page.getByText('ORD0903')).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Order pages' })).toHaveCount(0)
+    await page.getByLabel('Search orders').fill('nothing like this')
+    await expect(page.getByRole('heading', { name: 'No orders here' })).toBeVisible()
   })
 })

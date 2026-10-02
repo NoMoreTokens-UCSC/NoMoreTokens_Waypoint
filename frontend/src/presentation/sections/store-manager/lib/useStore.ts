@@ -29,6 +29,15 @@ export function useStoreStops() {
   return { ...query, stops: query.data ?? [] }
 }
 
+/** Earlier orders for this outlet, newest delivery day first. */
+export function useStoreHistory() {
+  const outletId = useStoreOutlet()
+  const query = useApiQuery(['history', outletId], async (apis) =>
+    outletId ? apis.orders.listHistory({ outletId }) : [],
+  )
+  return { ...query, history: query.data ?? [], loaded: query.data !== undefined }
+}
+
 export function useStoreDrafts() {
   const query = useApiQuery(['drafts'], (apis) => apis.orders.listDrafts())
   return { ...query, drafts: query.data ?? [] }

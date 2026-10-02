@@ -29,7 +29,8 @@ export default function ReviewPage() {
   const form = useOrderForm(orders)
   const parsed = parseForm(form.values, form.included)
   if (!loaded) return null
-  if (!parsed.valid || clock.cutoffPassed) return <Navigate to="/store-manager/orders/new" replace />
+  if (!parsed.valid || clock.cutoffPassed)
+    return <Navigate to="/store-manager/orders/new" replace />
   const sum = totals(parsed.inputs)
   const confirm = () =>
     action.runThen(
