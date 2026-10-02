@@ -1,10 +1,12 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Truck } from 'lucide-react'
 import type { Order, Stop } from '../../../../domain/models'
+import { useApiQuery } from '../../../hooks/useApiQuery'
 import { useSession } from '../../../session/useSession'
 import { quantityText } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
 import type { RoutePhase } from './RouteMap'
+import { VehiclePanel } from './VehiclePanel'
 
 // Leaflet is large, so the map is fetched only when this card is shown.
 const RouteMap = lazy(() => import('./RouteMap'))
@@ -49,6 +51,15 @@ export function RouteMapCard({
 }) {
   const session = useSession()
   const online = useOnline()
+  const [open, setOpen] = useState(false)
+  // The vehicle's kind and the driver, shown when the vehicle is selected on the map.
+  const vehicle = useApiQuery(['vehicle', order.vehicleId ?? 'none'], async (apis) =>
+    order.vehicleId ? ((await apis.fleet.getVehicle(order.vehicleId)) ?? null) : null,
+  )
+  const members = useApiQuery(['members'], (apis) => apis.team.listMembers())
+  const driver = order.vehicleId
+    ? members.data?.find((m) => m.role === 'driver' && m.vehicleId === order.vehicleId)?.name
+    : undefined
   const phase = phaseOf(order)
   const [title, detail] = captions[phase](order.vehicleId ?? 'Vehicle', outletId)
   const depotName = session.depot && depots[session.depot] ? session.depot : 'Peliyagoda'
@@ -71,6 +82,19 @@ export function RouteMapCard({
             depotName={depotName}
             vehicleId={order.vehicleId}
             online={online}
+            onVehicleSelect={() => setOpen(true)}
+            overlay={
+              open && order.vehicleId ? (
+                <VehiclePanel
+                  order={order}
+                  stop={stop}
+                  vehicle={vehicle.data}
+                  driver={driver}
+                  depot={depotName}
+                  onClose={() => setOpen(false)}
+                />
+              ) : null
+            }
           />
         </Suspense>
       ) : (
@@ -78,6 +102,7 @@ export function RouteMapCard({
       )}
       <p className="sm-map-legend">
         {outletId} · {quantityText(order)}
+        {order.vehicleId && phase !== 'pending' && ' · Select the vehicle for details'}
       </p>
     </section>
   )

@@ -18,12 +18,21 @@ import { useStoreOrders, useStoreProfile, useStoreStops } from '../lib/useStore'
 
 /** Order placement: the cutoff countdown and this outlet's two separate Fresh orders. */
 export default function OverviewPage() {
-  const { byTemperature, outletId } = useStoreOrders()
+  const { byTemperature, outletId, orders } = useStoreOrders()
   const { stops } = useStoreStops()
   const { profile } = useStoreProfile()
   const brand = profile?.brand ?? 'Fresh'
   // Fresh places a chilled and a dry order; Style and Tech place one.
-  const cards = brand === 'Fresh' ? temperatures : (['Ambient'] as const)
+  const cards =
+    brand === 'Fresh'
+      ? temperatures.map((temperature) => ({
+          key: temperature,
+          temperature,
+          order: byTemperature(temperature),
+        }))
+      : orders.length
+        ? orders.map((order) => ({ key: order.id, temperature: order.temperature, order }))
+        : [{ key: 'none', temperature: 'Ambient' as const, order: undefined }]
   const clock = useBusinessClock()
   const online = useOnline()
   return (
@@ -35,11 +44,10 @@ export default function OverviewPage() {
       {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
       <CutoffPanel clock={clock} />
       <div className="sm-widgets">
-        {cards.map((temperature) => {
-          const order = byTemperature(temperature)
+        {cards.map(({ key, temperature, order }) => {
           const kind = kindOf({ brand, temperature })
           return (
-            <section className="sm-card" key={temperature} aria-label={kind.title}>
+            <section className="sm-card" key={key} aria-label={kind.title}>
               <div className="sm-widget-head">
                 <span className="sm-mark">
                   <ParcelIcon size={24} />
@@ -71,13 +79,25 @@ export default function OverviewPage() {
                   </p>
                 </>
               )}
-              <ActionLink variant="grey" to="/store-manager/orders/new">
+              <ActionLink
+                variant="grey"
+                to={
+                  brand === 'Tech' && order
+                    ? `/store-manager/orders/new?order=${order.id}`
+                    : '/store-manager/orders/new'
+                }
+              >
                 {order ? 'Edit order' : 'Create order'}
               </ActionLink>
             </section>
           )
         })}
       </div>
+      {brand === 'Tech' && orders.length > 0 && (
+        <ActionLink variant="outline" to="/store-manager/orders/new">
+          Add another order
+        </ActionLink>
+      )}
       <p className="sm-note">
         {brand === 'Fresh'
           ? `${outletId} is a Fresh outlet. Dry groceries and chilled goods are submitted as separate order records.`

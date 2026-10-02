@@ -12,19 +12,23 @@ export const deliveryDayLabel = (order: Order, clock: BusinessClock) =>
 
 /** True while the order is still moving or waiting for the store. */
 export const isOpen = (order: Order) =>
-  order.status !== 'Deferred' && !(order.status === 'Delivered' && order.receipt !== 'Pending')
+  !order.cancelledAt &&
+  order.status !== 'Deferred' &&
+  !(order.status === 'Delivered' && order.receipt !== 'Pending')
 /** True when something is waiting for the store or went wrong. */
 export const needsAttention = (order: Order) =>
-  (order.status === 'Deferred' && !order.deferralAcknowledged) ||
-  (order.status === 'Delivered' && order.receipt === 'Pending') ||
-  order.receipt === 'Issue reported'
+  !order.cancelledAt &&
+  ((order.status === 'Deferred' && !order.deferralAcknowledged) ||
+    (order.status === 'Delivered' && order.receipt === 'Pending') ||
+    order.receipt === 'Issue reported')
 
-export type OrderFilter = 'all' | 'open' | 'attention' | 'done'
+export type OrderFilter = 'all' | 'open' | 'attention' | 'done' | 'cancelled'
 export const filters: { value: OrderFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'open', label: 'Open' },
   { value: 'attention', label: 'Needs attention' },
   { value: 'done', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
 ]
 export function matchesFilter(order: Order, filter: OrderFilter) {
   switch (filter) {
@@ -33,7 +37,9 @@ export function matchesFilter(order: Order, filter: OrderFilter) {
     case 'attention':
       return needsAttention(order)
     case 'done':
-      return order.status === 'Delivered' && order.receipt === 'Confirmed'
+      return !order.cancelledAt && order.status === 'Delivered' && order.receipt === 'Confirmed'
+    case 'cancelled':
+      return Boolean(order.cancelledAt)
     default:
       return true
   }
@@ -68,4 +74,14 @@ export function matchesQuery(order: Order, query: string, clock: BusinessClock) 
     .join(' ')
     .toLowerCase()
   return words.every((word) => text.includes(word))
+}
+
+/** The most recent earlier day's orders (not cancelled), for "repeat last order". */
+export function lastOrders(history: Order[]) {
+  const dated = history.filter((order) => order.deliveryDate && !order.cancelledAt)
+  const latest = dated
+    .map((order) => order.deliveryDate!)
+    .sort()
+    .at(-1)
+  return dated.filter((order) => order.deliveryDate === latest)
 }

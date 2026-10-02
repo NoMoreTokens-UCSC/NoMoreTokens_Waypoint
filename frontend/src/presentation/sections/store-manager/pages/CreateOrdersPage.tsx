@@ -14,6 +14,8 @@ import {
   OfflineNotice,
   PageIntro,
   Pill,
+  PlannedNotice,
+  ReplaceNotice,
   StepperField,
   StorePage,
   Tile,
@@ -24,7 +26,8 @@ import { cutoffLabel } from '../lib/cutoff'
 import { parseForm, useOrderForm } from '../lib/orderForm'
 import { orderKinds, temperatures, totals } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
-import { useStoreOrders, useStoreProfile } from '../lib/useStore'
+import { deliveryDayLabel, lastOrders } from '../lib/orderList'
+import { useStoreHistory, useStoreOrders, useStoreProfile } from '../lib/useStore'
 import BrandOrderPage from './BrandOrderPage'
 
 /** Create orders (before the cutoff) or the cutoff-passed screen (after it). */
@@ -42,6 +45,8 @@ function CreateOrders() {
   const clock = useBusinessClock()
   const online = useOnline()
   const { orders, outletId, byTemperature } = useStoreOrders()
+  const { history } = useStoreHistory()
+  const previous = lastOrders(history)
   const form = useOrderForm(orders)
   const parsed = parseForm(form.values, form.included)
   const placing = temperatures.filter((temperature) => form.included[temperature])
@@ -75,6 +80,25 @@ function CreateOrders() {
         {outletId} · Fresh only. Dry groceries are ordered every operating day; chilled groceries
         only on the days you need them. Check quantities and receiving windows.
       </Callout>
+      {previous.length > 0 && (
+        <section className="sm-panel" aria-label="Repeat an earlier order">
+          <p className="sm-muted">
+            Ordered the same as {deliveryDayLabel(previous[0], clock)}?{' '}
+            {previous
+              .map((order) => `${order.cases} ${orderKinds[order.temperature].short.toLowerCase()}`)
+              .join(' · ')}
+          </p>
+          <Action
+            variant="outline"
+            onClick={() => {
+              form.fillFrom(previous)
+              toast.success('Quantities and windows copied. Check them before reviewing.')
+            }}
+          >
+            Repeat last order
+          </Action>
+        </section>
+      )}
       <div className="sm-composer">
         {temperatures.map((temperature) => {
           const kind = orderKinds[temperature]
@@ -101,6 +125,8 @@ function CreateOrders() {
                 </label>
               </div>
               <Pill>{kind.subtitle}</Pill>
+              {existing && included && <ReplaceNotice order={existing} />}
+              {existing?.status === 'Allocated' && included && <PlannedNotice />}
               {included ? (
                 <>
                   <div className="sm-quantities">

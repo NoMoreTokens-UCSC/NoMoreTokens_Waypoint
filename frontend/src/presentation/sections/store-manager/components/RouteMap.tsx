@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Marker, MapContainer, Polyline, TileLayer, Tooltip } from 'react-leaflet'
 import type { LatLngBoundsExpression, LatLngTuple } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -26,6 +27,8 @@ export default function RouteMap({
   depotName,
   vehicleId,
   online,
+  onVehicleSelect,
+  overlay,
 }: {
   phase: RoutePhase
   outletId: string
@@ -34,6 +37,10 @@ export default function RouteMap({
   depotName: string
   vehicleId?: string
   online: boolean
+  /** Called when the vehicle marker is selected (click, tap, or Enter). */
+  onVehicleSelect?: () => void
+  /** Drawn over the map, e.g. the vehicle details panel. */
+  overlay?: ReactNode
 }) {
   const planned = phase !== 'pending'
   // The vehicle waits at the depot until it leaves and is at the outlet once delivered.
@@ -79,13 +86,20 @@ export default function RouteMap({
           </Tooltip>
         </Marker>
         {vehiclePosition && (
-          <Marker position={vehiclePosition} icon={vehicleIcon} zIndexOffset={500}>
+          <Marker
+            position={vehiclePosition}
+            icon={vehicleIcon}
+            zIndexOffset={500}
+            title={`Vehicle ${vehicleId} · details`}
+            eventHandlers={{ click: () => onVehicleSelect?.() }}
+          >
             <Tooltip direction="top" offset={[0, -18]}>
               {vehicleId}
             </Tooltip>
           </Marker>
         )}
       </MapContainer>
+      {overlay}
       {!online && (
         <p className="sm-map-offline">
           Offline · the route and locations are saved; the basemap needs a connection.

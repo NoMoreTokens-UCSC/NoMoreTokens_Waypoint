@@ -55,8 +55,11 @@ export function useStoreHistory() {
 }
 
 export function useStoreDrafts() {
+  const outletId = useStoreOutlet()
   const query = useApiQuery(['drafts'], (apis) => apis.orders.listDrafts())
-  return { ...query, drafts: query.data ?? [] }
+  // Drafts saved before outlets were tracked belong to OUT001.
+  const drafts = (query.data ?? []).filter((draft) => (draft.outlet ?? 'OUT001') === outletId)
+  return { ...query, drafts }
 }
 
 /** Deferred orders the store should hear about. */

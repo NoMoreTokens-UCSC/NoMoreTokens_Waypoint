@@ -185,12 +185,27 @@ Making ordering friendlier: cases use a stepper, and weight and volume follow th
   `pages/BrandOrderPage.tsx` instead of the Fresh form: one order (Style weekly, in cartons, inside the
   mall's access window; Tech as needed, in items, with an inspect-and-sign confirmation). Weight and
   volume are estimated per unit. Open the workspace as another outlet with the demo panel's "Store
-  manager signed in as". Not built: draft-after-cutoff for Style/Tech, several Tech orders in one day (a
-  new order replaces the live one), brand wording in the issue form (it still says "cases"), and the
-  dispatcher and loader screens treating mall windows.
+  manager signed in as". After the cutoff a Style or Tech
+  order is kept as a draft (drafts are scoped by outlet). The "Store orders" demo control and the issue
+  form follow the signed-in outlet (cartons, items). A Tech outlet can have
+  several orders for a delivery: confirming adds a new order, or changes one picked from the list
+  (`StoreOrderInput.orderId`, `?order=` on the create page); Style has one weekly order, which a new
+  confirmation replaces. Not built: the dispatcher and loader screens treating mall windows.
+- Selecting the vehicle on the tracking map opens a small panel at the map's top right with its kind
+  (`FleetApi.getVehicle`: van or truck, refrigerated or not), the driver's name (from the team list), the
+  trip, the depot and the planned or expected arrival (`components/VehiclePanel.tsx`). Phone numbers and
+  live telemetry are left out on purpose; the vehicle's position is still an illustration.
+- Confirming again replaces the outlet's live order (Fresh: per kind; Style: the weekly order). Every
+  create form, the review and the Style form say so with a "Replaces ORD…" tag showing what the order is
+  now (`ReplaceNotice`); a Tech outlet sees "Changing ORD…" when editing one order or "New order" when
+  adding another.
+- An order the dispatcher has already allocated (status `Allocated`, plan not yet published) shows an
+  "Already planned" tag on the create form, the review, the order detail and the cancel confirmation:
+  changing or cancelling it is allowed until the cutoff, but it goes back to be planned again. The vehicle
+  stays hidden from the store. The demo panel's "Planned by the dispatcher" state shows it.
 - Cancelling: a waiting order can be cancelled from its detail page until the cutoff
-  (`OrdersApi.cancelOrder`, also queued offline); after that it is locked. Cancelled orders are removed,
-  not kept in history.
+  (`OrdersApi.cancelOrder`, also queued offline); after that it is locked. The order leaves the live
+  list and is kept in the history with `cancelledAt`, shown as "Cancelled" (filter and detail page).
 - Late arrival: a dispatched order whose stop `eta` is after the window end shows "Running late" on
   the overview, tracking, order detail and notifications, and counts on the bell (`lib/lateness.ts`). The
   demo panel's "En route · running late" state shows it. A backend can also send a lateness probability.
@@ -201,13 +216,16 @@ Making ordering friendlier: cases use a stepper, and weight and volume follow th
   earlier orders with `deliveryDate` and their event times, and should page and search on the server.
 - The store has its own Notifications (`/store-manager/notifications`: what needs action, running-late
   deliveries, issues reported and where they stand, and an activity feed built from each order's event
-  times in `lib/notifications.ts`), Profile and Preferences. A role points the shell's bell and account
+  times in `lib/notifications.ts`), Profile and Preferences. On the profile the manager edits their own
+  name, phone and email (`TeamApi.updateContact`, queued offline like other changes); role, outlet and
+  depot are read-only and changed by asking an administrator (`TeamApi.requestAccountChange`). A role points the shell's bell and account
   menu at its own pages with `shell.accountPaths` in `index.ts`; the shared `/account/*` pages stay for
   roles that do not. A backend can serve the feed from a notifications endpoint, and issue outcomes from
   the issue record: today every reported issue reads "Open · Awaiting review" because nothing resolves
   them yet.
-- Not built: "repeat last order", and the dispatcher, loader and driver screens acting on the store's
-  cancellations, mall windows and Style/Tech orders.
+- "Repeat last order" on the Fresh create form copies the most recent earlier day's quantities and
+  windows (`lastOrders` in `lib/orderList.ts`). Not built: the dispatcher, loader and driver screens
+  acting specially on the store's cancellations, mall windows and Style/Tech orders.
 - The business clock is fixed on Friday 25 September, 15:42 (`session/useBusinessClock`); with a backend
   it returns server time and the real cutoff.
 - The route map is a real Leaflet map (OpenStreetMap tiles, muted to the design's grey) showing this

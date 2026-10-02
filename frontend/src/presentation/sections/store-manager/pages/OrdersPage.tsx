@@ -46,6 +46,7 @@ function OrderRow({ order }: { order: StoreOrder }) {
             {order.pendingSync && order.id.startsWith('PENDING')
               ? 'Reference after sending'
               : order.id}
+            {order.cancelledAt ? ` · Cancelled ${formatClock(order.cancelledAt)}` : ''}
             {order.deliveredAt ? ` · Delivered ${formatClock(order.deliveredAt)}` : ''}
           </small>
         </span>
@@ -73,7 +74,12 @@ export default function OrdersPage() {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
   if (!loaded || !historyLoaded) return null
-  const all = [...orders, ...history]
+  // The next delivery's orders first (including any cancelled), then earlier days, newest first.
+  const all = [
+    ...orders,
+    ...history.filter((order) => !order.deliveryDate),
+    ...history.filter((order) => order.deliveryDate),
+  ]
   const matching = all.filter(
     (order) => matchesFilter(order, filter) && matchesQuery(order, query, clock),
   )

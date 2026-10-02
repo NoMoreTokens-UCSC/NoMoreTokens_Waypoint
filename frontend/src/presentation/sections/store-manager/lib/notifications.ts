@@ -50,6 +50,13 @@ export function buildFeed(orders: Order[]): FeedEvent[] {
     add('order', 'placed', order.placedAt, 'Order placed', `${what} · ${order.cases} cases`)
     add(
       'order',
+      'cancelled',
+      order.cancelledAt,
+      'Order cancelled',
+      `${what} · withdrawn before the cutoff`,
+    )
+    add(
+      'order',
       'scheduled',
       order.scheduledAt,
       'Order scheduled',

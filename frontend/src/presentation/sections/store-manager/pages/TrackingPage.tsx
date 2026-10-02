@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import { formatClock, formatLongDate } from '../../../../domain/calendar'
+import { formatLongDate } from '../../../../domain/calendar'
 import { useAction } from '../../../hooks/useOperations'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import {
@@ -14,7 +14,9 @@ import {
 import { RouteMapCard } from '../components/RouteMapCard'
 import { Timeline } from '../components/Timeline'
 import { deliveredLate, durationText, runningLate } from '../lib/lateness'
-import { kindSlash, kindOf, windowText } from '../lib/orderView'
+import { kindSlash, kindOf } from '../lib/orderView'
+import { clock12, windowText12 } from '../lib/timeText'
+import { formatTime12 } from '../lib/windows'
 import { deferredOrders, pickActiveOrder, useStoreOrders } from '../lib/useStore'
 import { useProof } from '../lib/useProof'
 
@@ -50,7 +52,7 @@ export default function TrackingPage() {
   const delivered = order.status === 'Delivered'
   const late = runningLate(order, stop)
   const wasLate = deliveredLate(order)
-  const stamp = (at?: string) => (at ? `${formatLongDate(at)} · ${formatClock(at)}` : '')
+  const stamp = (at?: string) => (at ? `${formatLongDate(at)} · ${clock12(at)}` : '')
   const heading = delivered
     ? order.receipt === 'Pending'
       ? 'Delivered · Confirm receipt'
@@ -70,9 +72,9 @@ export default function TrackingPage() {
           tone="danger"
           title={`Expected ${durationText(late.minutesLate)} after your window closes`}
         >
-          The vehicle is now expected at {late.expected}; your receiving window ends at{' '}
-          {late.windowEnd}. Keep receiving staff available, and tell the dispatcher if the goods can
-          no longer be accepted.
+          The vehicle is now expected at {formatTime12(late.expected)}; your receiving window ends
+          at {formatTime12(late.windowEnd)}. Keep receiving staff available, and tell the dispatcher
+          if the goods can no longer be accepted.
         </Callout>
       )}
       <section className="sm-panel sm-progress-top" aria-label="Delivery progress">
@@ -107,13 +109,13 @@ export default function TrackingPage() {
                 size="lg"
                 tone="success"
                 label="Delivered at"
-                value={order.deliveredAt ? formatClock(order.deliveredAt) : '—'}
+                value={order.deliveredAt ? clock12(order.deliveredAt) : '—'}
               />
             ) : (
               <Tile
                 size="lg"
                 label={order.status === 'En route' ? 'Expected arrival' : 'Planned arrival'}
-                value={dispatched ? arrival : 'Pending'}
+                value={dispatched ? formatTime12(arrival) : 'Pending'}
               />
             )}
             <p className="sm-arrival-context">
@@ -123,12 +125,16 @@ export default function TrackingPage() {
                   ? 'No vehicle or arrival time yet. Both appear after the dispatcher publishes the plan.'
                   : order.status === 'Scheduled'
                     ? 'Vehicle assigned. Live position becomes available after departure.'
-                    : `Departed ${order.departedAt ? formatClock(order.departedAt) : 'the depot'}. Live position updates when the vehicle reports it.`}
+                    : `Departed ${order.departedAt ? clock12(order.departedAt) : 'the depot'}. Live position updates when the vehicle reports it.`}
             </p>
           </div>
           <div className="sm-arrival-right">
-            <Tile size="md" label="Receiving window" value={windowText(order)} />
-            <Tile size="md" label="Prepare receiving staff" value={`Ready by ${order.window}`} />
+            <Tile size="md" label="Receiving window" value={windowText12(order)} />
+            <Tile
+              size="md"
+              label="Prepare receiving staff"
+              value={`Ready by ${formatTime12(order.window)}`}
+            />
             {delivered && order.receipt === 'Pending' ? (
               <ActionLink to={`/store-manager/deliveries/${order.id}/receipt`}>
                 Confirm receipt

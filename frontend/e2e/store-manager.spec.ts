@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
 
-type Stage = 'scheduled' | 'late' | 'delivered'
+type Stage = 'allocated' | 'scheduled' | 'late' | 'delivered'
 const stageLabel: Record<Stage, string> = {
+  allocated: 'Planned by the dispatcher · not yet published',
   scheduled: 'Scheduled · one order deferred',
   late: 'En route · running late',
   delivered: 'Delivered · receipt pending',
@@ -178,7 +179,7 @@ test.describe('store manager', () => {
     await page.goto('/store-manager/deliveries')
     await expect(page.getByRole('heading', { name: 'Delivery tracking' })).toBeVisible()
     await expect(page.getByText('Planned arrival')).toBeVisible()
-    await expect(page.getByText('Ready by 05:30')).toBeVisible()
+    await expect(page.getByText('Ready by 5:30 AM')).toBeVisible()
     const map = page.getByRole('region', { name: 'Route' }).locator('.leaflet-container')
     await expect(map).toBeVisible()
     // Depot, outlet and the assigned vehicle, with the route drawn between them.
@@ -374,7 +375,7 @@ test.describe('store manager', () => {
     await expect(
       page.getByText('Expected 55 minutes after your window closes').first(),
     ).toBeVisible()
-    await expect(page.getByText('now expected at 08:25')).toBeVisible()
+    await expect(page.getByText('now expected at 8:25 AM')).toBeVisible()
     await expect(page.getByText('Running late').first()).toBeVisible()
     await page.goto('/store-manager/overview')
     await expect(page.getByText('Running late')).toBeVisible()
@@ -400,8 +401,12 @@ test.describe('store manager', () => {
     await page.getByRole('button', { name: 'Cancel order' }).click()
     await page.getByRole('button', { name: 'Yes, cancel order' }).click()
     await expect(page).toHaveURL(/\/store-manager\/orders$/)
-    await expect(page.getByText('ORD1042')).toHaveCount(0)
-    await expect(page.getByText('ORD1043').first()).toBeVisible()
+    // It stays on record, marked cancelled, and is no longer an open order.
+    await expect(page.getByRole('link', { name: /ORD1042/ })).toContainText('Cancelled')
+    await expect(page.getByRole('link', { name: /ORD1043/ })).toContainText('Awaiting allocation')
+    await page.getByRole('link', { name: /ORD1042/ }).click()
+    await expect(page.getByText('You cancelled this order')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Cancel order' })).toHaveCount(0)
     // After the cutoff the remaining order is locked.
     await page.goto('/demo')
     await page.getByRole('switch', { name: 'Intake cutoff passed' }).click()
@@ -450,13 +455,248 @@ test.describe('store manager', () => {
     await signInAs(page, 'OUT019 · Tech Kandy City · Tech')
     await page.goto('/store-manager/orders/new')
     await expect(page.getByText('Fragile and high value')).toBeVisible()
-    await page.getByRole('button', { name: /Confirm \d+ items? order/ }).click()
+    await page.getByRole('button', { name: /(Confirm|Add) \d+ items? order/ }).click()
     await expect(
       page.getByText('Confirm that staff will be there to inspect and sign.'),
     ).toBeVisible()
     await page.getByLabel('Staff will be available to inspect and sign for the delivery.').check()
-    await page.getByRole('button', { name: /Confirm \d+ items? order/ }).click()
+    await page.getByRole('button', { name: /(Confirm|Add) \d+ items? order/ }).click()
     await expect(page.getByRole('heading', { name: 'Orders confirmed' })).toBeVisible()
-    await expect(page.getByText('Your Tech order is confirmed')).toBeVisible()
+    await expect(page.getByText('Your 2 Tech orders are confirmed')).toBeVisible()
+  })
+
+  test('a cancellation made offline is sent when the connection returns', async ({ page }) => {
+    await clearStorage(page)
+    await setOffline(page, true)
+    await page.goto('/store-manager/orders/ORD1042')
+    await page.getByRole('button', { name: 'Cancel order' }).click()
+    await page.getByRole('button', { name: 'Yes, cancel order' }).click()
+    await expect(page).toHaveURL(/\/store-manager\/orders$/)
+    await expect(page.getByText('1 change waiting to send')).toBeVisible()
+    await expect(page.getByText('Cancel order ORD1042')).toBeVisible()
+    // Dispatch still has the order until it is sent.
+    await page.goto('/dispatcher/orders')
+    await expect(page.getByText('ORD1042').first()).toBeVisible()
+    await setOffline(page, false)
+    await page.goto('/store-manager/orders')
+    // Wait for the send to finish before looking at what dispatch sees.
+    await expect(page.getByText('1 change sent')).toBeVisible()
+    await expect(page.getByText('waiting to send')).toHaveCount(0)
+    await expect(page.getByRole('link', { name: /ORD1042/ })).toContainText('Cancelled')
+    await page.goto('/dispatcher/orders')
+    await expect(page.getByText('ORD1043').first()).toBeVisible()
+    await expect(page.getByText('ORD1042')).toHaveCount(0)
+  })
+
+  test('a Style outlet keeps its order as a draft after the cutoff', async ({ page }) => {
+    await clearStorage(page)
+    await signInAs(page, 'OUT016 · Style Liberty Mall · Style')
+    await page.goto('/demo')
+    await page.getByRole('switch', { name: 'Intake cutoff passed' }).click()
+    await expect(page.getByRole('switch', { name: 'Intake cutoff passed' })).toBeChecked()
+    await page.goto('/store-manager/orders/new')
+    await expect(page.getByText('Today’s cutoff has passed')).toBeVisible()
+    await page.getByRole('button', { name: 'Keep draft for Monday' }).click()
+    await expect(page.getByRole('heading', { name: 'Draft saved for next run' })).toBeVisible()
+    await expect(page.getByText('1 Style order')).toBeVisible()
+  })
+
+  test('the delivery states and the issue form work for a Style outlet', async ({ page }) => {
+    await clearStorage(page)
+    await signInAs(page, 'OUT016 · Style Liberty Mall · Style')
+    await seed(page, 'delivered')
+    await page.goto('/store-manager/deliveries')
+    await expect(page.getByRole('heading', { name: 'Delivered · Confirm receipt' })).toBeVisible()
+    await page.goto('/store-manager/deliveries/ORD1080/issue')
+    await expect(page.getByLabel('Cartons received · required')).toBeVisible()
+    await page.getByLabel('Cartons received · required').fill('15')
+    await page.getByLabel('Missing cartons · required').fill('2')
+    await page.getByRole('button', { name: 'Submit missing-item report' }).click()
+    await expect(
+      page.getByText('Received and missing cartons must add up to the 20 ordered.'),
+    ).toBeVisible()
+  })
+
+  test('the last order can be repeated', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/orders/new')
+    await page.getByRole('button', { name: 'Repeat last order' }).click()
+    const dry = page.getByRole('region', { name: 'Fresh · Dry' })
+    const chilled = page.getByRole('region', { name: 'Fresh · Chilled' })
+    // 24 September: 22 dry and 16 chilled.
+    await expect(dry.getByLabel('Cases', { exact: true })).toHaveValue('22')
+    await expect(chilled.getByLabel('Cases', { exact: true })).toHaveValue('16')
+    await page.getByRole('button', { name: 'Review 2 orders' }).click()
+    await expect(page.getByText('22 cases · 220 kg · 2.2 m³')).toBeVisible()
+  })
+
+  test('the profile lets the manager edit their contact details', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/profile')
+    const name = page.getByLabel('Full name')
+    await expect(name).toHaveValue('Nimal Perera')
+    await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    await name.fill('N')
+    await page.getByLabel('Phone').fill('abc')
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.getByText('Enter your full name.')).toBeVisible()
+    await expect(page.getByText('Enter a phone number with at least 7 digits.')).toBeVisible()
+    await name.fill('Nimal Perera Jayasinghe')
+    await page.getByLabel('Phone').fill('+94 75 602 1999')
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.getByText('Contact details saved')).toBeVisible()
+    await page.reload()
+    await expect(page.getByLabel('Full name')).toHaveValue('Nimal Perera Jayasinghe')
+    await expect(page.getByLabel('Phone')).toHaveValue('+94 75 602 1999')
+    // Discarding goes back to what is saved.
+    await page.getByLabel('Email').fill('someone@example.test')
+    await page.getByRole('button', { name: 'Discard changes' }).click()
+    await expect(page.getByLabel('Email')).toHaveValue('nimal@example.test')
+  })
+
+  test('outlet and role changes are requested, not edited', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/profile')
+    await expect(page.getByRole('textbox', { name: 'Outlet', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Send request' }).click()
+    await expect(page.getByText('Describe what should change.')).toBeVisible()
+    await page.getByLabel('What should change?').fill('I now manage OUT009.')
+    await page.getByRole('button', { name: 'Send request' }).click()
+    await expect(page.getByText('Request sent to your administrator')).toBeVisible()
+    await expect(page.getByLabel('What should change?')).toHaveValue('')
+  })
+
+  test('contact details edited offline are sent later', async ({ page }) => {
+    await clearStorage(page)
+    await setOffline(page, true)
+    await page.goto('/store-manager/profile')
+    await page.getByLabel('Full name').fill('Nimal P. Perera')
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.getByText('1 change waiting to send')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    await setOffline(page, false)
+    await page.goto('/store-manager/profile')
+    await expect(page.getByText('1 change sent')).toBeVisible()
+    await expect(page.getByLabel('Full name')).toHaveValue('Nimal P. Perera')
+  })
+
+  test('a Tech outlet can have several orders and change one of them', async ({ page }) => {
+    await clearStorage(page)
+    await signInAs(page, 'OUT019 · Tech Kandy City · Tech')
+    await page.goto('/store-manager/overview')
+    await expect(page.getByRole('region', { name: 'Tech · Appliances' })).toHaveCount(1)
+    await page.goto('/store-manager/orders/new')
+    // Add a second order beside the one already there.
+    await expect(page.getByRole('region', { name: 'Orders for this delivery' })).toContainText(
+      'ORD1083',
+    )
+    await page.getByRole('button', { name: 'Add one item' }).click()
+    await page.getByLabel('Staff will be available to inspect and sign for the delivery.').check()
+    await page.getByRole('button', { name: /Add \d+ items order/ }).click()
+    await expect(page.getByText('Your 2 Tech orders are confirmed')).toBeVisible()
+    await page.goto('/store-manager/overview')
+    await expect(page.getByRole('region', { name: 'Tech · Appliances' })).toHaveCount(2)
+    // Change the original; the new one is untouched.
+    // The original order is the first card.
+    await page
+      .getByRole('region', { name: 'Tech · Appliances' })
+      .first()
+      .getByRole('link', { name: 'Edit order' })
+      .click()
+    await expect(page.getByRole('heading', { name: 'Change order' })).toBeVisible()
+    await page.getByRole('button', { name: 'Add one item' }).click()
+    await page.getByLabel('Staff will be available to inspect and sign for the delivery.').check()
+    await page.getByRole('button', { name: 'Save changes to ORD1083' }).click()
+    await expect(page.getByText('Your 2 Tech orders are confirmed')).toBeVisible()
+    await page.goto('/store-manager/orders')
+    await expect(page.getByRole('link', { name: /ORD1083/ })).toContainText('12 items')
+  })
+
+  test('an order the dispatcher already planned is tagged when it is changed or cancelled', async ({
+    page,
+  }) => {
+    await clearStorage(page)
+    await seed(page, 'allocated')
+    await page.goto('/store-manager/orders/new')
+    const chilled = page.getByRole('region', { name: 'Fresh · Chilled' })
+    await expect(chilled.getByText('Already planned')).toBeVisible()
+    await expect(chilled.getByText('sends it back to be planned again')).toBeVisible()
+    await chilled.getByRole('button', { name: 'Add one case' }).click()
+    await page.getByRole('button', { name: 'Review 2 orders' }).click()
+    await expect(page.getByText('Already planned').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Confirm 2 orders' }).click()
+    await expect(page.getByRole('heading', { name: 'Orders confirmed' })).toBeVisible()
+    // Confirming sent both back to the dispatcher: they are no longer planned.
+    await page.goto('/store-manager/orders/ORD1042')
+    await expect(page.getByText('Already planned')).toHaveCount(0)
+    // Cancelling a planned order says the same before it goes ahead.
+    await seed(page, 'allocated')
+    await page.goto('/store-manager/orders/ORD1043')
+    await expect(page.getByText('Already planned')).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel order' }).click()
+    await expect(page.getByText('so they will plan that run again')).toBeVisible()
+  })
+
+  test('placing an order again says it replaces the one already placed', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/orders/new')
+    const chilled = page.getByRole('region', { name: 'Fresh · Chilled' })
+    await expect(chilled.getByText('Replaces ORD1042')).toBeVisible()
+    await expect(chilled.getByText('Currently 18 cases · 120 kg · 1.2 m³')).toBeVisible()
+    await expect(
+      page.getByRole('region', { name: 'Fresh · Dry' }).getByText('Replaces ORD1043'),
+    ).toBeVisible()
+    // An order that is switched off is not replaced, so it carries no tag.
+    await page.getByRole('switch', { name: 'Order chilled groceries for this delivery' }).click()
+    await expect(chilled.getByText('Replaces ORD1042')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Review 1 order' }).click()
+    await expect(page.getByText('Replaces ORD1043')).toBeVisible()
+    await expect(page.getByText('Replaces ORD1042')).toHaveCount(0)
+  })
+
+  test('Style replaces its weekly order and Tech says whether it adds or changes', async ({
+    page,
+  }) => {
+    await clearStorage(page)
+    await signInAs(page, 'OUT016 · Style Liberty Mall · Style')
+    await page.goto('/store-manager/orders/new')
+    await expect(page.getByText('Replaces ORD1080')).toBeVisible()
+    await signInAs(page, 'OUT019 · Tech Kandy City · Tech')
+    await page.goto('/store-manager/orders/new')
+    await expect(page.getByText('New order')).toBeVisible()
+    await expect(page.getByText('they are not changed')).toBeVisible()
+    await page.goto('/store-manager/orders/new?order=ORD1083')
+    await expect(page.getByText('Changing ORD1083')).toBeVisible()
+    await expect(page.getByText('Saving changes only this order.')).toBeVisible()
+  })
+
+  test('selecting the vehicle on the map shows its details', async ({ page }) => {
+    await clearStorage(page)
+    await seed(page, 'scheduled')
+    await page.goto('/store-manager/deliveries')
+    const map = page.getByRole('region', { name: 'Route' })
+    await expect(map.locator('.leaflet-marker-icon')).toHaveCount(3)
+    await expect(page.getByText('Select the vehicle for details')).toBeVisible()
+    await expect(page.getByLabel(/Vehicle VEH055 .*details/)).toHaveCount(0)
+    await map.getByTitle('Vehicle VEH055 · details').click()
+    const panel = page.getByLabel('Vehicle VEH055 details')
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText('Refrigerated van')
+    await expect(panel).toContainText('Sanjeewa Bandara')
+    await expect(panel).toContainText('Trip 1')
+    await expect(panel).toContainText('Peliyagoda')
+    await expect(panel).toContainText('Planned arrival')
+    await expect(panel).toContainText('5:40 AM')
+    // It sits in the top right corner of the map and closes with the button or Escape.
+    const mapBox = (await map.locator('.sm-map').boundingBox())!
+    const panelBox = (await panel.boundingBox())!
+    expect(panelBox.x + panelBox.width).toBeGreaterThan(mapBox.x + mapBox.width - 30)
+    expect(panelBox.y).toBeLessThan(mapBox.y + 30)
+    await page.getByRole('button', { name: 'Close vehicle details' }).click()
+    await expect(panel).toHaveCount(0)
+    await map.getByTitle('Vehicle VEH055 · details').click()
+    await expect(panel).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(panel).toHaveCount(0)
   })
 })
