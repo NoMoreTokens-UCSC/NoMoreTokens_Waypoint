@@ -26,6 +26,8 @@ export interface Order {
   trip?: number
   deferralReason?: string
   priority: boolean
+  /** The delivery day this order was for, "2026-09-24". Absent on the live orders (next run). */
+  deliveryDate?: string
   /** Event times (ISO), set as the order moves through the workflow. */
   placedAt?: string
   scheduledAt?: string
@@ -192,6 +194,9 @@ export interface Snapshot {
     volume?: number
     windowEnd?: string
   }[]
+  /** Earlier orders, kept apart from the live orders so planning screens are unaffected. */
+  orderHistory?: Order[]
+  orderHistoryVersion?: number
   unlistedTeamCounts?: { Active: number; Invited: number; Suspended: number }
   fleetReferenceVersion?: number
   designDataVersion?: number

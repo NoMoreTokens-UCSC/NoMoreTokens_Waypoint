@@ -1,10 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { Truck } from 'lucide-react'
 import type { Order, Stop } from '../../../../domain/models'
-import { useApiQuery } from '../../../hooks/useApiQuery'
-import { useConnectivity } from '../../../hooks/useOperations'
 import { useSession } from '../../../session/useSession'
 import { quantityText } from '../lib/orderView'
+import { useOnline } from '../lib/useOnline'
 import type { RoutePhase } from './RouteMap'
 
 // Leaflet is large, so the map is fetched only when this card is shown.
@@ -49,8 +48,7 @@ export function RouteMapCard({
   outletId: string
 }) {
   const session = useSession()
-  const connected = useConnectivity()
-  const settings = useApiQuery(['settings'], (apis) => apis.account.getSettings())
+  const online = useOnline()
   const phase = phaseOf(order)
   const [title, detail] = captions[phase](order.vehicleId ?? 'Vehicle', outletId)
   const depotName = session.depot && depots[session.depot] ? session.depot : 'Peliyagoda'
@@ -72,7 +70,7 @@ export function RouteMapCard({
             depot={depots[depotName]}
             depotName={depotName}
             vehicleId={order.vehicleId}
-            online={connected && !settings.data?.simulatedOffline}
+            online={online}
           />
         </Suspense>
       ) : (

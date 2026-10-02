@@ -1,6 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import { formatClock, formatLongDate, formatShortDate } from '../../../../domain/calendar'
-import type { Order } from '../../../../domain/models'
+import { formatClock, formatLongDate } from '../../../../domain/calendar'
 import { useAction } from '../../../hooks/useOperations'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import {
@@ -13,39 +12,10 @@ import {
   Tile,
 } from '../components/StoreKit'
 import { RouteMapCard } from '../components/RouteMapCard'
+import { Timeline } from '../components/Timeline'
 import { kindSlash, orderKinds, windowText } from '../lib/orderView'
 import { deferredOrders, pickActiveOrder, useStoreOrders } from '../lib/useStore'
 import { useProof } from '../lib/useProof'
-
-const steps = [
-  { key: 'placedAt', label: 'Order placed' },
-  { key: 'scheduledAt', label: 'Scheduled' },
-  { key: 'departedAt', label: 'En route' },
-  { key: 'deliveredAt', label: 'Delivered' },
-] as const
-
-function Timeline({ order }: { order: Order }) {
-  return (
-    <ol className="sm-timeline">
-      {steps.map((step, index) => {
-        const at = order[step.key]
-        return (
-          <li key={step.key} className={`sm-step${at ? '' : ' sm-step-pending'}`}>
-            <span className="sm-step-dot" aria-hidden="true">
-              {at ? '✓' : index + 1}
-            </span>
-            <div>
-              <strong>{step.label}</strong>
-              <small>
-                {at ? `${formatShortDate(at)} · ${formatClock(at)}` : 'Awaiting update'}
-              </small>
-            </div>
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
 
 /** Delivery tracking for one order: where it is, when it arrives and when to be ready. */
 export default function TrackingPage() {

@@ -40,7 +40,7 @@ export default function DraftSavedPage() {
           <ActionLink variant="outline" to="/store-manager/orders/confirmed">
             View existing confirmed orders
           </ActionLink>
-          <ActionLink variant="outline" to="/store-manager/orders">
+          <ActionLink variant="outline" to="/store-manager/orders/new">
             Back to cutoff details
           </ActionLink>
         </div>

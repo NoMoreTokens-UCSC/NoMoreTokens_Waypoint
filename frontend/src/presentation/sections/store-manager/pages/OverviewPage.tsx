@@ -1,45 +1,33 @@
 import { formatClock, formatLongDate, formatWeekday } from '../../../../domain/calendar'
 import { useBusinessClock } from '../../../session/useBusinessClock'
-import { ActionLink, PageIntro, StorePage } from '../components/StoreKit'
+import { CutoffPanel } from '../components/CutoffPanel'
+import { ActionLink, OfflineNotice, PageIntro, Pill, StorePage } from '../components/StoreKit'
 import { ParcelIcon } from '../components/StoreIcons'
 import { cutoffLabel } from '../lib/cutoff'
-import { orderKinds, quantityText, temperatures, windowText } from '../lib/orderView'
+import {
+  orderKinds,
+  quantityText,
+  statusTone,
+  storeStatus,
+  temperatures,
+  windowText,
+} from '../lib/orderView'
+import { useOnline } from '../lib/useOnline'
 import { useStoreOrders } from '../lib/useStore'
 
 /** Order placement: the cutoff countdown and this outlet's two separate Fresh orders. */
 export default function OverviewPage() {
   const { byTemperature, outletId } = useStoreOrders()
   const clock = useBusinessClock()
-  const next = formatWeekday(clock.nextRunDate)
+  const online = useOnline()
   return (
     <StorePage>
       <PageIntro
         title="Order placement"
         context={`${outletId} · Delivery ${formatLongDate(clock.deliveryDate)} · ${formatWeekday(clock.now)}, ${formatClock(clock.now)}`}
       />
-      <section className="sm-panel sm-cutoff" aria-label="Order cutoff">
-        <div>
-          {clock.cutoffPassed ? (
-            <>
-              <h2>Today’s cutoff has passed</h2>
-              <p>
-                {formatWeekday(clock.deliveryDate)}’s intake is locked · Save a draft for {next}
-              </p>
-            </>
-          ) : (
-            <>
-              <h2>
-                {clock.minutesToCutoff} minute{clock.minutesToCutoff === 1 ? '' : 's'} to place
-                tomorrow’s orders
-              </h2>
-              <p>Daily cutoff · {cutoffLabel(clock.cutoff)} Sri Lanka time</p>
-            </>
-          )}
-        </div>
-        <ActionLink small to="/store-manager/orders">
-          {clock.cutoffPassed ? 'Keep a draft' : 'Create orders'}
-        </ActionLink>
-      </section>
+      {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
+      <CutoffPanel clock={clock} />
       <div className="sm-widgets">
         {temperatures.map((temperature) => {
           const order = byTemperature(temperature)
@@ -54,6 +42,11 @@ export default function OverviewPage() {
                   <h3>{kind.title}</h3>
                   <p>{kind.subtitle}</p>
                 </div>
+                {order && (
+                  <span className="sm-widget-status">
+                    <Pill tone={statusTone(order)}>{storeStatus(order)}</Pill>
+                  </span>
+                )}
               </div>
               {order ? (
                 <>
@@ -68,7 +61,7 @@ export default function OverviewPage() {
                   </p>
                 </>
               )}
-              <ActionLink variant="grey" to="/store-manager/orders">
+              <ActionLink variant="grey" to="/store-manager/orders/new">
                 {order ? 'Edit order' : 'Create order'}
               </ActionLink>
             </section>

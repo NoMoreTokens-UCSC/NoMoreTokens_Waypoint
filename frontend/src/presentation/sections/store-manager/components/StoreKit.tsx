@@ -122,3 +122,53 @@ export function FieldInput({
     </label>
   )
 }
+
+/** A whole-number field with minus and plus buttons, so a count can be set without typing. */
+export function StepperField({
+  label,
+  unit,
+  value,
+  error,
+  onChange,
+  onStep,
+}: {
+  label: string
+  /** What one step adds, for the button labels: "case". */
+  unit: string
+  value: string
+  error?: string
+  onChange: (value: string) => void
+  onStep: (by: number) => void
+}) {
+  return (
+    <div className="sm-field">
+      <span id={`stepper-${label}`}>{label}</span>
+      <div className="sm-stepper">
+        <button type="button" aria-label={`Remove one ${unit}`} onClick={() => onStep(-1)}>
+          −
+        </button>
+        <input
+          inputMode="numeric"
+          aria-labelledby={`stepper-${label}`}
+          aria-invalid={Boolean(error)}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button type="button" aria-label={`Add one ${unit}`} onClick={() => onStep(1)}>
+          +
+        </button>
+      </div>
+      {error && <small role="alert">{error}</small>}
+    </div>
+  )
+}
+
+/** Shown while the device has no connection: what is and is not true about an order made now. */
+export function OfflineNotice({ cutoff }: { cutoff: string }) {
+  return (
+    <Callout title="You’re offline">
+      Your order is saved on this device. Dispatch cannot see it until your connection returns, and
+      orders close at {cutoff}, so reconnect before then.
+    </Callout>
+  )
+}

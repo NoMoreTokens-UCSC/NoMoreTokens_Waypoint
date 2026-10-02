@@ -591,8 +591,10 @@ export class OperationsService {
   saveStoreDrafts(inputs: StoreOrderInput[]) {
     return this.repository.update((s) => {
       assert(
-        inputs.length === 2 && new Set(inputs.map((input) => input.temperature)).size === 2,
-        'Provide separate chilled and dry orders.',
+        inputs.length >= 1 &&
+          inputs.length <= 2 &&
+          new Set(inputs.map((input) => input.temperature)).size === inputs.length,
+        'Provide at most one chilled and one dry order.',
       )
       for (const input of inputs)
         assert(
@@ -664,9 +666,12 @@ export class OperationsService {
         !s.settings.cutoffClosed && !s.settings.published,
         'Intake is closed. Save the orders for the next run.',
       )
+      // Chilled is not ordered every day, so one dry order alone is valid.
       assert(
-        inputs.length === 2 && new Set(inputs.map((input) => input.temperature)).size === 2,
-        'Confirm separate chilled and ambient orders.',
+        inputs.length >= 1 &&
+          inputs.length <= 2 &&
+          new Set(inputs.map((input) => input.temperature)).size === inputs.length,
+        'Confirm at most one chilled and one dry order.',
       )
       s.settings.allocationReviewed = false
       for (const input of inputs) {

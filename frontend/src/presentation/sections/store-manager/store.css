@@ -43,6 +43,9 @@
 .sm-panel,
 .sm-card {
   display: grid;
+  /* Content keeps its natural height from the top; a card stretched by its neighbour must not
+     spread its rows (which turned the pill into a tall circle). */
+  align-content: start;
   gap: 16px;
   padding: 24px;
   box-shadow: var(--sm-shadow);
@@ -944,5 +947,119 @@
   }
   .sm-receipt {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Create orders: switches, stepper, window picker */
+.sm-card-off {
+  /* A card that is switched off shrinks to its message instead of matching its neighbour. */
+  align-self: start;
+  opacity: 0.85;
+}
+.sm-card-off .sm-pill {
+  opacity: 0.8;
+}
+.sm-heading-row .sm-include {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6e737b;
+}
+.sm-stepper {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: stretch;
+  min-height: 58px;
+  border: 1px solid var(--sm-line);
+  border-radius: 12px;
+  background: var(--sm-input);
+  overflow: hidden;
+}
+.sm-stepper input {
+  min-height: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: center;
+}
+.sm-stepper button {
+  font-size: 22px;
+  line-height: 1;
+  color: #22252a;
+}
+.sm-stepper button:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.sm-window {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.sm-window legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+.sm-window-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+}
+.sm-window-range label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6e737b;
+}
+.sm-window-range select {
+  min-height: 52px;
+  padding: 0 16px;
+  border: 1px solid var(--sm-line);
+  border-radius: 12px;
+  background: var(--sm-input);
+  font: inherit;
+  font-size: 16px;
+  color: #22252a;
+}
+.sm-window-range select[aria-invalid='true'] {
+  border-color: #c63a2f;
+}
+.sm-window-to {
+  padding-bottom: 14px;
+  color: #6e737b;
+}
+.sm-window small {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: #6e737b;
+}
+.sm-window .sm-window-error {
+  color: #c63a2f;
+}
+.sm-widget-status {
+  margin-left: auto;
+}
+
+/* Phones: the cases stepper gets its own row so the number stays readable. */
+@media (max-width: 760px) {
+  .sm-quantities {
+    grid-template-columns: 1fr 1fr;
+  }
+  .sm-quantities > :first-child {
+    grid-column: 1 / -1;
+  }
+  .sm-window-range select {
+    min-width: 0;
   }
 }

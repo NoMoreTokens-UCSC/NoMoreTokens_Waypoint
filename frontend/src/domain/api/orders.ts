@@ -21,6 +21,8 @@ export interface ReceiptIssue {
 /** Store demand from placement to receipt. Used by the store manager; read by planning. */
 export interface OrdersApi {
   listOrders(filter?: OrderFilter): Promise<Order[]>
+  /** Earlier orders for the outlet, newest delivery day first. */
+  listHistory(filter?: { outletId?: string }): Promise<Order[]>
   listDrafts(): Promise<OrderDraft[]>
   getIntakeStatus(): Promise<IntakeStatus>
   createOrder(

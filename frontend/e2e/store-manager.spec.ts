@@ -26,15 +26,20 @@ test.describe('store manager', () => {
     await page.getByRole('link', { name: 'Create orders' }).click()
     await expect(page.getByRole('heading', { name: 'Create orders' })).toBeVisible()
     const chilled = page.getByRole('region', { name: 'Fresh · Chilled' })
-    await chilled.getByLabel('Cases').fill('20')
+    // Set the count with the stepper, then correct the estimated weight and volume by hand.
+    await chilled.getByRole('button', { name: 'Add one case' }).click()
+    await chilled.getByRole('button', { name: 'Add one case' }).click()
     await chilled.getByLabel('Weight · kg').fill('130')
     await chilled.getByLabel('Volume · m³').fill('1.3')
-    await chilled.getByLabel('Receiving window').fill('05:30–07:45')
+    // Pick the window from the From and To lists; nothing is typed.
+    await chilled.getByLabel('From').selectOption({ label: '6:00 AM' })
+    await chilled.getByLabel('To').selectOption({ label: '8:00 AM' })
+    await expect(chilled.getByText('6:00 AM to 8:00 AM · 2 hours')).toBeVisible()
     await expect(page.getByText('Combined weight · 370 kg')).toBeVisible()
     await page.getByRole('button', { name: 'Review 2 orders' }).click()
     await expect(page.getByRole('heading', { name: 'Review & confirm' })).toBeVisible()
     await expect(page.getByText('20 cases · 130 kg · 1.3 m³')).toBeVisible()
-    await expect(page.getByText('05:30–07:45')).toBeVisible()
+    await expect(page.getByText('06:00–08:00').first()).toBeVisible()
     await page.getByRole('button', { name: 'Confirm 2 orders' }).click()
     await expect(page.getByRole('heading', { name: 'Orders confirmed' })).toBeVisible()
     await expect(page.getByText('Awaiting allocation').first()).toBeVisible()
@@ -42,17 +47,87 @@ test.describe('store manager', () => {
     await page.goto('/store-manager/overview')
     await page.reload()
     await expect(page.getByText('20 cases · 130 kg · 1.3 m³')).toBeVisible()
-    await expect(page.getByText('Window 05:30–07:45')).toBeVisible()
+    await expect(page.getByText('Window 06:00–08:00').first()).toBeVisible()
   })
 
-  test('rejects an invalid window before review', async ({ page }) => {
+  test('weight and volume follow the cases until they are edited', async ({ page }) => {
     await clearStorage(page)
     await page.goto('/store-manager/orders')
     const dry = page.getByRole('region', { name: 'Fresh · Dry' })
-    await dry.getByLabel('Receiving window').fill('08:00–06:00')
-    await page.getByRole('button', { name: 'Review 2 orders' }).click()
-    await expect(page.getByText('Use a window such as 05:30–07:30.')).toBeVisible()
-    await expect(page).toHaveURL(/\/store-manager\/orders$/)
+    await dry.getByRole('button', { name: 'Add one case' }).click()
+    await expect(dry.getByLabel('Weight · kg')).toHaveValue('250')
+    await expect(dry.getByLabel('Volume · m³')).toHaveValue('2.5')
+    await dry.getByLabel('Weight · kg').fill('260')
+    await dry.getByRole('button', { name: 'Add one case' }).click()
+    await expect(dry.getByLabel('Weight · kg')).toHaveValue('260')
+    await expect(dry.getByText('Weight and volume are as you entered them.')).toBeVisible()
+  })
+
+  test('receiving windows can only be chosen within the Fresh rules', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/orders')
+    const dry = page.getByRole('region', { name: 'Fresh · Dry' })
+    const from = dry.getByLabel('From')
+    const to = dry.getByLabel('To')
+    // Wait for the page to render before reading the lists; reading options does not wait.
+    await expect(to).toHaveValue('08:00')
+    const labels = (select: typeof from) => select.locator('option').allTextContents()
+    // Times read in 12-hour form. Fresh goods must arrive before 8:00 AM, with an hour to unload.
+    expect((await labels(from)).at(0)).toBe('4:00 AM')
+    expect((await labels(from)).at(-1)).toBe('7:00 AM')
+    expect((await labels(to)).at(-1)).toBe('8:00 AM')
+    await from.selectOption({ label: '7:00 AM' })
+    await expect(to).toHaveValue('08:00')
+    expect(await labels(to)).toEqual(['8:00 AM'])
+    // A new start keeps the length of the window (one hour here).
+    await from.selectOption({ label: '5:00 AM' })
+    await expect(to).toHaveValue('06:00')
+    await expect(dry.getByText('5:00 AM to 6:00 AM · 1 hour')).toBeVisible()
+  })
+
+  test('chilled is optional: a dry-only day is one order', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/orders')
+    await page.getByRole('switch', { name: 'Order chilled groceries for this delivery' }).click()
+    await expect(page.getByText('No change to your chilled order ORD1042')).toBeVisible()
+    // The switched-off card must not stretch its content (the tag once became a tall circle).
+    const tag = page.getByRole('region', { name: 'Fresh · Chilled' }).getByText('Chilled groceries')
+    expect((await tag.boundingBox())!.height).toBeLessThan(40)
+    const off = page.getByRole('region', { name: 'Fresh · Chilled' })
+    const on = page.getByRole('region', { name: 'Fresh · Dry' })
+    expect((await off.boundingBox())!.height).toBeLessThan((await on.boundingBox())!.height)
+    await expect(page.getByRole('button', { name: 'Review 1 order' })).toBeVisible()
+    await page.getByRole('button', { name: 'Review 1 order' }).click()
+    await expect(page.getByText('1 Fresh order')).toBeVisible()
+    await expect(page.getByText('Not included: Fresh · Chilled')).toBeVisible()
+    await page.getByRole('button', { name: 'Confirm 1 order' }).click()
+    await expect(page.getByRole('heading', { name: 'Orders confirmed' })).toBeVisible()
+    await page.goto('/store-manager/orders')
+    await page.getByRole('switch', { name: 'Order dry groceries for this delivery' }).click()
+    await page.getByRole('switch', { name: 'Order chilled groceries for this delivery' }).click()
+    await expect(page.getByRole('button', { name: 'Choose an order to place' })).toBeDisabled()
+  })
+
+  test('says what an order made offline means', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/demo')
+    await page.getByRole('switch', { name: 'Simulate offline' }).click()
+    await expect(page.getByRole('switch', { name: 'Simulate offline' })).toBeChecked()
+    await page.goto('/store-manager/orders')
+    await expect(page.getByText('You’re offline')).toBeVisible()
+    await expect(
+      page.getByText(/Dispatch cannot see it until your connection returns/),
+    ).toBeVisible()
+  })
+
+  test('each order on the overview shows where it stands', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/overview')
+    await expect(page.getByText('Awaiting allocation')).toHaveCount(2)
+    await seed(page, 'scheduled')
+    await page.goto('/store-manager/overview')
+    await expect(page.getByText('Scheduled')).toBeVisible()
+    await expect(page.getByText('Deferred')).toBeVisible()
   })
 
   test('after the cutoff the order is kept as a draft for the next run', async ({ page }) => {
