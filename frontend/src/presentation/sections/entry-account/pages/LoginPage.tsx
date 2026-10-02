@@ -104,6 +104,11 @@ export default function LoginPage() {
             Trouble signing in? Contact your dispatcher administrator.
           </p>
         </form>
+        <footer className="entry-login-foot">
+          <span>© 2026 Waypoint Group</span>
+          <span>Privacy</span>
+          <span>Terms</span>
+        </footer>
       </main>
       <Modal
         title={recovery === 'sent' ? 'Recovery requested' : 'Recover access'}
