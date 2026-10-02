@@ -690,8 +690,8 @@
   padding: 48px;
   color: white;
   background:
-    linear-gradient(rgba(30, 32, 37, 0.45), rgba(30, 32, 37, 0.6)),
-    url('/images/entry/warehouse-hero.jpg') 30% center / cover;
+    linear-gradient(rgba(30, 32, 37, 0.62), rgba(30, 32, 37, 0.3) 45%, rgba(30, 32, 37, 0.66)),
+    url('/images/entry/warehouse-hero.jpg') 50% center / cover;
 }
 .entry-login-photo blockquote {
   margin: 0 0 40px;
@@ -711,19 +711,26 @@
 }
 .entry-login-form {
   display: grid;
-  gap: 18px;
+  gap: 24px;
   width: 100%;
   max-width: 400px;
 }
+.entry-login-form .entry-wordmark {
+  font-size: 20px;
+}
 .entry-login-form h1 {
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 500;
-  letter-spacing: -0.4px;
-  margin-top: 18px;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  margin-top: -2px;
 }
 .entry-login-lead {
   color: #6e737b;
-  margin-top: -10px;
+  margin-top: -18px;
+}
+.entry-login-form .entry-button {
+  height: 48px;
 }
 .entry-login-error {
   display: flex;
@@ -737,13 +744,15 @@
 }
 .entry-field {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   font-size: 13px;
+  line-height: 16px;
   font-weight: 500;
 }
 .entry-field input {
   height: 44px;
   padding: 0 16px;
+  font-size: 14px;
   border: 1px solid transparent;
   border-radius: 22px;
   background: #f2f1ef;
