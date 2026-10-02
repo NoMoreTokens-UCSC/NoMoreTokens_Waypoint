@@ -30,6 +30,9 @@ const demand: [string, string, Order['brand'], string, number, number, Order['te
   ['ORD1079', 'OUT015', 'Style', '10:00', 1.4, 140, 'Ambient'],
 ]
 
+/** The demo's "now": Friday 25 September 2026, 15:42 in Sri Lanka. */
+const demoPlacedAt = '2026-09-25T15:42:00+05:30'
+
 export function createSeed(): Snapshot {
   const orders: Order[] = demand.map(
     ([id, outlet, brand, window, volume, weight, temperature]) => ({
@@ -50,6 +53,7 @@ export function createSeed(): Snapshot {
       status: 'Confirmed',
       priority: outlet === 'OUT057',
       receipt: 'Pending',
+      placedAt: demoPlacedAt,
     }),
   )
   const vehicles: Vehicle[] = sourceFleet.map((vehicle) => ({ ...vehicle }))

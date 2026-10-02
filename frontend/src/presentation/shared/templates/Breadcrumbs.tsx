@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect } from 'react'
-import { ChevronLeft } from 'lucide-react'
 import { Link, matchPath, useLocation, useNavigate } from 'react-router-dom'
 import { appRoutes } from '../../roles/registry'
+import { BackIcon } from './shellIcons'
 
 export interface Crumb {
   label: string
@@ -43,11 +43,15 @@ export function Breadcrumbs({ home, trail }: { home: string; trail: Crumb[] }) {
   }
   return (
     <nav className="breadcrumbs" aria-label="Breadcrumb">
-      <button type="button" className="breadcrumb-back" onClick={back}>
-        <ChevronLeft size={16} />
-        Back
-      </button>
-      <span className="breadcrumb-divider" aria-hidden="true" />
+      {!atHome && (
+        <>
+          <button type="button" className="breadcrumb-back" onClick={back}>
+            <BackIcon />
+            Back
+          </button>
+          <span className="breadcrumb-divider" aria-hidden="true" />
+        </>
+      )}
       <ol>
         {items.map((item, index) => {
           const last = index === items.length - 1
