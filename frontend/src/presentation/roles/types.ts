@@ -1,6 +1,6 @@
 import type { ComponentType, LazyExoticComponent } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import type { Workspace } from '../../domain/models'
+import type { Snapshot, Workspace } from '../../domain/models'
 
 /** One URL owned by a module. `shell` pages render inside the shared workspace layout. */
 export interface ModuleRoute {
@@ -12,6 +12,16 @@ export interface NavItem {
   label: string
   path: string
   icon: LucideIcon
+}
+export interface SearchResult {
+  id: string
+  text: string
+  path: string
+}
+/** What the shared header search box looks for in a role's workspace. */
+export interface HeaderSearch {
+  placeholder: string
+  find: (snapshot: Snapshot, query: string) => SearchResult[]
 }
 /** A self-contained slice of the app: its owner edits only its own folder and this definition. */
 export interface AppModule {
@@ -27,4 +37,6 @@ export interface RoleModule extends AppModule {
   basePath: string
   home: string
   nav: NavItem[]
+  /** Optional header search; the shell's order and vehicle search is used otherwise. */
+  search?: HeaderSearch
 }

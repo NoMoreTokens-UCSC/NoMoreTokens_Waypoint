@@ -17,7 +17,7 @@ import {
   EmptyState,
 } from '../../../shared/molecules/Common'
 import { formatTime } from '../../../shared/lib/utils'
-import { workspaces } from '../../../shared/templates/WorkspaceLayout'
+import { roleModules as workspaces } from '../../../roles/registry'
 
 export function TeamPage() {
   const { data } = useOperations(),

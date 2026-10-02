@@ -205,8 +205,7 @@ h3 {
   width: 224px;
   position: fixed;
   inset: 0 auto 0 0;
-  background: white;
-  border-right: 1px solid var(--color-border);
+  background: #eeece9;
   display: flex;
   flex-direction: column;
   padding: 24px 16px 16px;
@@ -242,9 +241,9 @@ h3 {
   align-items: center;
   gap: 12px;
   padding: 13px 14px;
-  border-radius: 7px;
+  border-radius: 24px;
   margin-bottom: 5px;
-  color: #6e737b;
+  color: #22252a;
   font-weight: 500;
   text-decoration: none;
   transition:
@@ -252,16 +251,26 @@ h3 {
     color 0.15s;
 }
 .nav-item:hover {
-  background: #f5f4f2;
-  color: #22252a;
+  background: rgba(255, 255, 255, 0.6);
 }
 .nav-item.active {
   background: #fff3ec;
-  color: #d9551d;
 }
 .nav-item svg {
   width: 19px;
   height: 19px;
+  color: #4b4f56;
+}
+.nav-item.active svg {
+  color: #f26a2e;
+}
+.switch-workspace {
+  height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: white;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(34, 37, 42, 0.08);
 }
 .sidebar-footer {
   margin-top: auto;
@@ -310,7 +319,23 @@ h3 {
 .global-search input {
   background: #f5f4f2;
   border: 0;
-  box-shadow: none;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(34, 37, 42, 0.08);
+}
+.topbar-right .icon-button,
+.topbar-right .avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: #f2f1ef;
+  color: #22252a;
+}
+.mobile-title {
+  line-height: 1.15;
+}
+.mobile-title small {
+  font-size: 12px;
+  color: #6e737b;
 }
 .topbar-right {
   margin-left: auto;
