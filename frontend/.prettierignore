@@ -1,0 +1,8 @@
+node_modules
+dist
+.npm-cache
+.playwright
+test-results
+playwright-report
+package-lock.json
+docs/figma/reference.json

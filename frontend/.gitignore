@@ -1,0 +1,12 @@
+node_modules/
+.npm-cache/
+.playwright/
+__pycache__/
+dist/
+.env*
+!.env.example
+*.tsbuildinfo
+playwright-report/
+test-results/
+.figma-local/
+*.env.figma.local*

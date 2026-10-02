@@ -1,0 +1,5 @@
+*.env.figma.local*
+.env.figma.local*
+
+# Local Figma exports; application assets are included under frontend/public.
+figma-exports/

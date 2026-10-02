@@ -1,0 +1,123 @@
+[
+  {
+    "key": "I202-20243-36-189",
+    "nodeId": "I202:20243;36:189",
+    "name": "MapGeometry/RoadsAndRoute",
+    "path": "/figma/assets/I202-20243-36-189.svg",
+    "width": 350.0,
+    "height": 280.0,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I202-20243-58-32",
+    "nodeId": "I202:20243;58:32",
+    "name": "MapAnchor/VehicleMarker/VEH055",
+    "path": "/figma/assets/I202-20243-58-32.svg",
+    "width": 0.46052631735801697,
+    "height": 0.4964539110660553,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I202-20243-58-33",
+    "nodeId": "I202:20243;58:33",
+    "name": "MapAnchor/DestinationMarker",
+    "path": "/figma/assets/I202-20243-58-33.svg",
+    "width": 0.46052631735801697,
+    "height": 0.4964539110660553,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I202-20377-36-189",
+    "nodeId": "I202:20377;36:189",
+    "name": "MapGeometry/RoadsAndRoute",
+    "path": "/figma/assets/I202-20377-36-189.svg",
+    "width": 350.0,
+    "height": 280.0,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I202-20377-58-32",
+    "nodeId": "I202:20377;58:32",
+    "name": "MapAnchor/VehicleMarker/VEH055",
+    "path": "/figma/assets/I202-20377-58-32.svg",
+    "width": 0.46052631735801697,
+    "height": 0.4964539110660553,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I202-20377-58-33",
+    "nodeId": "I202:20377;58:33",
+    "name": "MapAnchor/DestinationMarker",
+    "path": "/figma/assets/I202-20377-58-33.svg",
+    "width": 0.46052631735801697,
+    "height": 0.4964539110660553,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I202-20513-36-189",
+    "nodeId": "I202:20513;36:189",
+    "name": "MapGeometry/RoadsAndRoute",
+    "path": "/figma/assets/I202-20513-36-189.svg",
+    "width": 350.0,
+    "height": 280.0,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I202-20513-58-32",
+    "nodeId": "I202:20513;58:32",
+    "name": "MapAnchor/VehicleMarker/VEH055",
+    "path": "/figma/assets/I202-20513-58-32.svg",
+    "width": 0.46052631735801697,
+    "height": 0.4964539110660553,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I202-20513-58-33",
+    "nodeId": "I202:20513;58:33",
+    "name": "MapAnchor/DestinationMarker",
+    "path": "/figma/assets/I202-20513-58-33.svg",
+    "width": 0.46052631735801697,
+    "height": 0.4964539110660553,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "204-21056",
+    "nodeId": "204:21056",
+    "name": "ProofPreview/Goods",
+    "path": "/figma/assets/204-21056.svg",
+    "width": 302.0,
+    "height": 240.0,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  },
+  {
+    "key": "I438-155-114-58",
+    "nodeId": "I438:155;114:58",
+    "name": "MenuButton",
+    "path": "/figma/assets/I438-155-114-58.svg",
+    "width": 44.0,
+    "height": 44.0,
+    "absoluteRenderBounds": null,
+    "visible": true,
+    "opacity": 1
+  }
+]

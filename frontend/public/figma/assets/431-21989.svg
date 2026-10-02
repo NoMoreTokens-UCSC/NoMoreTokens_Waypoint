@@ -1,0 +1,12 @@
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Icon/truck">
+<g id="Group">
+<g id="Vector">
+<path d="M2.5 5H11.6667V8.33333H15L17.5 11.6667V14.1667H11.6667H2.5V5Z" fill="#3D424A"/>
+<path d="M11.6667 14.1667V5H2.5V14.1667H11.6667ZM11.6667 14.1667H17.5V11.6667L15 8.33333H11.6667" stroke="#6E737B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<path id="Vector_2" d="M5.83317 16.6667C6.75365 16.6667 7.49984 15.9205 7.49984 15C7.49984 14.0796 6.75365 13.3334 5.83317 13.3334C4.9127 13.3334 4.1665 14.0796 4.1665 15C4.1665 15.9205 4.9127 16.6667 5.83317 16.6667Z" fill="#3D424A" stroke="#6E737B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_3" d="M15.0002 16.6667C15.9206 16.6667 16.6668 15.9205 16.6668 15C16.6668 14.0796 15.9206 13.3334 15.0002 13.3334C14.0797 13.3334 13.3335 14.0796 13.3335 15C13.3335 15.9205 14.0797 16.6667 15.0002 16.6667Z" fill="#3D424A" stroke="#6E737B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+</svg>

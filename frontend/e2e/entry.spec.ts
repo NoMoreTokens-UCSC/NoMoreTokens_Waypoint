@@ -1,0 +1,30 @@
+import { test, expect } from '@playwright/test'
+
+test('source login error, keyboard demo sign-in, and workspace selection', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('textbox', { name: 'Email or employee ID' }).fill('demo@waypointgroup.lk')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page.locator('[data-node="2029:22952"]')).toBeVisible()
+  await page.getByLabel('Password', { exact: true }).fill('local-demo-password')
+  await page.getByLabel('Password', { exact: true }).press('Enter')
+  await expect(page).toHaveURL(/\/workspaces$/)
+  await expect(page.locator('[data-node="7:6"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Store manager/ })).toBeVisible()
+})
+
+test('mobile SSO and password recovery are local simulations', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/login')
+  await page.getByRole('checkbox', { name: 'Keep signed in' }).click()
+  await expect(page.getByRole('checkbox', { name: 'Keep signed in' })).toBeChecked()
+  await page.getByRole('button', { name: 'Forgot?', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox', { name: 'Email or employee ID' }).fill('demo-employee')
+  await dialog.getByRole('button', { name: 'Request recovery' }).click()
+  await expect(dialog).toContainText('No message was sent.')
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  await page.getByRole('button', { name: 'Continue with SSO', exact: true }).click()
+  await expect(page).toHaveURL(/\/workspaces$/)
+})
