@@ -1,110 +1,25 @@
 import { useState } from 'react'
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom'
 import {
-  Package,
-  LayoutGrid,
-  AlertTriangle,
-  Truck,
-  MapPin,
-  ChartNoAxesCombined,
   Bell,
   Menu,
   Navigation,
   ArrowLeftRight,
-  Users,
-  ClipboardList,
   Home,
   Settings,
   User,
   LogOut,
   CloudUpload,
-  ShieldCheck,
-  Camera,
   Inbox,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import type { Workspace } from '../../../domain/models'
 import { SearchField, Modal, Notice } from '../molecules/Common'
 import { Button } from '../atoms/button'
 import { useConnectivity, useOperations } from '../../hooks/useOperations'
+import { roleModules } from '../../roles/registry'
+import { useSession } from '../../session/useSession'
+import { workspaceSearch } from './workspaceSearch'
 import { toast } from 'sonner'
 
-export const workspaces: {
-  key: Workspace
-  label: string
-  description: string
-  path: string
-  icon: LucideIcon
-}[] = [
-  {
-    key: 'dispatcher',
-    label: 'Dispatcher',
-    description: 'Plan, allocate and follow progress.',
-    path: '/dispatcher/orders',
-    icon: LayoutGrid,
-  },
-  {
-    key: 'store-manager',
-    label: 'Store Manager',
-    description: 'Order, track and confirm receipt.',
-    path: '/store-manager/orders',
-    icon: Package,
-  },
-  {
-    key: 'loader',
-    label: 'Loader',
-    description: 'Prepare loads and report shortfalls.',
-    path: '/loader/queue',
-    icon: ClipboardList,
-  },
-  {
-    key: 'driver',
-    label: 'Driver',
-    description: 'Deliver, record and sync.',
-    path: '/driver/home',
-    icon: Truck,
-  },
-  {
-    key: 'administration',
-    label: 'Administration',
-    description: 'Manage your team and access.',
-    path: '/administration/team',
-    icon: Users,
-  },
-]
-const nav: Record<Workspace, [string, string, LucideIcon][]> = {
-  dispatcher: [
-    ['Orders', 'orders', Package],
-    ['Planning', 'planning', LayoutGrid],
-    ['Deferrals', 'deferrals', AlertTriangle],
-    ['Fleet', 'fleet', Truck],
-    ['Live tracking', 'tracking', MapPin],
-    ['Analytics', 'analytics', ChartNoAxesCombined],
-  ],
-  'store-manager': [
-    ['Overview', 'overview', Home],
-    ['Orders', 'orders', Package],
-    ['Deliveries', 'deliveries', Truck],
-    ['Alerts', 'alerts', Bell],
-  ],
-  loader: [
-    ['Shift dashboard', 'queue', LayoutGrid],
-    ['Load workspace', 'loading', ClipboardList],
-    ['Loading proof', 'proof', Camera],
-  ],
-  driver: [
-    ['Home', 'home', Home],
-    ['Current route', 'route', MapPin],
-    ['Delivery proof', 'delivery', Camera],
-    ['Issues', 'issues', AlertTriangle],
-  ],
-  administration: [
-    ['Team & access', 'team', Users],
-    ['Roles & access', 'roles', ShieldCheck],
-    ['Assignments', 'assignments', Truck],
-    ['Audit log', 'audit', ClipboardList],
-  ],
-}
 export function Brand() {
   return (
     <div className="wordmark">
@@ -115,25 +30,27 @@ export function Brand() {
     </div>
   )
 }
+/** Shared chrome for every role: sidebar, header and mobile navigation come from the role's module. */
 export default function WorkspaceLayout() {
   const location = useLocation(),
     { data, isPending, error } = useOperations(),
-    online = useConnectivity()
+    online = useConnectivity(),
+    session = useSession()
   const [menu, setMenu] = useState(false),
     [switcher, setSwitcher] = useState(false),
     [search, setSearch] = useState('')
   const prefix = location.pathname.split('/')[1]
-  const role = (workspaces.find((w) => w.key === prefix)?.key ??
-    (prefix === 'recovery' ? 'driver' : 'dispatcher')) as Workspace
-  const workspace = workspaces.find((w) => w.key === role)!
+  const workspace = roleModules.find((module) => module.key === session.role)!
+  const headerSearch = workspace.search ?? workspaceSearch
   const pendingCount = data?.queue.filter((q) => q.status !== 'accepted').length ?? 0
   const offline = !online || data?.settings.simulatedOffline
+  const context = session.assignment ?? session.depot ?? 'Waypoint Group'
   const navigation = (
     <>
-      {nav[role].map(([label, path, Icon]) => (
+      {workspace.nav.map(({ label, path, icon: Icon }) => (
         <NavLink
           key={path}
-          to={`/${role}/${path}`}
+          to={path}
           className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
           onClick={() => setMenu(false)}
         >
@@ -158,29 +75,7 @@ export default function WorkspaceLayout() {
     if (pendingCount) toast.error('Sync your saved records before leaving this workspace.')
     else window.location.assign('/welcome')
   }
-  const results =
-    search.trim() && data
-      ? [
-          ...data.orders
-            .filter((o) =>
-              `${o.id} ${o.outlet} ${o.outletName}`.toLowerCase().includes(search.toLowerCase()),
-            )
-            .slice(0, 6)
-            .map((o) => ({
-              id: o.id,
-              text: `${o.id} · ${o.outletName}`,
-              path: `/dispatcher/orders?search=${o.id}`,
-            })),
-          ...data.vehicles
-            .filter((v) => `${v.id} ${v.location}`.toLowerCase().includes(search.toLowerCase()))
-            .slice(0, 4)
-            .map((v) => ({
-              id: v.id,
-              text: `${v.id} · ${v.location}`,
-              path: `/dispatcher/fleet?search=${v.id}`,
-            })),
-        ]
-      : []
+  const results = search.trim() && data ? headerSearch.find(data, search.trim()) : []
   return (
     <div className="app-shell">
       <a
@@ -197,15 +92,15 @@ export default function WorkspaceLayout() {
         <nav aria-label="Workspace navigation">{navigation}</nav>
         <div className="sidebar-footer">
           <div className="sidebar-identity">
-            <span className="avatar avatar-orange">WG</span>
-            <div>
-              <strong className="text-xs">Waypoint Group</strong>
-              <p className="text-[10px] text-muted-foreground mt-1">Peliyagoda operations</p>
+            <span className="avatar avatar-orange">{session.initials}</span>
+            <div className="min-w-0">
+              <strong className="text-xs block truncate">{session.name}</strong>
+              <p className="text-[10px] text-muted-foreground mt-1 truncate">{context}</p>
             </div>
           </div>
           <Button
             variant="outline"
-            className="w-full justify-start text-xs"
+            className="w-full switch-workspace"
             onClick={() => setSwitcher(true)}
           >
             <ArrowLeftRight size={15} />
@@ -226,11 +121,16 @@ export default function WorkspaceLayout() {
             <SearchField
               value={search}
               onChange={setSearch}
-              placeholder="Search orders, outlets or vehicles"
+              placeholder={headerSearch.placeholder}
               label="Search the workspace"
             />
           </div>
-          <span className="mobile-menu font-semibold text-lg">waypoint</span>
+          <div className="mobile-menu mobile-title">
+            <span className="font-semibold text-lg">waypoint</span>
+            <small>
+              {workspace.label} · {session.outletId ?? session.vehicleId ?? session.depot}
+            </small>
+          </div>
           <div className="topbar-right">
             {data?.settings.notifications && (
               <Link className="icon-button" to="/account/notifications" aria-label="Notifications">
@@ -238,7 +138,7 @@ export default function WorkspaceLayout() {
               </Link>
             )}
             <Link to="/account/profile" className="avatar" aria-label="Your profile">
-              SB
+              {session.initials}
             </Link>
           </div>
         </header>
@@ -257,13 +157,13 @@ export default function WorkspaceLayout() {
                 </Link>
               ))
             ) : (
-              <p className="p-3 text-sm">No matching orders or vehicles.</p>
+              <p className="p-3 text-sm">No matching records.</p>
             )}
           </div>
         )}
         <main className="main-content" id="main-content">
           <div className="breadcrumbs">
-            <Link to="/welcome">
+            <Link to={workspace.home} aria-label={`${workspace.label} home`}>
               <Home size={13} />
             </Link>
             <span>/</span>
@@ -303,8 +203,8 @@ export default function WorkspaceLayout() {
         </main>
       </div>
       <nav className="mobile-bottom-nav" aria-label="Compact workspace navigation">
-        {nav[role].slice(0, 4).map(([label, path, Icon]) => (
-          <NavLink key={path} to={`/${role}/${path}`}>
+        {workspace.nav.slice(0, 4).map(({ label, path, icon: Icon }) => (
+          <NavLink key={path} to={path}>
             <Icon size={20} />
             {label}
           </NavLink>
@@ -349,10 +249,10 @@ export default function WorkspaceLayout() {
         open={switcher}
         onOpenChange={setSwitcher}
       >
-        {workspaces.map((w) => (
+        {roleModules.map((w) => (
           <Link
             key={w.key}
-            to={w.path}
+            to={w.home}
             onClick={() => setSwitcher(false)}
             className="flex gap-3 items-center py-3 border-b"
           >

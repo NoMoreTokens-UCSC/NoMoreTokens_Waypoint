@@ -7,7 +7,8 @@ import { Button } from '../../../shared/atoms/button'
 import { Input } from '../../../shared/atoms/input'
 import { Switch } from '../../../shared/atoms/switch'
 import { PageHeading, Panel, Field, Notice } from '../../../shared/molecules/Common'
-import { Brand, workspaces } from '../../../shared/templates/WorkspaceLayout'
+import { Brand } from '../../../shared/templates/WorkspaceLayout'
+import { roleModules as workspaces } from '../../../roles/registry'
 import { formatTime } from '../../../shared/lib/utils'
 
 export function WelcomePage() {
@@ -24,7 +25,7 @@ export function WelcomePage() {
       </p>
       <div className="grid md:grid-cols-2 gap-4">
         {workspaces.map((w) => (
-          <Link className="workspace-card" to={w.path} key={w.key}>
+          <Link className="workspace-card" to={w.home} key={w.key}>
             <span className="p-3 rounded-lg bg-accent text-primary">
               <w.icon size={25} />
             </span>
