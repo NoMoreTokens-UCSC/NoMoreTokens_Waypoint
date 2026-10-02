@@ -122,36 +122,52 @@ release, fleet filters and drawers, live map, capacity outlook).
 
 ## Store manager
 
-**Pages** (`sections/store-manager/pages/StorePages.tsx`): `StoreOrdersPage` (overview and orders),
-`StoreDeliveriesPage`, `StoreAlertsPage`. Exported Figma images are in `Figma Store manager/` (outside
-the repo).
+**Status: built to the Figma frames** (all 18 desktop states, plus tablet and phone). It is the worked
+example for the other roles: copy its structure, not its content.
 
-**API to use:** `apis.orders` (`listOrders({ outletId })`, `getIntakeStatus`, `placeOrders`,
-`editOrder`, `saveDrafts`, `listDrafts`, `confirmReceipt`, `reportReceiptIssue`, `acknowledgeDeferral`),
-`apis.delivery.listStops({ outletId })` (ETA, proof), `apis.delivery.getEvidence` (delivery photo).
+**Where things are** (`sections/store-manager`):
 
-**Change**
+| Folder        | Contains                                                                                                                                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pages/`      | one file per screen: overview, create orders (and cutoff passed), review, confirmed, draft saved, tracking, receipt, receipt confirmed, issue, issue submitted, alerts                                                                                     |
+| `components/` | `StoreKit` (page, callout, pill, tile, buttons, field), `StoreIcons`, `RouteMap`, `ProofPhoto`                                                                                                                                                             |
+| `lib/`        | `orderView` (labels, windows, status), `orderForm` (form state that survives navigation), `useStore` (outlet-scoped data), `useStoreAction` (do work, wait for refresh, then navigate), `useProof`, `receiptRoutes`, `receiptIssue` (validation), `cutoff` |
+| `store.css`   | all styles, prefixed `sm-`, with desktop / tablet / phone rules                                                                                                                                                                                            |
+| `assets/`     | the route map artwork and the delivery-photo placeholder, copied from the design                                                                                                                                                                           |
 
-- `'OUT001'` appears 8 times and the map filters `'VEH055'`: use `useSession().outletId` and the stop's
-  vehicle.
-- Use `placeOrders` (chilled and dry confirmed together, as Figma "Create separate orders → Review →
-  Orders confirmed"), not one `createOrder` per record.
-- Use `saveDrafts` for "Cutoff passed → Draft saved for next run".
-- Use `reportReceiptIssue({ kind, received, affected, description })` for missing/damaged reports
-  (Figma: "Report missing items", "Report damaged items"). The page currently sends free text through
-  `confirmReceipt`, which loses the counts.
-- ETA "05:40" and window "05:30–07:30" are fixed text: read them from the stop.
-- The window picker offers 08:30 and 10:00. Fresh deliveries must arrive before 8 AM (outlet windows
-  can differ): offer the outlet's window from data.
-- Deferral notice needs the acknowledgment gate (Figma: "Acknowledgment required" → "selected" →
-  "acknowledged").
-- Offline: orders and receipts made without a connection are not queued yet. Agree the approach with
-  the backend developers (same pattern as driver proof).
-- Note: the local adapter accepts outlet `OUT001` only, because the seed data models one store.
+**Patterns worth copying**
 
-**Figma:** 20 screens (order placement, create/review/confirm, cutoff passed, draft saved, scheduled
-delivery, live tracking, delivered/receipt pending, confirm receipt, missing/damaged reports and
-submitted states, deferral acknowledgment, delivery photograph, navigation).
+- Data only through `useApis()` and outlet-scoped hooks; an empty outlet requests nothing (an empty
+  filter would return every outlet's orders).
+- `useStoreAction().runThen(work, next)`: waits for every screen's data to refresh before navigating.
+  Without it the next screen briefly sees stale data and its guard sends the person away.
+- Result screens are guarded so a finished receipt always lands on its result (`receiptRoutes`).
+- Breadcrumbs: route `title` in `index.ts`; detail pages override with `useBreadcrumb`.
+- Shell options in `index.ts` (`shell: { compactBelow: 1200, compactNav: 'menu', ... }`), custom nav icons
+  (`renderIcon`), header search scoped to the outlet, header bell count from unacknowledged deferrals.
+- Event times (`placedAt`, `scheduledAt`, `departedAt`, `deliveredAt`, `deferredAt`,
+  `deferralAcknowledgedAt`, `receiptAt`) and `windowEnd` are optional fields on `Order`, set by the
+  workflow; the backend must supply them. Dates come from `domain/calendar` (Sri Lanka time, Mon-Sat).
+- Tests: `e2e/store-manager.spec.ts` covers ordering, cutoff, deferral, tracking, receipt and issues.
+  Later delivery states are loaded with the **Store orders** control in the demo panel (`/demo`), because
+  the dispatcher, loader and driver steps are other roles' work. It sets sample states (scheduled, en
+  route, delivered, receipt confirmed, issue reported) for the store's orders only; **Reset demo**
+  restores everything. The states live in `application/storeDemoStates.ts`.
+
+**Still to do**
+
+- Offline: orders and receipts made without a connection are not queued (booklet requirement). Agree the
+  approach with the backend developers (same pattern as driver proof).
+- Orders history (past orders) is not in the Figma frames; add it if the team wants it.
+- The business clock is fixed on Friday 25 September, 15:42 (`session/useBusinessClock`); with a backend
+  it returns server time and the real cutoff.
+- The route map is a real Leaflet map (OpenStreetMap tiles, muted to the design's grey) showing this
+  outlet, its depot and the vehicle. There is no telemetry yet, so the vehicle is drawn on the route as
+  an illustration while en route; "Refresh" only reloads data. Live position, ETA updates and "minutes
+  away" need telemetry from the backend.
+- The local adapter accepts outlet `OUT001` only for writes (the seed models one store). The search
+  and identity line use the session's outlet.
+- Compare against Figma again after the dispatcher publish bug is fixed, using real flow data.
 
 ## Loader
 
