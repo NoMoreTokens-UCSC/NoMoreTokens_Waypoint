@@ -7,12 +7,15 @@ import { WaypointDatabase } from '../../infrastructure/persistence/database'
 import { DexieOperationsRepository } from '../../infrastructure/persistence/DexieOperationsRepository'
 import { DemoSyncGateway } from '../../infrastructure/demo/DemoSyncGateway'
 import { snapshotKey } from '../../presentation/hooks/useOperations'
+import { ApisContext } from '../../presentation/providers/ApisContext'
+import { createApis } from '../apis'
 
 const database = new WaypointDatabase()
 const service = new OperationsService(
   new DexieOperationsRepository(database),
   new DemoSyncGateway(),
 )
+const apis = createApis(service)
 const client = new QueryClient({
   defaultOptions: {
     queries: { networkMode: 'always', retry: 1, refetchOnWindowFocus: true },
@@ -54,7 +57,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }, [])
   return (
     <QueryClientProvider client={client}>
-      <ServicesContext.Provider value={service}>{children}</ServicesContext.Provider>
+      <ServicesContext.Provider value={service}>
+        <ApisContext.Provider value={apis}>{children}</ApisContext.Provider>
+      </ServicesContext.Provider>
     </QueryClientProvider>
   )
 }
