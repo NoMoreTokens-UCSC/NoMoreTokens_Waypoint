@@ -96,15 +96,13 @@
   isolation: isolate;
   overflow: hidden;
 }
-/* The photo drifts and zooms slowly behind a dark wash, so the hero feels alive without moving text. */
+/* The photo sits behind a dark wash. */
 .entry-hero::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -2;
   background: url('/images/entry/warehouse-hero.jpg') center / cover;
-  transform-origin: 60% 40%;
-  animation: entry-drift 28s ease-in-out infinite alternate;
 }
 .entry-hero::after {
   content: '';
@@ -244,29 +242,104 @@
   gap: 24px;
 }
 .entry-brand {
+  --accent: #c2501d;
+  --tint: #fdeee6;
+  position: relative;
   display: grid;
-  gap: 10px;
-  padding: 24px;
-  border-radius: 16px;
+  align-content: start;
+  gap: 14px;
+  padding: 26px 28px 24px;
+  border-radius: 18px;
   background: white;
   box-shadow: 0 2px 10px rgba(34, 37, 42, 0.06);
+  overflow: hidden;
+}
+.entry-brand::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--accent);
+  transform: scaleX(0.18);
+  transform-origin: left center;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.entry-brand:hover::before {
+  transform: scaleX(1);
+}
+.entry-brand-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.entry-brand-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--tint);
+  color: var(--accent);
+  transition:
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.2s,
+    color 0.2s;
+}
+.entry-brand:hover .entry-brand-icon {
+  transform: rotate(-6deg) scale(1.08);
+  background: var(--accent);
+  color: white;
 }
 .entry-brand strong {
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 600;
+  color: #22252a;
 }
-.entry-brand span {
-  font-size: 12px;
+.entry-brand-count {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.entry-brand-count b {
+  font-size: 40px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -1.4px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.entry-brand-count > span {
+  font-size: 13px;
   color: #6e737b;
 }
+.entry-brand p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4b4f56;
+}
+.entry-brand-schedule {
+  justify-self: start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--tint);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
 .entry-brand-fresh {
-  color: #c2501d;
+  --accent: #c2501d;
+  --tint: #fdeee6;
 }
 .entry-brand-style {
-  color: #3c3f44;
+  --accent: #3c3f44;
+  --tint: #ececed;
 }
 .entry-brand-tech {
-  color: #2f7189;
+  --accent: #2f7189;
+  --tint: #e3f0f4;
 }
 .entry-steps {
   display: grid;
@@ -937,14 +1010,6 @@
 }
 
 /* Welcome: motion */
-@keyframes entry-drift {
-  from {
-    transform: scale(1.04) translate3d(0, 0, 0);
-  }
-  to {
-    transform: scale(1.14) translate3d(-1.5%, -1%, 0);
-  }
-}
 @keyframes entry-pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(30, 138, 87, 0.5);
@@ -1164,8 +1229,8 @@
     box-shadow 0.25s;
 }
 .entry-brand:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 24px rgba(34, 37, 42, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 14px 30px rgba(34, 37, 42, 0.12);
 }
 .entry-role-card {
   transition:
@@ -1278,7 +1343,6 @@
 
 /* Everything moves less, or not at all, when the device asks for it. */
 @media (prefers-reduced-motion: reduce) {
-  .entry-hero::before,
   .entry-live,
   .entry-route i::after,
   .entry-scroll-cue i::after,
@@ -1295,6 +1359,7 @@
   .entry-button:hover,
   .entry-button:active,
   .entry-brand:hover,
+  .entry-brand:hover .entry-brand-icon,
   .entry-role-card:hover img {
     transform: none;
   }
