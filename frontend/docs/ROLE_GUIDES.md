@@ -129,7 +129,7 @@ example for the other roles: copy its structure, not its content.
 
 | Folder        | Contains                                                                                                                                                                                                                                                   |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pages/`      | one file per screen: overview, create orders (and cutoff passed), review, confirmed, draft saved, tracking, receipt, receipt confirmed, issue, issue submitted, alerts                                                                                     |
+| `pages/`      | one file per screen: overview, orders (history), order detail, create orders (and cutoff passed), review, confirmed, draft saved, tracking, receipt, receipt confirmed, issue, issue submitted, alerts                                                     |
 | `components/` | `StoreKit` (page, callout, pill, tile, buttons, field), `StoreIcons`, `RouteMap`, `ProofPhoto`                                                                                                                                                             |
 | `lib/`        | `orderView` (labels, windows, status), `orderForm` (form state that survives navigation), `useStore` (outlet-scoped data), `useStoreAction` (do work, wait for refresh, then navigate), `useProof`, `receiptRoutes`, `receiptIssue` (validation), `cutoff` |
 | `store.css`   | all styles, prefixed `sm-`, with desktop / tablet / phone rules                                                                                                                                                                                            |
@@ -180,7 +180,14 @@ Making ordering friendlier: cases use a stepper, and weight and volume follow th
   (`mall_window` in `outlets.csv`) are not built. Window limits are fixed for Fresh in
   `lib/windows.ts`; a backend should return each outlet's own limits.
 - Cancelling an order is not offered; leaving an order out only means "no change to it".
-- Orders history (past orders) is not in the Figma frames; add it if the team wants it.
+- Orders (`/store-manager/orders`) and Order detail (`/orders/:orderId`) are not in the Figma frames; they
+  follow the same look. The create form is at `/store-manager/orders/new`. Past orders come from
+  `OrdersApi.listHistory({ outletId })` (`Snapshot.orderHistory`, demo data in
+  `infrastructure/demo/orderHistory.ts`); the backend must return earlier orders with `deliveryDate`
+  and their event times. The list is not paged yet.
+- Pages the booklet implies that are not built: store-specific Profile/Notifications (the shared account
+  pages show other roles' data), an alerts history with issue follow-up, an offline sync status, Style/Tech
+  order forms, cancelling an order, a late-delivery notice (needs dispatcher data) and "repeat last order".
 - The business clock is fixed on Friday 25 September, 15:42 (`session/useBusinessClock`); with a backend
   it returns server time and the real cutoff.
 - The route map is a real Leaflet map (OpenStreetMap tiles, muted to the design's grey) showing this

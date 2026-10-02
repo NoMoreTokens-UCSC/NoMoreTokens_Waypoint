@@ -53,7 +53,7 @@ export const storeManagerModule: RoleModule = {
     placeholder: 'Search orders, deliveries or issues',
     find: (snapshot, query, session) => {
       const text = query.toLowerCase()
-      return snapshot.orders
+      return [...snapshot.orders, ...(snapshot.orderHistory ?? [])]
         .filter((order) => order.outlet === session.outletId)
         .filter((order) =>
           `${order.id} ${order.temperature} ${order.status} ${order.issue ?? ''}`
@@ -63,12 +63,7 @@ export const storeManagerModule: RoleModule = {
         .map((order) => ({
           id: order.id,
           text: `${order.id} · ${order.temperature === 'Chilled' ? 'Fresh / Chilled' : 'Fresh / Dry'} · ${order.status}`,
-          path:
-            order.status === 'Deferred'
-              ? '/store-manager/alerts'
-              : order.status === 'Confirmed' || order.status === 'Allocated'
-                ? openOrders
-                : `${delivery}?order=${order.id}`,
+          path: `/store-manager/orders/${order.id}`,
         }))
     },
   },
@@ -92,7 +87,8 @@ export const storeManagerModule: RoleModule = {
   },
   routes: [
     route('/store-manager/overview', 'Order placement', () => import('./pages/OverviewPage')),
-    route('/store-manager/orders', 'Create orders', () => import('./pages/CreateOrdersPage')),
+    route('/store-manager/orders', 'Orders', () => import('./pages/OrdersPage')),
+    route('/store-manager/orders/new', 'Create orders', () => import('./pages/CreateOrdersPage')),
     route('/store-manager/orders/review', 'Review & confirm', () => import('./pages/ReviewPage')),
     route(openOrders, 'Orders confirmed', () => import('./pages/ConfirmedPage')),
     route(
@@ -118,5 +114,7 @@ export const storeManagerModule: RoleModule = {
       () => import('./pages/IssueSubmittedPage'),
     ),
     route('/store-manager/alerts', 'Alerts', () => import('./pages/AlertsPage')),
+    // Last: a path parameter, so the fixed paths above (new, review, confirmed, draft) win.
+    route('/store-manager/orders/:orderId', 'Order', () => import('./pages/OrderDetailPage')),
   ],
 }
