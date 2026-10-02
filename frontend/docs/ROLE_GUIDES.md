@@ -172,22 +172,42 @@ Making ordering friendlier: cases use a stepper, and weight and volume follow th
 
 **Still to do**
 
-- Offline sending: an order made offline is saved on the device and the notice says dispatch cannot
-  see it until the connection returns, but nothing queues and sends it yet. That needs the backend
-  and an outbox (same pattern as driver proof).
-- Style and Tech outlets: the module is Fresh-only, as in the design. Style orders weekly for a
-  scheduled day, Tech as needed, often one large item; those forms and any mall access window
-  (`mall_window` in `outlets.csv`) are not built. Window limits are fixed for Fresh in
-  `lib/windows.ts`; a backend should return each outlet's own limits.
-- Cancelling an order is not offered; leaving an order out only means "no change to it".
-- Orders (`/store-manager/orders`) and Order detail (`/orders/:orderId`) are not in the Figma frames; they
-  follow the same look. The create form is at `/store-manager/orders/new`. Past orders come from
-  `OrdersApi.listHistory({ outletId })` (`Snapshot.orderHistory`, demo data in
-  `infrastructure/demo/orderHistory.ts`); the backend must return earlier orders with `deliveryDate`
-  and their event times. The list is not paged yet.
-- Pages the booklet implies that are not built: store-specific Profile/Notifications (the shared account
-  pages show other roles' data), an alerts history with issue follow-up, an offline sync status, Style/Tech
-  order forms, cancelling an order, a late-delivery notice (needs dispatcher data) and "repeat last order".
+- Offline sending: changes made offline (confirming orders, confirming receipt, reporting an issue,
+  acknowledging a deferral) go into an outbox on the device (`lib/outbox.ts`, localStorage) and show as
+  "Waiting to send"; the screens treat them as made (`applyOutbox`). `components/SyncStatus.tsx`
+  sends them in order through the same `OrdersApi` calls when the connection returns (`lib/outboxSend.ts`),
+  reports failures with Try again / Dismiss, and keeps an order that arrives after the cutoff as a draft.
+  With a backend, nothing here changes except that the API calls reach a server; a server-side
+  idempotency key per outbox item (`OutboxItem.id`) is advisable so a retry cannot place an order twice.
+- Style and Tech outlets: `useStoreProfile()` (in `lib/useStore.ts`) reads the outlet's brand, schedule
+  and receiving limits (`domain/outlets.ts`, `OrdersApi.getOutletProfile`; a backend serves them from
+  `outlets.csv`: brand, `parking_constraint`, `mall_window`). A Style or Tech outlet gets
+  `pages/BrandOrderPage.tsx` instead of the Fresh form: one order (Style weekly, in cartons, inside the
+  mall's access window; Tech as needed, in items, with an inspect-and-sign confirmation). Weight and
+  volume are estimated per unit. Open the workspace as another outlet with the demo panel's "Store
+  manager signed in as". Not built: draft-after-cutoff for Style/Tech, several Tech orders in one day (a
+  new order replaces the live one), brand wording in the issue form (it still says "cases"), and the
+  dispatcher and loader screens treating mall windows.
+- Cancelling: a waiting order can be cancelled from its detail page until the cutoff
+  (`OrdersApi.cancelOrder`, also queued offline); after that it is locked. Cancelled orders are removed,
+  not kept in history.
+- Late arrival: a dispatched order whose stop `eta` is after the window end shows "Running late" on
+  the overview, tracking, order detail and notifications, and counts on the bell (`lib/lateness.ts`). The
+  demo panel's "En route · running late" state shows it. A backend can also send a lateness probability.
+- Orders (`/store-manager/orders`, with search, filters and paging) and Order detail
+  (`/orders/:orderId`) are not in the Figma frames; they follow the same look. The create form is at
+  `/store-manager/orders/new`. Past orders come from `OrdersApi.listHistory({ outletId })`
+  (`Snapshot.orderHistory`, demo data in `infrastructure/demo/orderHistory.ts`); the backend must return
+  earlier orders with `deliveryDate` and their event times, and should page and search on the server.
+- The store has its own Notifications (`/store-manager/notifications`: what needs action, running-late
+  deliveries, issues reported and where they stand, and an activity feed built from each order's event
+  times in `lib/notifications.ts`), Profile and Preferences. A role points the shell's bell and account
+  menu at its own pages with `shell.accountPaths` in `index.ts`; the shared `/account/*` pages stay for
+  roles that do not. A backend can serve the feed from a notifications endpoint, and issue outcomes from
+  the issue record: today every reported issue reads "Open · Awaiting review" because nothing resolves
+  them yet.
+- Not built: "repeat last order", and the dispatcher, loader and driver screens acting on the store's
+  cancellations, mall windows and Style/Tech orders.
 - The business clock is fixed on Friday 25 September, 15:42 (`session/useBusinessClock`); with a backend
   it returns server time and the real cutoff.
 - The route map is a real Leaflet map (OpenStreetMap tiles, muted to the design's grey) showing this

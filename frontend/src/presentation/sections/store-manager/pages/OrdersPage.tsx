@@ -20,7 +20,7 @@ import {
   type OrderFilter,
 } from '../lib/orderList'
 import {
-  orderKinds,
+  kindOf,
   quantityText,
   statusTone,
   storeStatus,
@@ -28,10 +28,11 @@ import {
   windowText,
 } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
-import { useStoreHistory, useStoreOrders } from '../lib/useStore'
+import type { StoreOrder } from '../lib/outbox'
+import { useStoreHistory, useStoreOrders, useStoreProfile } from '../lib/useStore'
 
-function OrderRow({ order }: { order: Order }) {
-  const kind = orderKinds[order.temperature]
+function OrderRow({ order }: { order: StoreOrder }) {
+  const kind = kindOf(order)
   const receipt = receiptLabel(order)
   return (
     <li>
@@ -42,7 +43,9 @@ function OrderRow({ order }: { order: Order }) {
         <span className="sm-order-main">
           <strong>{kind.title}</strong>
           <small>
-            {order.id}
+            {order.pendingSync && order.id.startsWith('PENDING')
+              ? 'Reference after sending'
+              : order.id}
             {order.deliveredAt ? ` · Delivered ${formatClock(order.deliveredAt)}` : ''}
           </small>
         </span>
@@ -65,6 +68,7 @@ export default function OrdersPage() {
   const online = useOnline()
   const { orders, outletId, loaded } = useStoreOrders()
   const { history, loaded: historyLoaded } = useStoreHistory()
+  const brand = useStoreProfile().profile?.brand ?? 'Fresh'
   const [filter, setFilter] = useState<OrderFilter>('all')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
@@ -86,7 +90,7 @@ export default function OrdersPage() {
   }
   return (
     <StorePage>
-      <PageIntro title="Orders" context={`${outletId} · ${all.length} Fresh orders on record`} />
+      <PageIntro title="Orders" context={`${outletId} · ${all.length} ${brand} orders on record`} />
       {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
       <CutoffPanel clock={clock} />
       <section className="sm-panel" aria-label="Order summary">

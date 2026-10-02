@@ -5,6 +5,7 @@ import { Switch } from '../atoms/switch'
 import { Modal, Field, Notice } from '../molecules/Common'
 import { useOperations, useAction } from '../../hooks/useOperations'
 import { useServices } from '../../providers/ServicesContext'
+import { outletProfiles } from '../../../domain/outlets'
 import {
   applyStoreDemoState,
   storeDemoStates,
@@ -102,6 +103,33 @@ export function ScenarioPanel({
           ))}
         </select>
       </Field>
+      <Field
+        label="Store manager signed in as"
+        hint="Opens the store workspace for an outlet of another brand: Style (mall) or Tech."
+      >
+        <select
+          className="native-select"
+          aria-label="Store outlet"
+          value={data.activeOutletId ?? 'OUT001'}
+          disabled={action.isPending}
+          onChange={(e) => {
+            const activeOutletId = e.target.value
+            action.run(
+              () =>
+                service.repository.update(
+                  (snapshot) => void (snapshot.activeOutletId = activeOutletId),
+                ),
+              'Store workspace switched',
+            )
+          }}
+        >
+          {outletProfiles.map((outlet) => (
+            <option key={outlet.id} value={outlet.id}>
+              {outlet.id} · {outlet.name} · {outlet.brand}
+            </option>
+          ))}
+        </select>
+      </Field>
       <p role="status" className="text-xs text-muted-foreground">
         {action.isPending ? 'Saving scenario…' : 'Scenario settings saved'}
       </p>
@@ -177,6 +205,8 @@ export function ScenarioPanel({
             else
               action.run(async () => {
                 await service.repository.reset()
+                // Anything saved on this device for sending is part of the demo state too.
+                window.dispatchEvent(new Event('waypoint:demo-reset'))
                 setConfirmReset(false)
                 onOpenChange(false)
               }, 'Demo reset to the Figma sample data')

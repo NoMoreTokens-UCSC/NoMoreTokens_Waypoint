@@ -1,3 +1,4 @@
+import type { OutletProfile } from '../outlets'
 import type { Order, OrderStatus, Snapshot, StoreOrderInput, Temperature } from '../models'
 
 export type OrderDraft = Snapshot['drafts'][number]
@@ -23,6 +24,8 @@ export interface OrdersApi {
   listOrders(filter?: OrderFilter): Promise<Order[]>
   /** Earlier orders for the outlet, newest delivery day first. */
   listHistory(filter?: { outletId?: string }): Promise<Order[]>
+  /** Brand, schedule and receiving limits for an outlet. */
+  getOutletProfile(outletId: string): Promise<OutletProfile>
   listDrafts(): Promise<OrderDraft[]>
   getIntakeStatus(): Promise<IntakeStatus>
   createOrder(
@@ -38,5 +41,7 @@ export interface OrdersApi {
   saveDrafts(outletId: string, inputs: StoreOrderInput[]): Promise<void>
   confirmReceipt(orderId: string): Promise<void>
   reportReceiptIssue(orderId: string, issue: ReceiptIssue): Promise<void>
+  /** Withdraws an order before the cutoff. Refused once intake is closed or the plan is published. */
+  cancelOrder(orderId: string): Promise<void>
   acknowledgeDeferral(orderId: string): Promise<void>
 }

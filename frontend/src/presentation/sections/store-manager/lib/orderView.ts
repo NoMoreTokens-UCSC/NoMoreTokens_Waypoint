@@ -19,9 +19,36 @@ export const orderKinds: Record<
   },
 }
 export const temperatures: Temperature[] = ['Chilled', 'Ambient']
+type Kinded = Pick<Order, 'brand' | 'temperature'>
+/** Titles for an order by brand: Fresh splits by temperature; Style and Tech are one order each. */
+export function kindOf(order: Kinded) {
+  if (order.brand === 'Style')
+    return {
+      title: 'Style · Garments',
+      subtitle: 'Hanging garments and cartons',
+      short: 'Style',
+      rule: '',
+    }
+  if (order.brand === 'Tech')
+    return {
+      title: 'Tech · Appliances',
+      subtitle: 'Appliances and electronics',
+      short: 'Tech',
+      rule: '',
+    }
+  return orderKinds[order.temperature]
+}
 /** The two-line "Fresh / Chilled" label used in tracking and receipt headings. */
-export const kindSlash = (temperature: Temperature) =>
-  temperature === 'Chilled' ? 'Fresh / Chilled' : 'Fresh / Dry'
+export function kindSlash(order: Kinded) {
+  if (order.brand === 'Style') return 'Style / Garments'
+  if (order.brand === 'Tech') return 'Tech / Appliances'
+  return order.temperature === 'Chilled' ? 'Fresh / Chilled' : 'Fresh / Dry'
+}
+/** What the brand counts in: cases of groceries, cartons of garments, appliance items. */
+export const unitOf = (order: { brand?: Order['brand'] }) =>
+  order.brand === 'Style' ? 'carton' : order.brand === 'Tech' ? 'item' : 'case'
+export const countText = (count: number, order: { brand?: Order['brand'] }) =>
+  `${count} ${unitOf(order)}${count === 1 ? '' : 's'}`
 
 /** Receiving windows default to two hours when the order doesn't record an end. */
 const DEFAULT_WINDOW_MINUTES = 120
@@ -46,11 +73,16 @@ export function totals(items: { cases: number; weight: number; volume: number }[
   }
 }
 /** "18 cases · 120 kg · 1.2 m³" */
-export const quantityText = (item: { cases: number; weight: number; volume: number }) =>
-  `${item.cases} cases · ${number(item.weight)} kg · ${number(item.volume)} m³`
+export const quantityText = (item: {
+  cases: number
+  weight: number
+  volume: number
+  brand?: Order['brand']
+}) => `${countText(item.cases, item)} · ${number(item.weight)} kg · ${number(item.volume)} m³`
 
 /** What the store sees: allocation stays private until the dispatcher publishes the plan. */
-export function storeStatus(order: Order) {
+export function storeStatus(order: Order & { pendingSync?: boolean }) {
+  if (order.pendingSync && order.status === 'Confirmed') return 'Waiting to send'
   switch (order.status) {
     case 'Deferred':
       return 'Deferred'

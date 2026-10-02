@@ -7,6 +7,7 @@ import type {
   Settings,
   Snapshot,
   TeamMember,
+  Order,
   StoreOrderInput,
   Workspace,
 } from '../domain/models'
@@ -660,16 +661,24 @@ export class OperationsService {
       log(s, 'Store order edited', `${order.id} · ${cases} cases · ${window}`)
     })
   }
-  confirmStoreOrders(inputs: StoreOrderInput[]) {
+  confirmStoreOrders(
+    inputs: StoreOrderInput[],
+    outlet: { id: string; name: string; brand: Order['brand'] } = {
+      id: 'OUT001',
+      name: 'Fresh Wattala',
+      brand: 'Fresh',
+    },
+  ) {
     return this.repository.update((s) => {
       assert(
         !s.settings.cutoffClosed && !s.settings.published,
         'Intake is closed. Save the orders for the next run.',
       )
-      // Chilled is not ordered every day, so one dry order alone is valid.
+      // Chilled is not ordered every day, so one dry order alone is valid. Style and Tech place a
+      // single order per delivery.
       assert(
         inputs.length >= 1 &&
-          inputs.length <= 2 &&
+          inputs.length <= (outlet.brand === 'Fresh' ? 2 : 1) &&
           new Set(inputs.map((input) => input.temperature)).size === inputs.length,
         'Confirm at most one chilled and one dry order.',
       )
@@ -696,7 +705,7 @@ export class OperationsService {
       const placedAt = new Date().toISOString()
       for (const input of inputs) {
         const order = s.orders.find(
-          (o) => o.outlet === 'OUT001' && o.temperature === input.temperature,
+          (o) => o.outlet === outlet.id && o.temperature === input.temperature,
         )
         if (order)
           Object.assign(order, input, {
@@ -709,16 +718,16 @@ export class OperationsService {
           s.orders.push({
             ...input,
             id: `ORD${Date.now().toString().slice(-7)}${input.temperature === 'Chilled' ? 'C' : 'A'}`,
-            outlet: 'OUT001',
-            outletName: 'Fresh Wattala',
-            brand: 'Fresh',
+            outlet: outlet.id,
+            outletName: outlet.name,
+            brand: outlet.brand,
             status: 'Confirmed',
             priority: false,
             receipt: 'Pending',
             placedAt,
           })
       }
-      for (const stop of s.stops.filter((stop) => stop.outlet === 'OUT001')) {
+      for (const stop of s.stops.filter((stop) => stop.outlet === outlet.id)) {
         stop.cases = s.orders
           .filter((order) => stop.orderIds.includes(order.id))
           .reduce((sum, order) => sum + order.cases, 0)
@@ -732,11 +741,44 @@ export class OperationsService {
           load.checks = { refrigeration: false, condition: false, restraints: false }
         }
       }
-      log(
-        s,
-        'Separate store orders confirmed',
-        'OUT001 · chilled and ambient demand recorded together',
+      log(s, 'Store orders confirmed', `${outlet.id} · ${outlet.brand} demand recorded`)
+    })
+  }
+  /** Withdraws an order that has not been published into a plan; only before the cutoff. */
+  cancelStoreOrder(orderId: string) {
+    return this.repository.update((s) => {
+      assert(
+        !s.settings.cutoffClosed && !s.settings.published,
+        'Intake is closed. This order is locked; ask the dispatcher to change it.',
       )
+      const order = s.orders.find((o) => o.id === orderId)
+      assert(order, 'Select an order for this store.')
+      assert(
+        order.status === 'Confirmed' || order.status === 'Allocated',
+        'Only an order that is still waiting for the plan can be cancelled.',
+      )
+      s.orders = s.orders.filter((o) => o.id !== orderId)
+      s.settings.allocationReviewed = false
+      for (const stop of s.stops.filter((candidate) => candidate.orderIds.includes(orderId))) {
+        stop.orderIds = stop.orderIds.filter((id) => id !== orderId)
+        stop.cases = s.orders
+          .filter((o) => stop.orderIds.includes(o.id))
+          .reduce((sum, o) => sum + o.cases, 0)
+        for (const load of s.loads) {
+          const item = load.items.find((candidate) => candidate.outlet === stop.outlet)
+          if (!item) continue
+          if (stop.orderIds.length === 0) load.items = load.items.filter((entry) => entry !== item)
+          else {
+            item.expected = stop.cases
+            item.loaded = Math.min(item.loaded, item.expected)
+          }
+          load.photoId = undefined
+          load.completed = false
+          load.checks = { refrigeration: false, condition: false, restraints: false }
+        }
+      }
+      s.stops = s.stops.filter((stop) => stop.orderIds.length > 0 || stop.outlet !== order.outlet)
+      log(s, 'Store order cancelled', order.id)
     })
   }
   acknowledgeDeferral(orderId: string) {

@@ -26,6 +26,13 @@ describe('store demo states', () => {
     expect(orders('received').dry.deferralAcknowledged).toBe(true)
     expect(orders('issue').chilled.receiptReport).toMatchObject({ kind: 'Missing', affected: 2 })
   })
+  it('holds the vehicle up after the window in the late state, and restores the time after', () => {
+    const late = orders('late')
+    expect(late.chilled.status).toBe('En route')
+    expect(late.snapshot.stops.find((stop) => stop.outlet === 'OUT001')?.eta).toBe('08:25')
+    applyStoreDemoState(late.snapshot, 'en-route')
+    expect(late.snapshot.stops.find((stop) => stop.outlet === 'OUT001')?.eta).toBe('05:40')
+  })
   it('can return to the starting state and leaves other outlets alone', () => {
     const snapshot = createSeed()
     const other = snapshot.orders.find((order) => order.outlet !== 'OUT001')!

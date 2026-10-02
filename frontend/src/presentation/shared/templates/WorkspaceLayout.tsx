@@ -53,7 +53,7 @@ export default function WorkspaceLayout() {
   const bell = (
     <Link
       className="header-button"
-      to="/account/notifications"
+      to={options.accountPaths?.notifications ?? '/account/notifications'}
       aria-label={alertCount ? `Notifications, ${alertCount} new` : 'Notifications'}
     >
       <BellIcon />
@@ -165,14 +165,18 @@ export default function WorkspaceLayout() {
                       </div>
                       <DropdownMenu.Item
                         className="account-menu-item"
-                        onSelect={() => navigate('/account/profile')}
+                        onSelect={() =>
+                          navigate(options.accountPaths?.profile ?? '/account/profile')
+                        }
                       >
                         <User size={20} />
                         Profile
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
                         className="account-menu-item"
-                        onSelect={() => navigate('/account/settings')}
+                        onSelect={() =>
+                          navigate(options.accountPaths?.settings ?? '/account/settings')
+                        }
                       >
                         <Settings size={20} />
                         Settings
@@ -291,10 +295,18 @@ export default function WorkspaceLayout() {
             </NavLink>
           ))}
           <p className="compact-menu-group">Account</p>
-          <Link to="/account/profile" className="menu-item" onClick={() => setMenu(false)}>
+          <Link
+            to={options.accountPaths?.profile ?? '/account/profile'}
+            className="menu-item"
+            onClick={() => setMenu(false)}
+          >
             Profile
           </Link>
-          <Link to="/account/settings" className="menu-item" onClick={() => setMenu(false)}>
+          <Link
+            to={options.accountPaths?.settings ?? '/account/settings'}
+            className="menu-item"
+            onClick={() => setMenu(false)}
+          >
             Settings
           </Link>
           <button

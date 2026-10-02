@@ -1,6 +1,8 @@
+import { useMemo } from 'react'
 import type { Order, Temperature } from '../../../../domain/models'
 import { useApiQuery } from '../../../hooks/useApiQuery'
 import { useSession } from '../../../session/useSession'
+import { applyOutbox, useOutbox, type StoreOrder } from './outbox'
 import { temperatures } from './orderView'
 
 /** The outlet this person manages, from their session ('' when none is assigned). */
@@ -15,10 +17,24 @@ export function useStoreOrders() {
   const query = useApiQuery(['orders', outletId], async (apis) =>
     outletId ? apis.orders.listOrders({ outletId }) : [],
   )
-  const orders = query.data ?? []
+  const outbox = useOutbox(outletId)
+  // Changes waiting to be sent already show, marked `pendingSync`.
+  const orders: StoreOrder[] = useMemo(
+    () => applyOutbox(query.data ?? [], outbox),
+    [query.data, outbox],
+  )
   const byTemperature = (temperature: Temperature) =>
     orders.find((order) => order.temperature === temperature)
   return { ...query, orders, outletId, byTemperature, loaded: query.data !== undefined }
+}
+
+/** The outlet's brand, schedule and receiving limits; Fresh until they have loaded. */
+export function useStoreProfile() {
+  const outletId = useStoreOutlet()
+  const query = useApiQuery(['outlet', outletId], async (apis) =>
+    outletId ? apis.orders.getOutletProfile(outletId) : null,
+  )
+  return { profile: query.data ?? undefined, loaded: query.data !== undefined }
 }
 
 export function useStoreStops() {

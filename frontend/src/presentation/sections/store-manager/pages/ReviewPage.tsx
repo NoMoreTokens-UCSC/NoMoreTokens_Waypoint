@@ -2,7 +2,6 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { formatLongDate } from '../../../../domain/calendar'
 import { useStoreAction } from '../lib/useStoreAction'
-import { useApis } from '../../../providers/ApisContext'
 import { useBusinessClock } from '../../../session/useBusinessClock'
 import {
   Action,
@@ -21,7 +20,6 @@ import { useStoreOrders } from '../lib/useStore'
 /** Review & confirm: one last look at the orders before they are recorded as demand. */
 export default function ReviewPage() {
   const navigate = useNavigate()
-  const apis = useApis()
   const action = useStoreAction()
   const clock = useBusinessClock()
   const online = useOnline()
@@ -33,8 +31,9 @@ export default function ReviewPage() {
     return <Navigate to="/store-manager/orders/new" replace />
   const sum = totals(parsed.inputs)
   const confirm = () =>
-    action.runThen(
-      () => apis.orders.placeOrders(outletId, parsed.inputs),
+    action.send(
+      { kind: 'orders', inputs: parsed.inputs },
+      `Confirm ${sum.orders} Fresh order${sum.orders === 1 ? '' : 's'}`,
       () => {
         form.reset()
         navigate('/store-manager/orders/confirmed')

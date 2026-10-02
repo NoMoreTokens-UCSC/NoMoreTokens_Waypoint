@@ -2,6 +2,7 @@ import { Bell, Home, Package, Truck } from 'lucide-react'
 import { createElement, type ComponentType } from 'react'
 import { lazyPage } from '../../roles/lazyPage'
 import type { RoleModule } from '../../roles/types'
+import { lateOrders } from './lib/lateness'
 import { BellFilledIcon, BoxIcon, GridIcon, TruckIcon } from './components/StoreIcons'
 
 const route = (path: string, title: string, page: () => Promise<{ default: ComponentType }>) => ({
@@ -70,6 +71,12 @@ export const storeManagerModule: RoleModule = {
   shell: {
     compactBelow: 1200,
     compactNav: 'menu',
+    // The store has its own account pages; the shared ones show other roles' data.
+    accountPaths: {
+      profile: '/store-manager/profile',
+      settings: '/store-manager/settings',
+      notifications: '/store-manager/notifications',
+    },
     recoveryLink: false,
     identity: (session) => ({
       title: session.outletId ?? 'Store',
@@ -83,6 +90,10 @@ export const storeManagerModule: RoleModule = {
           order.outlet === session.outletId &&
           order.status === 'Deferred' &&
           !order.deferralAcknowledged,
+      ).length +
+      lateOrders(
+        snapshot.orders.filter((order) => order.outlet === session.outletId),
+        snapshot.stops,
       ).length,
   },
   routes: [
@@ -114,6 +125,13 @@ export const storeManagerModule: RoleModule = {
       () => import('./pages/IssueSubmittedPage'),
     ),
     route('/store-manager/alerts', 'Alerts', () => import('./pages/AlertsPage')),
+    route(
+      '/store-manager/notifications',
+      'Notifications',
+      () => import('./pages/NotificationsPage'),
+    ),
+    route('/store-manager/profile', 'Profile', () => import('./pages/ProfilePage')),
+    route('/store-manager/settings', 'Preferences', () => import('./pages/SettingsPage')),
     // Last: a path parameter, so the fixed paths above (new, review, confirmed, draft) win.
     route('/store-manager/orders/:orderId', 'Order', () => import('./pages/OrderDetailPage')),
   ],

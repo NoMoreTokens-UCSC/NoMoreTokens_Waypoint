@@ -1,10 +1,18 @@
+import type { ReceivingLimits } from '../../../../domain/outlets'
+
 /**
  * Receiving windows for a Fresh outlet. The booklet requires Fresh deliveries to arrive before the
  * stores open at 08:00. A window therefore has to end by then and be long enough to unload. An outlet
  * with its own limits (for example a mall access window) would pass them in; today every Fresh outlet
  * uses these.
  */
-export const FRESH_LIMITS = { earliest: '04:00', latest: '08:00', shortest: 60, step: 30 }
+export const FRESH_LIMITS: ReceivingLimits = {
+  earliest: '04:00',
+  latest: '08:00',
+  shortest: 60,
+  step: 30,
+  reason: 'Fresh goods must arrive before the store opens at 8:00 AM.',
+}
 
 export const minutes = (clock: string) => {
   const [h, m] = clock.split(':').map(Number)
@@ -19,11 +27,11 @@ const range = (from: number, to: number, step: number) => {
 }
 
 /** Times a window may start at. */
-export function startOptions(limits = FRESH_LIMITS) {
+export function startOptions(limits: ReceivingLimits = FRESH_LIMITS) {
   return range(minutes(limits.earliest), minutes(limits.latest) - limits.shortest, limits.step)
 }
 /** Times a window starting at `start` may end at. */
-export function endOptions(start: string, limits = FRESH_LIMITS) {
+export function endOptions(start: string, limits: ReceivingLimits = FRESH_LIMITS) {
   return range(minutes(start) + limits.shortest, minutes(limits.latest), limits.step)
 }
 
@@ -41,13 +49,12 @@ export function parseWindow(text: string) {
 }
 
 /** Why a window cannot be used, or nothing when it can. */
-export function windowProblem(text: string, limits = FRESH_LIMITS) {
+export function windowProblem(text: string, limits: ReceivingLimits = FRESH_LIMITS) {
   const window = parseWindow(text)
   if (!window) return 'Choose when you can receive the delivery.'
   if (minutes(window.start) < minutes(limits.earliest))
     return `Receiving cannot start before ${formatTime12(limits.earliest)}.`
-  if (minutes(window.end) > minutes(limits.latest))
-    return `Fresh goods must arrive before the store opens at ${formatTime12(limits.latest)}.`
+  if (minutes(window.end) > minutes(limits.latest)) return limits.reason
   if (minutes(window.end) - minutes(window.start) < limits.shortest)
     return `Allow at least ${limits.shortest} minutes to unload.`
   return undefined

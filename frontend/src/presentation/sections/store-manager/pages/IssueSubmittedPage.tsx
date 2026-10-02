@@ -46,6 +46,11 @@ export default function IssueSubmittedPage() {
           The dispatcher can review the report alongside the delivery record and photo. Follow-up
           will appear against this order.
         </p>
+        {order.pendingSync && (
+          <Callout title="Saved on this device">
+            You are offline. This will be sent automatically when your connection returns.
+          </Callout>
+        )}
         <Callout title="Receipt recorded with an issue">
           This delivery is not marked as received in full without discrepancies.
         </Callout>
