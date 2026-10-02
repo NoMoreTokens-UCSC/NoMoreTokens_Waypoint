@@ -2,15 +2,19 @@
 
 ## Dependencies and folders
 
-| Layer          | Location             | Responsibility                                                                                                         |
-| -------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Domain         | `src/domain`         | Typed orders, vehicles, trips, loads, stops, evidence, users and queued actions; pure rules; repository/sync contracts |
-| Application    | `src/application`    | Allocation, deferral, publication, loading, departure, proof, sync recovery, store receipt and team workflows          |
-| Infrastructure | `src/infrastructure` | Seed factory, Dexie tables/transactions and simulated sync gateway                                                     |
-| Presentation   | `src/presentation`   | Role sections, forms, maps, shared UI, local query/mutation hooks                                                      |
-| App            | `src/app`            | Routing, query providers, repository injection and startup                                                             |
+| Layer          | Location             | Responsibility                                                                                                                                                  |
+| -------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Domain         | `src/domain`         | Typed orders, vehicles, trips, loads, stops, evidence, users and queued actions; pure rules; repository/sync contracts; the screen data contract (`domain/api`) |
+| Application    | `src/application`    | Allocation, deferral, publication, loading, departure, proof, sync recovery, store receipt and team workflows                                                   |
+| Infrastructure | `src/infrastructure` | Seed factory, Dexie tables/transactions, simulated sync gateway, local implementation of `domain/api` (`infrastructure/local`)                                  |
+| Presentation   | `src/presentation`   | Role modules (`sections/<module>`), module registry (`roles`), identity (`session`), shared shell and UI, query/mutation hooks                                  |
+| App            | `src/app`            | Routing from the registry, query providers, adapter selection (`apis.ts`) and startup                                                                           |
 
-Domain and application import no React, Dexie, Leaflet, or UI code. Infrastructure implements inward-facing domain ports. Presentation calls application workflows through injected services. Only app wiring chooses concrete adapters. Trips are derived from order allocations using `tripsFromOrders`, avoiding competing mutable allocation records.
+Domain and application import no React, Dexie, Leaflet, or UI code. Infrastructure implements inward-facing domain ports. Screens read and write through `useApis()` (the `domain/api` contract); pages written before it still use the injected `OperationsService`. Only app wiring chooses concrete adapters. Trips are derived from order allocations using `tripsFromOrders`, avoiding competing mutable allocation records. Lint enforces these boundaries, plus module isolation; see `docs/ROLE_MODULES.md`.
+
+## Modules and routing
+
+Each module declares its routes, navigation, label and home in `sections/<module>/index.ts`. `presentation/roles/registry.ts` collects them; `App.tsx` builds every route from the registry and `WorkspaceLayout` builds the sidebar, header and mobile navigation for the active role. `useSession()` supplies the current person's identity (demo: seeded team; later: sign-in).
 
 ## Atomic design
 
@@ -39,35 +43,22 @@ Publication projects VEH055 Trip 1's manifest and stops from its actual allocati
 
 ## Backend integration seams
 
-| Seam                   | Production work                                                                                                                     |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `OperationsRepository` | Replace seeded snapshot access with authenticated queries/commands; keep local evidence/outbox persistence where required           |
-| `SyncGateway`          | Upload images and submit an idempotent evidence command; validate server revisions; translate acceptance, retry and review outcomes |
-| Queue action UUID      | Use as idempotency key; persist confirmed server acknowledgments before advancing local delivery                                    |
-| Auth/role wiring       | Add real sign-in, access enforcement and per-user/workspace data partitioning; current role switching grants no security            |
-| Allocation/publication | Validate concurrency and capacity on server, generate manifests for all assigned operators, persist immutable published revisions   |
-| Cutoff/time            | Replace scenario switch/fixed sample date with authoritative timezone-aware business deadlines                                      |
-| Maps/telemetry         | Add GPS, geocoding, ETA/routing service and stale-location rules; current coordinates are seeded                                    |
-| Team/notifications     | Replace local invitations/status/audit changes with audited server APIs and real notification delivery                              |
-| Proof retention        | Define upload retry/backoff, storage quotas, backup/retention and permissions; browser IndexedDB alone is insufficient              |
-| Analytics              | Add historical aggregates and forecasting; current charts derive from a single local run                                            |
+| Seam                     | Production work                                                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `domain/api` (`useApis`) | Implement each interface over HTTP and select it in `src/app/apis.ts`; screens do not change                                        |
+| `OperationsRepository`   | Replace seeded snapshot access with authenticated queries/commands; keep local evidence/outbox persistence where required           |
+| `SyncGateway`            | Upload images and submit an idempotent evidence command; validate server revisions; translate acceptance, retry and review outcomes |
+| Queue action UUID        | Use as idempotency key; persist confirmed server acknowledgments before advancing local delivery                                    |
+| Auth/role wiring         | Add real sign-in, access enforcement and per-user/workspace data partitioning; current role switching grants no security            |
+| Allocation/publication   | Validate concurrency and capacity on server, generate manifests for all assigned operators, persist immutable published revisions   |
+| Cutoff/time              | Replace scenario switch/fixed sample date with authoritative timezone-aware business deadlines                                      |
+| Maps/telemetry           | Add GPS, geocoding, ETA/routing service and stale-location rules; current coordinates are seeded                                    |
+| Team/notifications       | Replace local invitations/status/audit changes with audited server APIs and real notification delivery                              |
+| Proof retention          | Define upload retry/backoff, storage quotas, backup/retention and permissions; browser IndexedDB alone is insufficient              |
+| Analytics                | Add historical aggregates and forecasting; current charts derive from a single local run                                            |
 
 No backend URL, secret, real authentication, or production permissions are embedded in the frontend. The Figma REST exporter is a separate local tool and never bundled into the browser.
 
-## Source presentation renderer
+## Figma renderer (dead code)
 
-`presentation/design` holds typed frame, layer, asset and transition manifests. `DesignFrameView` renders native text, surfaces, controls and original static assets; screen PNGs are never used as UI. Section controllers bind these elements to application use cases. `SourceOverlay` supplies focus trapping and keyboard dismissal without extra visible controls. Explicit Loader counterparts are in `presentationManifest.ts`.
-
-Source fixtures at `/design/:frameId` are comparison views. Live routes bind changing local data. A rendered fixture does not mean every prototype action has passed a workflow test. The legacy workspace template remains for the deferred revised-route review simulation.
-
-## Responsive product presentation
-
-Product routes use `ProductFrameView`, separate from the fixed `/design/:frameId` inspector. `responsiveLayout.ts` derives flex flow from the exported layout metadata and applies explicit rules for workspace shells, card grids, forms, readable tables, map annotations and dialogs. It preserves asset dimensions instead of scaling the whole scene. Sources without counterparts use adjacent responsive patterns.
-
-`presentationManifest.ts` holds screen families and resolves pinned frame IDs to the current responsive counterpart. Breakpoints are below 768px, 768–1199px, and 1200px upward. Controllers own edits, photographs, selected records and workflow state; viewport changes do not remount controllers or update the database.
-
-`SourceOverlay` separates source content panels from full scene canvases. It provides trigger-relative menus, edge drawers, centered dialogs, focus trapping, Escape/outside dismissal, focus restoration, scroll locking and viewport-constrained internal scrolling.
-
-`/demo/responsive/:frameId` exposes deterministic product layout fixtures. Add `?overlay=1` to inspect overlay content with its real dialog geometry. These fixtures do not run domain workflows. Full-inventory geometry reports and live browser workflow tests serve different purposes.
-
-`presentation/design/motion.tsx` supplies Framer Motion reveals for the live Welcome controller and popup panels. It changes opacity and local translation only, adds no layout wrappers to home sections, and honors reduced-motion preferences. Source overlays animate an inner content wrapper so centering, anchoring and focus management remain independent. Domain and application workflows have no animation dependencies.
+The original screens were drawn from exported Figma JSON by `presentation/design` and the `Figma*Page` components. They are no longer routed and nothing live imports them; they are kept unchanged until deletion. See `docs/FIGMA_DEAD_CODE.md`.

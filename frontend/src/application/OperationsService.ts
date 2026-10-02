@@ -96,7 +96,12 @@ export class OperationsService {
             break
           }
         }
-        if (!allocated) Object.assign(order, { status: 'Deferred', deferralReason: undefined })
+        if (!allocated)
+          Object.assign(order, {
+            status: 'Deferred',
+            deferralReason: undefined,
+            deferredAt: new Date().toISOString(),
+          })
       }
       log(
         s,
@@ -118,6 +123,7 @@ export class OperationsService {
       Object.assign(order, {
         status: 'Deferred',
         deferralReason: reason,
+        deferredAt: new Date().toISOString(),
         vehicleId: undefined,
         trip: undefined,
       })
@@ -144,8 +150,9 @@ export class OperationsService {
       assert(!errors.length, errors[0] ?? 'Review the plan.')
       assert(s.settings.allocationReviewed, 'Complete the allocation review before publishing.')
       s.settings.published = true
+      const scheduledAt = new Date().toISOString()
       s.orders.forEach((o) => {
-        if (o.status === 'Allocated') o.status = 'Scheduled'
+        if (o.status === 'Allocated') Object.assign(o, { status: 'Scheduled', scheduledAt })
       })
       // The demo operator handles VEH055 Trip 1. Project its manifest from the
       // published allocations so manual changes cannot leave stale case counts.
@@ -300,7 +307,7 @@ export class OperationsService {
       s.orders
         .filter((o) => o.vehicleId === load.vehicleId && o.trip === load.trip)
         .forEach((o) => {
-          o.status = 'En route'
+          Object.assign(o, { status: 'En route', departedAt: new Date().toISOString() })
         })
       log(s, 'Demo departure released', `${load.vehicleId} · Trip ${load.trip}`)
     })
@@ -450,7 +457,7 @@ export class OperationsService {
                   current.orders
                     .filter((o) => stop.orderIds.includes(o.id))
                     .forEach((o) => {
-                      o.status = 'Delivered'
+                      Object.assign(o, { status: 'Delivered', deliveredAt: evidence.createdAt })
                     })
                 }
                 if (current.stops.every((v) => v.status === 'Delivered')) {
@@ -508,6 +515,7 @@ export class OperationsService {
       )
       if (issue) assert(issue.trim().length > 3, 'Describe the missing or damaged goods.')
       order.receipt = issue ? 'Issue reported' : 'Confirmed'
+      order.receiptAt = new Date().toISOString()
       order.issue = issue
       log(
         s,
@@ -536,6 +544,7 @@ export class OperationsService {
         status: 'Confirmed',
         priority: false,
         receipt: 'Pending',
+        placedAt: new Date().toISOString(),
       })
       log(s, 'Store order confirmed', `${temperature} · ${cases} cases · ${window}`)
     })
@@ -567,6 +576,7 @@ export class OperationsService {
       )
       assert(description.trim().length > 3, 'Describe the missing or damaged goods.')
       order.receipt = 'Issue reported'
+      order.receiptAt = new Date().toISOString()
       order.issue = `${kind} goods: ${description.trim()}`
       order.receiptReport = {
         kind,
@@ -598,6 +608,9 @@ export class OperationsService {
           temperature: input.temperature,
           cases: input.cases,
           window: input.window,
+          windowEnd: input.windowEnd,
+          weight: input.weight,
+          volume: input.volume,
         })
       log(s, 'Store drafts saved', 'Chilled and dry orders · next eligible run')
     })
@@ -669,13 +682,36 @@ export class OperationsService {
           'Enter a positive weight and volume for each order.',
         )
         assert(/^([01]\d|2[0-3]):[0-5]\d$/.test(input.window), 'Enter a valid receiving window.')
+        assert(
+          !input.windowEnd ||
+            (/^([01]\d|2[0-3]):[0-5]\d$/.test(input.windowEnd) && input.windowEnd > input.window),
+          'The receiving window must end after it starts.',
+        )
       }
+      const placedAt = new Date().toISOString()
       for (const input of inputs) {
         const order = s.orders.find(
           (o) => o.outlet === 'OUT001' && o.temperature === input.temperature,
         )
-        assert(order, 'The outlet order could not be found.')
-        Object.assign(order, input, { status: 'Confirmed', vehicleId: undefined, trip: undefined })
+        if (order)
+          Object.assign(order, input, {
+            status: 'Confirmed',
+            vehicleId: undefined,
+            trip: undefined,
+            placedAt,
+          })
+        else
+          s.orders.push({
+            ...input,
+            id: `ORD${Date.now().toString().slice(-7)}${input.temperature === 'Chilled' ? 'C' : 'A'}`,
+            outlet: 'OUT001',
+            outletName: 'Fresh Wattala',
+            brand: 'Fresh',
+            status: 'Confirmed',
+            priority: false,
+            receipt: 'Pending',
+            placedAt,
+          })
       }
       for (const stop of s.stops.filter((stop) => stop.outlet === 'OUT001')) {
         stop.cases = s.orders
@@ -703,6 +739,7 @@ export class OperationsService {
       const order = s.orders.find((o) => o.id === orderId)
       assert(order && order.status === 'Deferred', 'This order is not deferred.')
       order.deferralAcknowledged = true
+      order.deferralAcknowledgedAt = new Date().toISOString()
       log(s, 'Store deferral acknowledged', order.id)
     })
   }

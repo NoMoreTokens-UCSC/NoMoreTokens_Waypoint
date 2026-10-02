@@ -6,6 +6,8 @@ export interface StoreOrderInput {
   weight: number
   volume: number
   window: string
+  /** End of the receiving window, e.g. "07:30". Defaults to two hours after `window`. */
+  windowEnd?: string
 }
 export type OrderStatus =
   'Confirmed' | 'Allocated' | 'Deferred' | 'Scheduled' | 'En route' | 'Delivered'
@@ -24,6 +26,15 @@ export interface Order {
   trip?: number
   deferralReason?: string
   priority: boolean
+  /** Event times (ISO), set as the order moves through the workflow. */
+  placedAt?: string
+  scheduledAt?: string
+  departedAt?: string
+  deliveredAt?: string
+  deferredAt?: string
+  deferralAcknowledgedAt?: string
+  receiptAt?: string
+  windowEnd?: string
   receipt: 'Pending' | 'Confirmed' | 'Issue reported'
   issue?: string
   deferralAcknowledged?: boolean
@@ -172,7 +183,15 @@ export interface Snapshot {
   queue: QueuedAction[]
   audit: AuditEntry[]
   settings: Settings
-  drafts: { id: string; temperature: Temperature; cases: number; window: string }[]
+  drafts: {
+    id: string
+    temperature: Temperature
+    cases: number
+    window: string
+    weight?: number
+    volume?: number
+    windowEnd?: string
+  }[]
   unlistedTeamCounts?: { Active: number; Invited: number; Suspended: number }
   fleetReferenceVersion?: number
   designDataVersion?: number

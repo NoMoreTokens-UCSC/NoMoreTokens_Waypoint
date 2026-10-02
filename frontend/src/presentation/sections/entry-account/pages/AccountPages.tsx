@@ -1,58 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Bell, Save, Settings, User } from 'lucide-react'
+import { ArrowRight, Bell, Save, User } from 'lucide-react'
 import { useOperations, useAction } from '../../../hooks/useOperations'
 import { useServices } from '../../../providers/ServicesContext'
 import { Button } from '../../../shared/atoms/button'
 import { Input } from '../../../shared/atoms/input'
 import { Switch } from '../../../shared/atoms/switch'
 import { PageHeading, Panel, Field, Notice } from '../../../shared/molecules/Common'
-import { Brand, workspaces } from '../../../shared/templates/WorkspaceLayout'
 import { formatTime } from '../../../shared/lib/utils'
 
-export function WelcomePage() {
-  return (
-    <div className="welcome-page">
-      <div className="flex justify-between items-center mb-16">
-        <Brand />
-        <span className="demo-badge">FRONTEND DEMO</span>
-      </div>
-      <div className="eyebrow">Waypoint · Connected operations</div>
-      <h1 className="!text-4xl sm:!text-5xl mt-4">Your workspace.</h1>
-      <p className="text-muted-foreground mt-4 mb-9">
-        Choose a role to explore the journey. Every workspace shares the same local data.
-      </p>
-      <div className="grid md:grid-cols-2 gap-4">
-        {workspaces.map((w) => (
-          <Link className="workspace-card" to={w.path} key={w.key}>
-            <span className="p-3 rounded-lg bg-accent text-primary">
-              <w.icon size={25} />
-            </span>
-            <div className="flex-1">
-              <h3>{w.label}</h3>
-              <p>{w.description}</p>
-            </div>
-            <ArrowRight size={18} className="text-muted-foreground" />
-          </Link>
-        ))}
-        <Link className="workspace-card" to="/recovery">
-          <span className="p-3 rounded-lg bg-muted">
-            <Settings size={25} />
-          </span>
-          <div className="flex-1">
-            <h3>Recovery</h3>
-            <p>Review saved evidence and retry sync.</p>
-          </div>
-          <ArrowRight size={18} />
-        </Link>
-      </div>
-      <Notice title="Prototype role switcher" tone="neutral">
-        Production access follows the signed-in account’s permissions. This frontend demo stores its
-        data only in this browser.
-      </Notice>
-    </div>
-  )
-}
 function ProfileForm({ name, phone }: { name: string; phone: string }) {
   const service = useServices(),
     action = useAction()
