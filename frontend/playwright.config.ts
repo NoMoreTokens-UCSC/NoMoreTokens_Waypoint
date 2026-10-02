@@ -1,6 +1,19 @@
 import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
+  // These specs drive the unrouted Figma renderer and are kept only as dead code;
+  // see docs/FIGMA_DEAD_CODE.md.
+  testIgnore: [
+    'account-design.spec.ts',
+    'admin-design.spec.ts',
+    'dispatcher-design.spec.ts',
+    'driver-design.spec.ts',
+    'entry.spec.ts',
+    'home-motion.spec.ts',
+    'responsive.spec.ts',
+    'store-design.spec.ts',
+    'workflows.spec.ts',
+  ],
   fullyParallel: false,
   workers: 1,
   timeout: 120_000,
