@@ -3,6 +3,9 @@
 Each role is a module that one person can own without touching anyone else's files. The shared
 shell (sidebar, header, mobile navigation) and the data contract are common to all roles.
 
+**Start here, then read [ROLE_GUIDES.md](ROLE_GUIDES.md)** for the current state, the definition of
+done for a page, known issues, and the to-do list for your role.
+
 ## Who owns what
 
 | Folder                                                              | Owner                 | Contains                                                           |

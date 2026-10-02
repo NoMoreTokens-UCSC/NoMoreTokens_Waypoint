@@ -71,6 +71,7 @@ Dexie stores snapshots, image blobs, and queue entries in IndexedDB. Evidence, i
 ## Project documentation
 
 - `docs/ROLE_MODULES.md`: module ownership, adding screens, the data contract and backend integration.
+- `docs/ROLE_GUIDES.md`: current state, definition of done, and the to-do list for each role.
 - `docs/ARCHITECTURE.md`: layers, transactions, backend integration seams.
 - `docs/FIGMA_DEAD_CODE.md`: the unrouted Figma renderer and how to delete it.
 - `docs/SCREEN_COVERAGE.md`, `docs/figma/`: records from the Figma-rendered build (historical).
