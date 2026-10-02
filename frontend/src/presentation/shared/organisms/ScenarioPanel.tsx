@@ -78,8 +78,8 @@ export function ScenarioPanel({
         </select>
       </Field>
       <Field
-        label="Store orders · OUT001"
-        hint="Loads sample delivery states for the store screens. Other outlets are not changed; Reset demo restores everything."
+        label={`Store orders · ${data.activeOutletId ?? 'OUT001'}`}
+        hint="Loads sample delivery states for the signed-in store outlet. Other outlets are not changed; Reset demo restores everything."
       >
         <select
           className="native-select"
@@ -90,7 +90,10 @@ export function ScenarioPanel({
             const state = e.target.value as StoreDemoState
             if (!state) return
             action.run(
-              () => service.repository.update((snapshot) => applyStoreDemoState(snapshot, state)),
+              () =>
+                service.repository.update((snapshot) =>
+                  applyStoreDemoState(snapshot, state, data.activeOutletId ?? 'OUT001'),
+                ),
               'Store orders updated',
             )
           }}

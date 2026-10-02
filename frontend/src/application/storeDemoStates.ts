@@ -2,10 +2,11 @@ import type { Order, Snapshot } from '../domain/models'
 
 /** Demo states for the store's orders, so every store screen can be opened without the other roles. */
 export type StoreDemoState =
-  'confirmed' | 'scheduled' | 'en-route' | 'late' | 'delivered' | 'received' | 'issue'
+  'confirmed' | 'allocated' | 'scheduled' | 'en-route' | 'late' | 'delivered' | 'received' | 'issue'
 
 export const storeDemoStates: { value: StoreDemoState; label: string }[] = [
   { value: 'confirmed', label: 'Awaiting allocation' },
+  { value: 'allocated', label: 'Planned by the dispatcher · not yet published' },
   { value: 'scheduled', label: 'Scheduled · one order deferred' },
   { value: 'en-route', label: 'En route · one order deferred' },
   { value: 'late', label: 'En route · running late' },
@@ -87,7 +88,12 @@ export function applyStoreDemoState(
     if (o.outlet !== outletId) continue
     Object.assign(o, clear)
     if (state === 'confirmed') continue
-    if (o.temperature === 'Chilled') Object.assign(o, order(state))
+    if (state === 'allocated') {
+      Object.assign(o, { status: 'Allocated', vehicleId: 'VEH055', trip: 1 })
+      continue
+    }
+    // Fresh splits into chilled and dry (dry is deferred in the story); Style and Tech have one order.
+    if (o.temperature === 'Chilled' || o.brand !== 'Fresh') Object.assign(o, order(state))
     else
       Object.assign(o, {
         status: 'Deferred',
