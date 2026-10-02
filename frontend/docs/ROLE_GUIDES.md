@@ -6,15 +6,15 @@ routes and the shared shell work.
 
 ## Where things stand
 
-| Area                                                   | State                                                                                                            |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Routing, module registry, shared shell                 | Done. Every route opens a native page.                                                                           |
-| Entry pages (welcome, how it works, login, workspaces) | Done, rebuilt from the Figma frames. Login is a demo (any filled-in credentials).                                |
-| Data contract `src/domain/api` + local adapter         | Done and unit-tested.                                                                                            |
-| Role pages                                             | Work, but are the first native drafts: they do not match Figma and use the old data access.                      |
-| Pages using `useApis()`                                | **None yet.** Until a page moves over, a backend adapter does not reach it.                                      |
-| Full order-to-receipt flow in the browser              | **Blocked** at dispatcher publish (see Dispatcher, issue 1).                                                     |
-| End-to-end workflow tests                              | Only the route smoke test and the entry walkthrough. The old workflow specs drove Figma screens and are skipped. |
+| Area                                                   | State                                                                                                                                                                   |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Routing, module registry, shared shell                 | Done. Every route opens a native page.                                                                                                                                  |
+| Entry pages (welcome, how it works, login, workspaces) | Done, rebuilt from the Figma frames. Login is a demo (any filled-in credentials).                                                                                       |
+| Data contract `src/domain/api` + local adapter         | Done and unit-tested.                                                                                                                                                   |
+| Role pages                                             | Work, but are the first native drafts: they do not match Figma and use the old data access.                                                                             |
+| Pages using `useApis()`                                | Loader reads/writes now use the API boundary. Dispatcher review, publication, issue resolution and release writes also use APIs. Other role pages still need migration. |
+| Full order-to-receipt flow in the browser              | Dispatcher publication is unblocked. The native Loader-to-release flow has a dedicated browser spec; other role workflows still need coverage.                          |
+| End-to-end workflow tests                              | Route smoke, entry walkthrough and native Loader workflow specs. Old Figma workflow specs remain excluded.                                                              |
 
 ## Definition of done for any page
 
@@ -96,10 +96,9 @@ and live tracking, `AnalyticsPage`). Organisms: `OrderTable`, `PlanningSteps`.
 
 **Fix first**
 
-1. **Publish always fails (blocks every other role).** `ReviewPage` never calls
-   `reviewAllocation()`, but `publish()` requires it ("Complete the allocation review before
-   publishing"). Add the review step (Figma: "Allocation review" → "Publish · Final review") that calls
-   `apis.planning.reviewAllocation()` before Publish is enabled.
+1. **Publication prerequisite completed.** `ReviewPage` now requires explicit
+   `apis.planning.reviewAllocation()` before publication. Publication generates all allocated
+   vehicle/trip manifests. Remaining Dispatcher data-access migration is separate work.
 2. `OrderQueuePage` refreshes with `service.repository.getSnapshot()`. Use a query refetch instead.
 
 **Then**
@@ -114,7 +113,7 @@ and live tracking, `AnalyticsPage`). Organisms: `OrderTable`, `PlanningSteps`.
   restored, Explain deferrals). The booklet scores this.
 - Live tracking states from Figma: Delivery window delay, Vehicle offline.
 - Analytics / Capacity outlook needs forecast data that no API provides yet: propose an `AnalyticsApi`.
-- Release uses `loads[0]`; list every load ready for release.
+- Release now selects a vehicle/trip using `?loadId=...`; its reads still need API migration.
 
 **Figma:** 59 frames (order queue and sorting, planning & allocation, deferrals, review & publish,
 release, fleet filters and drawers, live map, capacity outlook).
@@ -153,6 +152,11 @@ delivery, live tracking, delivered/receipt pending, confirm receipt, missing/dam
 submitted states, deferral acknowledgment, delivery photograph, navigation).
 
 ## Loader
+
+Implemented native workflow and backend handoff: [LOADER_IMPLEMENTATION.md](LOADER_IMPLEMENTATION.md).
+The checklist below is retained as the design acceptance reference; ID selection, data access,
+shortfall/revision handling and photo recovery are implemented. Real backend synchronization,
+authorization and cross-device handoff remain external dependencies.
 
 **Pages** (`sections/loader/pages/LoaderPages.tsx`): `LoaderQueuePage` (shift dashboard),
 `LoaderWorkspacePage` (load workspace and, with `proofOnly`, loading proof).

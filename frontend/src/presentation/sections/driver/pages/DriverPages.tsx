@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { MapPin, Truck, ArrowRight, Navigation, Package, CheckCircle2, Camera } from 'lucide-react'
 import {
-  useOperations,
+  useOperations as useSharedOperations,
   useAction,
   useConnectivity,
   useEvidence,
@@ -22,7 +22,28 @@ import {
   EmptyState,
 } from '../../../shared/molecules/Common'
 import { PhotoCapture } from '../../../shared/organisms/PhotoCapture'
+import { useSession } from '../../../session/useSession'
 const OperationsMap = lazy(() => import('../../../shared/organisms/OperationsMap'))
+
+// Publication now creates all manifests; legacy Driver pages must not show other vehicles.
+function useOperations() {
+  const query = useSharedOperations()
+  const session = useSession()
+  const load = query.data?.loads
+    .filter((load) => load.vehicleId === session.vehicleId)
+    .sort((a, b) => a.trip - b.trip)[0]
+  const data = query.data && {
+    ...query.data,
+    loads: load ? [load] : [],
+    stops: query.data.stops.filter(
+      (stop) =>
+        load &&
+        (stop.loadId === load.id ||
+          (!stop.loadId && load.items.some((item) => item.outlet === stop.outlet))),
+    ),
+  }
+  return { ...query, data }
+}
 
 export function DriverHomePage() {
   const { data } = useOperations(),
@@ -81,7 +102,7 @@ export function DriverHomePage() {
                     checked the assigned vehicle and load before departure.
                   </label>
                   <Button
-                    disabled={!checked || !data.loads[0].released || action.isPending}
+                    disabled={!checked || !data.loads[0]?.released || action.isPending}
                     onClick={() =>
                       action.run(async () => {
                         await service.startRoute()
@@ -92,7 +113,7 @@ export function DriverHomePage() {
                     <Navigation size={16} />
                     Start route
                   </Button>
-                  {!data.loads[0].released && (
+                  {!data.loads[0]?.released && (
                     <Notice title="Awaiting dispatcher release">
                       Loading checks and photograph must be completed first.{' '}
                       <Link to="/loader/loading" className="underline">

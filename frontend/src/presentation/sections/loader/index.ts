@@ -24,11 +24,21 @@ export const loaderModule: RoleModule = {
     },
     {
       path: '/loader/loading',
-      component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage)),
+      component: lazyPage(() => pages().then((m) => m.LoaderLegacyPage)),
       shell: true,
     },
     {
       path: '/loader/proof',
+      component: lazyPage(() => pages().then((m) => m.LoaderLegacyPage)),
+      shell: true,
+    },
+    {
+      path: '/loader/loading/:loadId',
+      component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage)),
+      shell: true,
+    },
+    {
+      path: '/loader/proof/:loadId',
       component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage), { proofOnly: true }),
       shell: true,
     },
