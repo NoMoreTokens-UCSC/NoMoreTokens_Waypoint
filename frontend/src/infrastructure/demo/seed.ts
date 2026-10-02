@@ -63,6 +63,8 @@ export function createSeed(): Snapshot {
         trip: 1,
         revision: 3,
         bay: '03',
+        depot: 'Peliyagoda',
+        departureTime: '05:00',
         items: [
           { outlet: 'OUT008', name: 'Kelaniya · dry groceries', expected: 14, loaded: 0, stop: 2 },
           {

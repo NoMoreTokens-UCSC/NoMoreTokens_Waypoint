@@ -46,6 +46,8 @@ export function publicationErrors(snapshot: Snapshot): string[] {
 
 export function loadErrors(load: Load, requirePhoto = true): string[] {
   const errors: string[] = []
+  if (load.acknowledgedRevision !== undefined && load.acknowledgedRevision !== load.revision)
+    errors.push('Review and acknowledge the revised loading instructions.')
   if (!load.items.length) errors.push('Allocate demand to this vehicle before loading.')
   if (load.items.some((i) => i.loaded !== i.expected))
     errors.push('Reconcile every case before continuing.')

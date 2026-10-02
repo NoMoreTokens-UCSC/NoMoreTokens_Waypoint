@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowRight, CheckCircle2, Circle, WandSparkles, Truck, ShieldCheck } from 'lucide-react'
 import { useOperations, useAction, useEvidence } from '../../../hooks/useOperations'
 import { useServices } from '../../../providers/ServicesContext'
+import { useApis } from '../../../providers/ApisContext'
 import { Button } from '../../../shared/atoms/button'
 import {
   PageHeading,
@@ -334,7 +335,7 @@ export function DeferralsPage() {
 
 export function ReviewPage() {
   const { data } = useOperations(),
-    service = useServices(),
+    apis = useApis(),
     action = useAction()
   if (!data) return null
   const errors = publicationErrors(data),
@@ -428,12 +429,25 @@ export function ReviewPage() {
               <ArrowRight size={16} />
             </Button>
           </Link>
+        ) : !data.settings.allocationReviewed ? (
+          <Button
+            disabled={!!errors.length || action.isPending}
+            onClick={() =>
+              action.run(
+                () => apis.planning.reviewAllocation(),
+                'Allocation review recorded. Final publication is now available.',
+              )
+            }
+          >
+            <ShieldCheck size={16} />
+            Confirm allocation review
+          </Button>
         ) : (
           <Button
             disabled={!!errors.length || action.isPending}
             onClick={() =>
               action.run(
-                () => service.publish(),
+                () => apis.planning.publish(),
                 'Plan published. Loading proof is still required for departure.',
               )
             }
@@ -448,12 +462,60 @@ export function ReviewPage() {
 }
 
 export function ReleasePage() {
+  const { data } = useOperations()
+  const [params, setParams] = useSearchParams()
+  const loadId = params.get('loadId') ?? ''
+  return (
+    <>
+      {!loadId && <PageHeading title="Departure readiness" />}
+      <Panel title="Published loads">
+        <div className="panel-body">
+          <Field label="Vehicle and trip">
+            <select
+              className="w-full border rounded-md p-3"
+              value={loadId}
+              onChange={(event) =>
+                setParams(event.target.value ? { loadId: event.target.value } : {})
+              }
+            >
+              <option value="">Select a load</option>
+              {data?.loads.map((load) => (
+                <option value={load.id} key={load.id}>
+                  {load.vehicleId} · Trip {load.trip} ·{' '}
+                  {load.released
+                    ? 'Released'
+                    : load.completed
+                      ? 'Ready for release'
+                      : !load.issueResolved
+                        ? 'Held'
+                        : 'Awaiting loading'}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </Panel>
+      {loadId ? (
+        <ReleaseLoad key={loadId} loadId={loadId} />
+      ) : (
+        <EmptyState
+          title="Select a vehicle and trip"
+          description="Review its loading record before authorizing departure."
+        />
+      )}
+    </>
+  )
+}
+
+function ReleaseLoad({ loadId }: { loadId: string }) {
   const { data } = useOperations(),
-    service = useServices(),
+    apis = useApis(),
     action = useAction()
-  const load = data?.loads[0],
+  const load = data?.loads.find((load) => load.id === loadId),
     { url } = useEvidence(load?.photoId)
-  if (!data || !load) return null
+  if (!data) return <Notice title="Loading readiness…" />
+  if (!load) return <EmptyState title="Load not found" />
+  const vehicle = data.vehicles.find((vehicle) => vehicle.id === load.vehicleId)
   const errors = departureErrors(data, load),
     cases = load.items.reduce((n, i) => n + i.loaded, 0),
     total = load.items.reduce((n, i) => n + i.expected, 0)
@@ -464,6 +526,24 @@ export function ReleasePage() {
         description={`Revision ${load.revision.toString().padStart(2, '0')} · Release vehicles after loading evidence is complete`}
       />
       <PlanningSteps current={4} />
+      {load.issue && !load.issueResolved && (
+        <Notice title="Shortfall requires Dispatcher decision" tone="danger">
+          {load.issue}
+          <div className="mt-3">
+            <Button
+              disabled={action.isPending || load.released}
+              onClick={() =>
+                action.run(
+                  () => apis.loading.resolveIssue(load.id),
+                  'Replacement approved. Loader must acknowledge the revision and repeat checks.',
+                )
+              }
+            >
+              Approve replacement and revise load
+            </Button>
+          </div>
+        </Notice>
+      )}
       {errors.length > 0 && !load.released && (
         <Notice title="Awaiting loading evidence">{errors.join(' ')}</Notice>
       )}
@@ -474,7 +554,7 @@ export function ReleasePage() {
       )}
       <div className="split-grid">
         <Panel
-          title={`${load.vehicleId} · Trip ${load.trip} · Reefer van`}
+          title={`${load.vehicleId} · Trip ${load.trip} · ${vehicle?.type ?? 'Vehicle'}`}
           action={
             <StatusBadge>
               {load.released ? 'En route' : errors.length ? 'Held for proof' : 'Ready'}
@@ -487,7 +567,8 @@ export function ReleasePage() {
               <div>
                 <strong>Load sequence</strong>
                 <small>
-                  {cases} / {total} cases reconciled · OUT008 → OUT001
+                  {cases} / {total} cases reconciled ·{' '}
+                  {load.items.map((item) => item.outlet).join(' → ')}
                 </small>
               </div>
             </div>
@@ -508,7 +589,7 @@ export function ReleasePage() {
               used={data.orders
                 .filter((o) => o.vehicleId === load.vehicleId && o.trip === load.trip)
                 .reduce((n, o) => n + o.weight, 0)}
-              total={800}
+              total={vehicle?.weightCapacity ?? 1}
               unit="kg"
             />
             <CapacityBar
@@ -516,13 +597,18 @@ export function ReleasePage() {
               used={data.orders
                 .filter((o) => o.vehicleId === load.vehicleId && o.trip === load.trip)
                 .reduce((n, o) => n + o.volume, 0)}
-              total={4}
+              total={vehicle?.volumeCapacity ?? 1}
               unit="m³"
             />
             <Button
               className="w-full mt-5"
               disabled={!!errors.length || load.released || action.isPending}
-              onClick={() => action.run(() => service.release(load.id), 'Demo departure released')}
+              onClick={() =>
+                action.run(
+                  () => apis.planning.release(load.id),
+                  'Departure released in the local workspace',
+                )
+              }
             >
               {load.released
                 ? 'Departure released'
@@ -539,7 +625,7 @@ export function ReleasePage() {
                 The loader must complete checks and attach a clear photograph of the load.
               </Notice>
             )}
-            <Link to="/loader/loading">
+            <Link to={`/loader/loading/${load.id}`}>
               <Button variant="outline" className="w-full">
                 Open Loader workspace
                 <ArrowRight size={16} />

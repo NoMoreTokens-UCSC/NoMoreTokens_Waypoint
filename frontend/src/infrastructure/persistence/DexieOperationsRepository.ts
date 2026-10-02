@@ -17,6 +17,22 @@ export class DexieOperationsRepository implements OperationsRepository {
         if (queue.length) await this.db.queue.bulkPut(queue)
       }
       const record = await this.db.snapshots.get('workspace')
+      if (record) {
+        const templates = createSeed().loads
+        let changed = false
+        for (const load of record.data.loads) {
+          const template = templates.find((entry) => entry.id === load.id)
+          if (!load.depot && template?.depot) {
+            load.depot = template.depot
+            changed = true
+          }
+          if (!load.departureTime && template?.departureTime) {
+            load.departureTime = template.departureTime
+            changed = true
+          }
+        }
+        if (changed) await this.db.snapshots.put(record)
+      }
       if (record && !record.data.designDataVersion) {
         // Preserve uploads, queue records, route progress and custom invitations.
         for (const reference of sourceTeam) {

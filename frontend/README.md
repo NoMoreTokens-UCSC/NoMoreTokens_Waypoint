@@ -2,6 +2,12 @@
 
 A responsive operations demo for Waypoint. Includes Dispatcher, Store Manager, Loader, Driver, Entry & Account, Administration, and Recovery. All workspaces share one persistent local dataset. Working on a role? Start with [docs/ROLE_MODULES.md](docs/ROLE_MODULES.md).
 
+Loader uses depot-scoped API reads, vehicle/trip deep links, structured shortfalls,
+revision acknowledgment and reviewed loading photographs. Dispatcher review and
+publication now generate every allocated manifest. See
+[Loader implementation and backend handoff](docs/LOADER_IMPLEMENTATION.md) for
+contracts, local-only persistence and remaining server dependencies.
+
 ## Run locally
 
 Use Node.js 22.12+ (or a newer supported LTS) and npm.

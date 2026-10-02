@@ -2,6 +2,7 @@ import type { OperationsRepository, SyncGateway } from '../domain/ports'
 import type {
   Evidence,
   Load,
+  LoadIssueInput,
   MobileInvitation,
   QueuedAction,
   Settings,
@@ -147,47 +148,85 @@ export class OperationsService {
       s.orders.forEach((o) => {
         if (o.status === 'Allocated') o.status = 'Scheduled'
       })
-      // The demo operator handles VEH055 Trip 1. Project its manifest from the
-      // published allocations so manual changes cannot leave stale case counts.
-      const load = s.loads[0]
-      const assigned = s.orders.filter(
-        (o) => o.vehicleId === load.vehicleId && o.trip === load.trip && o.status === 'Scheduled',
-      )
-      const outlets = [...new Set(assigned.map((o) => o.outlet))].sort((a, b) => {
-        const earliest = (outlet: string) =>
-          assigned
-            .filter((o) => o.outlet === outlet)
-            .map((o) => o.window)
-            .sort()[0]
-        return earliest(a).localeCompare(earliest(b))
+      const previousLoads = s.loads
+      const previousStops = s.stops
+      const scheduled = s.orders.filter((order) => order.status === 'Scheduled')
+      const keys = [...new Set(scheduled.map((order) => `${order.vehicleId}:${order.trip}`))]
+      // Keep existing record identities and the featured driver route first.
+      keys.sort((a, b) => {
+        const rank = (key: string) =>
+          previousLoads.findIndex((load) => `${load.vehicleId}:${load.trip}` === key)
+        return (
+          (rank(a) < 0 ? Infinity : rank(a)) - (rank(b) < 0 ? Infinity : rank(b)) ||
+          a.localeCompare(b)
+        )
       })
-      s.stops = outlets.map((outlet, index) => {
-        const orders = assigned.filter((o) => o.outlet === outlet),
-          existing = s.stops.find((stop) => stop.outlet === outlet)
-        return {
-          id: `STOP${outlet.slice(3)}`,
-          outlet,
-          name: orders[0].outletName,
-          address: existing?.address ?? `${outlet} receiving bay · demo location`,
-          window: existing?.window ?? `${orders[0].window} · scheduled`,
-          eta: existing?.eta ?? orders[0].window,
-          lat: existing?.lat ?? 6.95 + index * 0.008,
-          lng: existing?.lng ?? 79.9 + index * 0.006,
-          orderIds: orders.map((order) => order.id),
-          cases: orders.reduce((n, order) => n + order.cases, 0),
-          status: 'Upcoming' as const,
-        }
-      })
-      load.items = [...s.stops].reverse().map((stop) => ({
-        outlet: stop.outlet,
-        name: stop.name,
-        expected: stop.cases,
-        loaded: 0,
-        stop: s.stops.indexOf(stop) + 1,
-      }))
-      load.checks = { refrigeration: false, condition: false, restraints: false }
-      load.photoId = undefined
-      load.completed = false
+      s.loads = []
+      s.stops = []
+      for (const key of keys) {
+        const assigned = scheduled.filter((order) => `${order.vehicleId}:${order.trip}` === key)
+        const { vehicleId, trip } = assigned[0]
+        assert(vehicleId && trip, 'Published orders need a vehicle and trip.')
+        const existing = previousLoads.find(
+          (load) => load.vehicleId === vehicleId && load.trip === trip,
+        )
+        const loadId = existing?.id ?? `LOAD${vehicleId.slice(3)}-${trip}`
+        const outlets = [...new Set(assigned.map((order) => order.outlet))].sort((a, b) => {
+          const earliest = (outlet: string) =>
+            assigned
+              .filter((order) => order.outlet === outlet)
+              .map((order) => order.window)
+              .sort()[0]
+          return earliest(a).localeCompare(earliest(b)) || a.localeCompare(b)
+        })
+        const stops = outlets.map((outlet, index) => {
+          const orders = assigned.filter((order) => order.outlet === outlet)
+          const old = previousStops.find((stop) => stop.outlet === outlet)
+          const baseId = `STOP${outlet.slice(3)}`
+          return {
+            id: s.stops.some((stop) => stop.id === baseId) ? `${baseId}-${loadId}` : baseId,
+            loadId,
+            outlet,
+            name: orders[0].outletName,
+            address: old?.address ?? `${outlet} receiving bay · demo location`,
+            window: orders[0].window,
+            eta: orders[0].window,
+            lat: old?.lat ?? 6.95 + index * 0.008,
+            lng: old?.lng ?? 79.9 + index * 0.006,
+            orderIds: orders.map((order) => order.id),
+            cases: orders.reduce((n, order) => n + order.cases, 0),
+            status: 'Upcoming' as const,
+          }
+        })
+        const revision = existing?.revision ?? s.settings.routeRevision
+        s.loads.push({
+          id: loadId,
+          vehicleId,
+          trip,
+          revision,
+          depot:
+            existing?.depot ??
+            s.members.find((member) => member.vehicleId === vehicleId)?.depot ??
+            s.members.find((member) => member.role === 'dispatcher')?.depot,
+          departureTime:
+            existing?.departureTime ??
+            previousLoads.find((load) => load.departureTime)?.departureTime,
+          bay: existing?.bay ?? 'Unassigned',
+          acknowledgedRevision: revision,
+          items: [...stops].reverse().map((stop) => ({
+            outlet: stop.outlet,
+            name: stop.name,
+            expected: stop.cases,
+            loaded: 0,
+            stop: stops.indexOf(stop) + 1,
+          })),
+          checks: { refrigeration: false, condition: false, restraints: false },
+          issueResolved: true,
+          completed: false,
+          released: false,
+        })
+        s.stops.push(...stops)
+      }
       log(
         s,
         'Plan published',
@@ -195,10 +234,38 @@ export class OperationsService {
       )
     })
   }
-  editLoad(loadId: string, update: (load: Load) => void) {
+  private assertLoadingWritable(s: Snapshot, load: Load, expectedRevision?: number) {
+    assert(s.settings.published, 'Publish the reviewed plan before loading.')
+    assert(!load.released, 'This vehicle has departed. Loading is locked.')
+    assert(
+      expectedRevision === undefined || expectedRevision === load.revision,
+      'Loading instructions changed. Refresh and review the revision.',
+    )
+    assert(
+      load.acknowledgedRevision === undefined || load.acknowledgedRevision === load.revision,
+      'Review and acknowledge the revised loading instructions.',
+    )
+  }
+  acknowledgeLoadRevision(loadId: string, expectedRevision: number) {
     return this.repository.update((s) => {
       const load = requireLoad(s, loadId)
-      assert(!load.released, 'This vehicle has departed. Loading is locked.')
+      assert(
+        s.settings.published && !load.released,
+        'Only published, unreleased loads can be reviewed.',
+      )
+      assert(
+        load.revision === expectedRevision,
+        'Loading instructions changed. Refresh and review the revision.',
+      )
+      assert(load.issueResolved, 'Await the Dispatcher decision before reviewing a revision.')
+      load.acknowledgedRevision = expectedRevision
+      log(s, 'Loading revision acknowledged', `${load.id} · Revision ${expectedRevision}`)
+    })
+  }
+  editLoad(loadId: string, update: (load: Load) => void, expectedRevision?: number) {
+    return this.repository.update((s) => {
+      const load = requireLoad(s, loadId)
+      this.assertLoadingWritable(s, load, expectedRevision)
       update(load)
       if (loadErrors(load, false).length) {
         load.photoId = undefined
@@ -206,39 +273,84 @@ export class OperationsService {
       }
     })
   }
-  setLoaded(loadId: string, outlet: string, quantity: number) {
-    return this.editLoad(loadId, (load) => {
-      const item = load.items.find((i) => i.outlet === outlet)
-      assert(
-        item && Number.isInteger(quantity) && quantity >= 0 && quantity <= item.expected,
-        'Enter a valid case count.',
-      )
-      item.loaded = quantity
-    })
+  setLoaded(loadId: string, outlet: string, quantity: number, expectedRevision?: number) {
+    return this.editLoad(
+      loadId,
+      (load) => {
+        const item = load.items.find((i) => i.outlet === outlet)
+        assert(
+          item && Number.isInteger(quantity) && quantity >= 0 && quantity <= item.expected,
+          'Enter a valid case count.',
+        )
+        item.loaded = quantity
+      },
+      expectedRevision,
+    )
   }
-  setCheck(loadId: string, key: keyof Load['checks'], checked: boolean) {
-    return this.editLoad(loadId, (load) => {
-      load.checks[key] = checked
-    })
+  setCheck(loadId: string, key: keyof Load['checks'], checked: boolean, expectedRevision?: number) {
+    return this.editLoad(
+      loadId,
+      (load) => {
+        assert(
+          ['refrigeration', 'condition', 'restraints'].includes(key),
+          'Select a valid safety check.',
+        )
+        load.checks[key] = checked
+      },
+      expectedRevision,
+    )
   }
-  reportLoadIssue(loadId: string, issue: string) {
-    assert(issue.trim().length > 3, 'Describe the missing or damaged goods.')
-    return this.editLoad(loadId, (load) => {
-      load.issue = issue
-      load.issueResolved = false
-      load.completed = false
-    })
+  reportLoadIssue(loadId: string, issue: string | LoadIssueInput, expectedRevision?: number) {
+    return this.editLoad(
+      loadId,
+      (load) => {
+        assert(load.issueResolved, 'A shortfall is already awaiting a Dispatcher decision.')
+        if (typeof issue !== 'string') {
+          const item = load.items.find((item) => item.outlet === issue.outlet)
+          assert(
+            item &&
+              ['Missing', 'Damaged'].includes(issue.kind) &&
+              Number.isInteger(issue.affectedCases) &&
+              issue.affectedCases > 0 &&
+              issue.affectedCases <= item.expected,
+            'Select a stop and valid affected case count.',
+          )
+          assert(issue.description.trim().length > 3, 'Describe the missing or damaged goods.')
+          load.issueDetails = { ...issue, description: issue.description.trim() }
+          load.issue = `${issue.outlet} · ${issue.kind} · ${issue.affectedCases} cases · ${issue.description.trim()}`
+        } else {
+          assert(issue.trim().length > 3, 'Describe the missing or damaged goods.')
+          load.issue = issue.trim()
+          load.issueDetails = undefined
+        }
+        load.issueResolved = false
+        load.completed = false
+      },
+      expectedRevision,
+    )
   }
   resolveLoadIssue(loadId: string) {
     return this.repository.update((s) => {
       const load = requireLoad(s, loadId)
+      assert(s.settings.published, 'Publish the reviewed plan first.')
       assert(!load.released, 'Loading has already been released.')
+      assert(load.issue && !load.issueResolved, 'No unresolved shortfall needs a decision.')
+      load.acknowledgedRevision = load.revision
       load.issueResolved = true
       load.revision += 1
+      load.revisionChanges = [
+        `Replacement approved for: ${load.issue}`,
+        'Reconcile case counts, repeat safety checks and attach a new photograph.',
+      ]
+      load.items.forEach((item) => {
+        item.loaded = 0
+      })
       load.photoId = undefined
       load.completed = false
       load.checks = { refrigeration: false, condition: false, restraints: false }
-      s.settings.routeRevision = load.revision
+      const driver = s.members.find((member) => member.id === (s.activeDriverId ?? 'USR001'))
+      if (driver?.vehicleId === load.vehicleId && load.trip === 1)
+        s.settings.routeRevision = load.revision
       log(
         s,
         'Demo manifest revised',
@@ -246,10 +358,11 @@ export class OperationsService {
       )
     })
   }
-  async attachLoadingPhoto(loadId: string, file: File) {
+  async attachLoadingPhoto(loadId: string, file: File, expectedRevision?: number) {
     checkPhoto(file)
     const s = await this.repository.getSnapshot(),
       load = requireLoad(s, loadId)
+    this.assertLoadingWritable(s, load, expectedRevision)
     assert(
       !loadErrors(load, false).length && !load.released,
       'Finish the case counts and safety checks before attaching proof.',
@@ -266,6 +379,7 @@ export class OperationsService {
     }
     await this.repository.saveEvidence(evidence, undefined, (current) => {
       const target = requireLoad(current, loadId)
+      this.assertLoadingWritable(current, target, expectedRevision)
       assert(
         target.revision === evidence.revision &&
           !loadErrors(target, false).length &&
@@ -273,13 +387,31 @@ export class OperationsService {
         'Loading changed while the photograph was being saved. Review the load again.',
       )
       target.photoId = evidence.id
+      target.completed = false
       log(current, 'Loading photograph saved', `${target.vehicleId} · Revision ${target.revision}`)
     })
   }
-  completeLoading(loadId: string) {
+  async completeLoading(loadId: string, expectedRevision?: number) {
+    const snapshot = await this.repository.getSnapshot()
+    const previous = requireLoad(snapshot, loadId)
+    this.assertLoadingWritable(snapshot, previous, expectedRevision)
+    const previousErrors = loadErrors(previous)
+    assert(!previousErrors.length, previousErrors[0] ?? 'Loading is incomplete.')
+    const evidence = await this.repository.getEvidence(previous.photoId!)
+    assert(
+      evidence?.kind === 'loading' &&
+        evidence.entityId === loadId &&
+        evidence.revision === previous.revision,
+      'Loading proof is missing or outdated. Attach a fresh photograph.',
+    )
     return this.repository.update((s) => {
       const load = requireLoad(s, loadId),
         errors = loadErrors(load)
+      this.assertLoadingWritable(s, load, expectedRevision)
+      assert(
+        load.photoId === previous.photoId && load.revision === previous.revision,
+        'Loading changed while completion was being saved. Review the load again.',
+      )
       assert(!errors.length, errors[0] ?? 'Loading is incomplete.')
       load.completed = true
       log(
@@ -307,12 +439,15 @@ export class OperationsService {
   }
   startRoute() {
     return this.repository.update((s) => {
+      const driver = s.members.find((m) => m.id === (s.activeDriverId ?? 'USR001'))
+      const load = s.loads
+        .filter((load) => load.vehicleId === driver?.vehicleId)
+        .sort((a, b) => a.trip - b.trip)[0]
       assert(
-        s.loads[0]?.released,
+        load?.released,
         'The Dispatcher must release the vehicle after loading proof is complete.',
       )
       s.settings.routeStarted = true
-      const driver = s.members.find((m) => m.id === (s.activeDriverId ?? 'USR001'))
       assert(
         driver?.status === 'Active' && driver.role === 'driver',
         'An active assigned driver is required before departure.',

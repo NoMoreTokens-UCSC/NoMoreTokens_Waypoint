@@ -5,6 +5,7 @@ import { Switch } from '../atoms/switch'
 import { Modal, Field, Notice } from '../molecules/Common'
 import { useOperations, useAction } from '../../hooks/useOperations'
 import { useServices } from '../../providers/ServicesContext'
+import { useActiveRole } from '../../session/useSession'
 
 export function ScenarioPanel({
   open,
@@ -17,7 +18,9 @@ export function ScenarioPanel({
     service = useServices(),
     action = useAction()
   const [confirmReset, setConfirmReset] = useState(false)
+  const role = useActiveRole()
   if (!data) return null
+  const load = data.loads[0]
   return (
     <Modal
       title="Demo scenarios"
@@ -79,13 +82,14 @@ export function ScenarioPanel({
           variant="outline"
           disabled={
             action.isPending ||
-            !data.loads[0].issue ||
-            data.loads[0].issueResolved ||
-            data.loads[0].released
+            role !== 'dispatcher' ||
+            !load?.issue ||
+            load.issueResolved ||
+            load.released
           }
           onClick={() =>
             action.run(
-              () => service.resolveLoadIssue(data.loads[0].id),
+              () => service.resolveLoadIssue(load?.id ?? ''),
               'Demo Dispatcher decision issued · collect replacement and repeat checks',
             )
           }
@@ -104,14 +108,11 @@ export function ScenarioPanel({
         </Button>
         <Button
           variant="outline"
-          disabled={action.isPending || data.loads[0].released}
+          disabled={action.isPending || !load || load.released || !data.settings.published}
           onClick={() =>
             action.run(
               () =>
-                service.reportLoadIssue(
-                  data.loads[0].id,
-                  'One milk case is missing. Loading held.',
-                ),
+                service.reportLoadIssue(load?.id ?? '', 'One milk case is missing. Loading held.'),
               'Loading shortfall recorded',
             )
           }
