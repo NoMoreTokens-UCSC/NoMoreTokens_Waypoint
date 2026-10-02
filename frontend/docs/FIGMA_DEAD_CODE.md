@@ -16,7 +16,9 @@ live imports it. Lint enforces this (`no-restricted-imports` in `eslint.config.j
 | e2e specs         | the files listed in `testIgnore` in `playwright.config.ts`                                                                                                                                                                                                                                                    |
 
 Routes `/design`, `/design/:frameId` and `/demo/responsive/:frameId` were removed with the renderer.
-`/login` and `/how-it-works` redirect to `/welcome` until native pages exist.
+The entry pages (`/welcome`, `/how-it-works`, `/login`, `/workspaces`) are native rebuilds of the Figma
+entry frames; their photos were copied to `public/images/entry/`, so deleting `public/figma/` does not
+affect them.
 
 ## Deleting it
 

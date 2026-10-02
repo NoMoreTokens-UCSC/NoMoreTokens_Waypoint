@@ -5,17 +5,17 @@ shell (sidebar, header, mobile navigation) and the data contract are common to a
 
 ## Who owns what
 
-| Folder                                                              | Owner                 | Contains                                       |
-| ------------------------------------------------------------------- | --------------------- | ---------------------------------------------- |
-| `src/presentation/sections/dispatcher`                              | Dispatcher            | pages, components and hooks for the role       |
-| `src/presentation/sections/store-manager`                           | Store manager         | 〃                                             |
-| `src/presentation/sections/loader`                                  | Loader                | 〃                                             |
-| `src/presentation/sections/driver`                                  | Driver                | 〃                                             |
-| `src/presentation/sections/administration`                          | Administration        | 〃                                             |
-| `src/presentation/sections/entry-account`                           | Shared                | welcome / workspace chooser, profile, settings |
-| `src/presentation/sections/recovery`                                | Shared                | saved records and sync                         |
-| `src/presentation/shared`, `roles`, `session`, `providers`, `hooks` | Shared                | shell, UI kit, registry, identity, data hooks  |
-| `src/domain/api`                                                    | Shared (with backend) | the data contract                              |
+| Folder                                                              | Owner                 | Contains                                                           |
+| ------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------ |
+| `src/presentation/sections/dispatcher`                              | Dispatcher            | pages, components and hooks for the role                           |
+| `src/presentation/sections/store-manager`                           | Store manager         | 〃                                                                 |
+| `src/presentation/sections/loader`                                  | Loader                | 〃                                                                 |
+| `src/presentation/sections/driver`                                  | Driver                | 〃                                                                 |
+| `src/presentation/sections/administration`                          | Administration        | 〃                                                                 |
+| `src/presentation/sections/entry-account`                           | Shared                | welcome, how it works, login, workspace chooser, profile, settings |
+| `src/presentation/sections/recovery`                                | Shared                | saved records and sync                                             |
+| `src/presentation/shared`, `roles`, `session`, `providers`, `hooks` | Shared                | shell, UI kit, registry, identity, data hooks                      |
+| `src/domain/api`                                                    | Shared (with backend) | the data contract                                                  |
 
 Change shared code in its own small commit and tell the team. Lint stops one module importing another
 module's folder: if two roles need the same component, move it to `presentation/shared`.
