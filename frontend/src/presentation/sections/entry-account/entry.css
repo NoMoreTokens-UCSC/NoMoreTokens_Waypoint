@@ -710,6 +710,7 @@
 }
 .entry-login-photo footer {
   font-size: 13px;
+  color: rgba(255, 255, 255, 0.62);
 }
 .entry-login-panel {
   display: grid;
@@ -718,15 +719,15 @@
 }
 .entry-login-form {
   display: grid;
-  gap: 24px;
+  gap: 20px;
   width: 100%;
-  max-width: 400px;
+  max-width: 340px;
 }
 .entry-login-form .entry-wordmark {
-  font-size: 20px;
+  font-size: 17px;
 }
 .entry-login-form h1 {
-  font-size: 30px;
+  font-size: 25px;
   font-weight: 500;
   letter-spacing: -0.5px;
   line-height: 1.2;
@@ -734,10 +735,12 @@
 }
 .entry-login-lead {
   color: #6e737b;
-  margin-top: -18px;
+  font-size: 13px;
+  margin-top: -15px;
 }
 .entry-login-form .entry-button {
-  height: 48px;
+  height: 42px;
+  font-size: 12px;
 }
 .entry-login-error {
   display: flex;
@@ -751,15 +754,15 @@
 }
 .entry-field {
   display: grid;
-  gap: 6px;
-  font-size: 13px;
-  line-height: 16px;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 15px;
   font-weight: 500;
 }
 .entry-field input {
-  height: 44px;
-  padding: 0 16px;
-  font-size: 14px;
+  height: 38px;
+  padding: 0 14px;
+  font-size: 12px;
   border: 1px solid transparent;
   border-radius: 22px;
   background: #f2f1ef;
@@ -776,7 +779,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
+  font-size: 12px;
 }
 .entry-login-options label {
   display: inline-flex;
@@ -784,8 +787,8 @@
   gap: 8px;
 }
 .entry-login-options input {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   accent-color: #f26a2e;
 }
 .entry-login-options button {
@@ -808,7 +811,7 @@
 }
 .entry-login-help {
   color: #8a8c90;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 @media (max-width: 1100px) {
