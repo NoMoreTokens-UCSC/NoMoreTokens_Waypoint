@@ -85,6 +85,8 @@ export interface OrderForm {
   stepCases: (temperature: Temperature, by: number) => void
   setWindow: (temperature: Temperature, window: string) => void
   setIncluded: (temperature: Temperature, included: boolean) => void
+  /** Fills the form from an earlier day's orders; a temperature that day had none of is left out. */
+  fillFrom: (previous: Order[]) => void
   reset: () => void
 }
 
@@ -137,6 +139,21 @@ export function useOrderForm(orders: Order[]): OrderForm {
     setWindow: (temperature, window) => update(temperature, { ...values[temperature], window }),
     setIncluded: (temperature, include) =>
       write({ ...edits, skipped: { ...edits.skipped, [temperature]: !include } }),
+    fillFrom: (previous) =>
+      write({
+        values: Object.fromEntries(
+          temperatures.flatMap((temperature) => {
+            const match = previous.find((order) => order.temperature === temperature)
+            return match ? [[temperature, valuesFromOrder(temperature, match)]] : []
+          }),
+        ),
+        skipped: Object.fromEntries(
+          temperatures.map((temperature) => [
+            temperature,
+            !previous.some((order) => order.temperature === temperature),
+          ]),
+        ),
+      }),
     reset: () => write(empty()),
   }
 }

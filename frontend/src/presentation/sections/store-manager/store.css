@@ -169,7 +169,7 @@
 .sm-tile {
   display: grid;
   gap: 4px;
-  padding: 0;
+  padding: 12px 16px;
   border-radius: 8px;
   background: white;
   box-shadow:
@@ -177,7 +177,10 @@
     0 8px 24px rgba(34, 37, 42, 0.04);
 }
 .app-shell[data-compact='true'] .sm-tile {
-  padding: 10px;
+  padding: 12px 14px;
+}
+.sm-tile-lg {
+  padding: 16px 20px;
 }
 .sm-tile span {
   font-size: 12px;
@@ -384,11 +387,11 @@
   gap: 16px;
 }
 .sm-totals .sm-tile {
-  padding: 0;
+  padding: 12px 16px;
   background: #f5f4f2;
 }
 .app-shell[data-compact='true'] .sm-totals .sm-tile {
-  padding: 10px;
+  padding: 12px 14px;
 }
 
 /* Review */
@@ -1350,4 +1353,78 @@
   margin-top: 2px;
   font-size: 12px;
   color: #b3261e;
+}
+
+.sm-planned {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: #6b6b6b;
+}
+
+/* A single count field on a card: keep it a comfortable width instead of the whole row. */
+.sm-field-narrow {
+  max-width: 280px;
+}
+
+/* Vehicle details, opened from the vehicle on the map */
+.sm-vehicle-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1100;
+  width: min(260px, calc(100% - 24px));
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: white;
+  box-shadow:
+    0 2px 8px rgba(34, 37, 42, 0.12),
+    0 8px 24px rgba(34, 37, 42, 0.12);
+}
+.sm-vehicle-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.sm-vehicle-panel header strong {
+  font-size: 16px;
+  line-height: 24px;
+}
+.sm-vehicle-panel header button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: #22252a;
+}
+.sm-vehicle-panel header button:hover {
+  background: #f5f4f2;
+}
+.sm-vehicle-panel dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.sm-vehicle-panel dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sm-vehicle-panel dt {
+  font-size: 12px;
+  line-height: 20px;
+  color: #6e737b;
+}
+.sm-vehicle-panel dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  text-align: right;
 }

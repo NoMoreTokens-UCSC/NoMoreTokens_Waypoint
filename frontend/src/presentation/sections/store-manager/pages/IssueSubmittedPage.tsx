@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
-import { formatClock, formatLongDate } from '../../../../domain/calendar'
+import { formatLongDate } from '../../../../domain/calendar'
+import { clock12 } from '../lib/timeText'
 import { Action, ActionLink, Callout, PageIntro, Pill, StorePage } from '../components/StoreKit'
 import { ProofDialog } from '../components/ProofPhoto'
 import { issueReference } from '../lib/orderView'
@@ -25,7 +26,7 @@ export default function IssueSubmittedPage() {
     <StorePage>
       <PageIntro
         title="Issue submitted"
-        context={`${order.id} · ${outletId} · ${formatLongDate(report.recordedAt)} · ${formatClock(report.recordedAt)}`}
+        context={`${order.id} · ${outletId} · ${formatLongDate(report.recordedAt)} · ${clock12(report.recordedAt)}`}
       />
       <section className="sm-panel sm-result" aria-label="Issue">
         <Pill tone="amber">Open · Awaiting review</Pill>

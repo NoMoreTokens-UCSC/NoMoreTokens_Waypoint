@@ -2,6 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 import { AlertIcon, CheckIcon } from './StoreIcons'
 import { SyncStatus } from './SyncStatus'
+import { quantityText, windowText } from '../lib/orderView'
 import '../store.css'
 
 /** Page wrapper: applies the store theme and the Figma vertical rhythm. */
@@ -135,10 +136,13 @@ export function StepperField({
   unit,
   value,
   error,
+  narrow,
   onChange,
   onStep,
 }: {
   label: string
+  /** Keep to a comfortable width when the field has a whole row to itself. */
+  narrow?: boolean
   /** What one step adds, for the button labels: "case". */
   unit: string
   value: string
@@ -147,7 +151,7 @@ export function StepperField({
   onStep: (by: number) => void
 }) {
   return (
-    <div className="sm-field">
+    <div className={`sm-field${narrow ? ' sm-field-narrow' : ''}`}>
       <span id={`stepper-${label}`}>{label}</span>
       <div className="sm-stepper">
         <button type="button" aria-label={`Remove one ${unit}`} onClick={() => onStep(-1)}>
@@ -166,6 +170,57 @@ export function StepperField({
       </div>
       {error && <small role="alert">{error}</small>}
     </div>
+  )
+}
+
+/**
+ * Shown when confirming will replace an order the store has already placed (or, for Tech, change one
+ * picked from the list). Says which order, what it is now, and what confirming does to it.
+ */
+export function ReplaceNotice({
+  order,
+  change = false,
+}: {
+  order: {
+    id: string
+    cases: number
+    weight: number
+    volume: number
+    window: string
+    windowEnd?: string
+    brand?: 'Fresh' | 'Style' | 'Tech'
+  }
+  /** Tech: the order is being changed and no other order is touched. */
+  change?: boolean
+}) {
+  const unsent = order.id.startsWith('PENDING')
+  return (
+    <p className="sm-planned" role="note">
+      <Pill tone="amber">
+        {change ? 'Changing' : 'Replaces'} {unsent ? 'your unsent order' : order.id}
+      </Pill>
+      <span>
+        Currently {quantityText(order)} · window {windowText(order)}.{' '}
+        {change
+          ? 'Saving changes only this order.'
+          : 'Confirming replaces it with what you enter here.'}
+      </span>
+    </p>
+  )
+}
+
+/**
+ * Shown on an order the dispatcher has already planned. Changing or cancelling it is still allowed
+ * until the cutoff, but it goes back to the dispatcher to be planned again.
+ */
+export function PlannedNotice({ action = 'Changing' }: { action?: string }) {
+  return (
+    <p className="sm-planned" role="note">
+      <Pill tone="orange">Already planned</Pill>
+      <span>
+        The dispatcher has planned this order. {action} it sends it back to be planned again.
+      </span>
+    </p>
   )
 }
 

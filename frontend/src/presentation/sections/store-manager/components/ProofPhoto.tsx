@@ -1,7 +1,8 @@
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../shared/atoms/dialog'
 import { BackIcon } from '../../../shared/templates/shellIcons'
 import { Action } from './StoreKit'
-import { formatClock, formatShortDate } from '../../../../domain/calendar'
+import { formatShortDate } from '../../../../domain/calendar'
+import { clock12 } from '../lib/timeText'
 import fallback from '../assets/delivery-photo.png'
 
 /** The delivery photograph, or the design's placeholder illustration before a photo is synced. */
@@ -59,7 +60,7 @@ export function ProofDialog({
           {orderId} · {outletId}
           <br />
           {capturedAt
-            ? `Captured by driver · ${formatShortDate(capturedAt)}, ${formatClock(capturedAt)}`
+            ? `Captured by driver · ${formatShortDate(capturedAt)}, ${clock12(capturedAt)}`
             : 'Captured by driver'}
         </p>
         <Action variant="grey" onClick={onClose}>

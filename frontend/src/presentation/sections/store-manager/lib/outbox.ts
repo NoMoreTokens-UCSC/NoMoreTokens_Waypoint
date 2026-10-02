@@ -16,6 +16,7 @@ export type OutboxRequest =
   | { kind: 'issue'; orderId: string; issue: ReceiptIssue }
   | { kind: 'acknowledge'; orderId: string }
   | { kind: 'cancel'; orderId: string }
+  | { kind: 'profile'; memberId: string; name: string; mobile: string; email: string }
 
 /** waiting: not sent yet · sending · failed: needs the person · draft: arrived after the cutoff. */
 export type OutboxStatus = 'waiting' | 'sending' | 'failed' | 'draft'
@@ -119,18 +120,28 @@ export function applyOutbox(orders: Order[], outbox: OutboxItem[]): StoreOrder[]
   for (const item of outbox.filter(isWaiting)) {
     const { request } = item
     if (request.kind === 'orders') {
+      // Tech orders stand alone (a new one is added unless an existing order is changed).
+      const tech = result[0]?.brand === 'Tech'
       for (const input of request.inputs) {
-        const existing = result.find((order) => order.temperature === input.temperature)
+        const existing = input.orderId
+          ? result.find((order) => order.id === input.orderId)
+          : tech
+            ? undefined
+            : result.find((order) => order.temperature === input.temperature)
+        // `orderId` only says which order is being changed; it is not an order field.
+        const fields = { ...input, orderId: undefined }
         const placed: StoreOrder = {
           ...(existing ?? {
-            id: `PENDING-${input.temperature === 'Chilled' ? 'C' : 'A'}`,
+            id: tech
+              ? `PENDING-${item.id}`
+              : `PENDING-${input.temperature === 'Chilled' ? 'C' : 'A'}`,
             outlet: item.outletId,
             outletName: result[0]?.outletName ?? item.outletId,
             brand: result[0]?.brand ?? 'Fresh',
             priority: false,
             receipt: 'Pending',
           }),
-          ...input,
+          ...fields,
           status: 'Confirmed',
           vehicleId: undefined,
           trip: undefined,
@@ -141,6 +152,8 @@ export function applyOutbox(orders: Order[], outbox: OutboxItem[]): StoreOrder[]
           ? result.map((order) => (order === existing ? placed : order))
           : [...result, placed]
       }
+    } else if (request.kind === 'profile') {
+      // Contact details are not part of an order; the page shows what is waiting.
     } else if (request.kind === 'cancel') {
       result = result.filter((order) => order.id !== request.orderId)
     } else if (request.kind === 'receipt') {

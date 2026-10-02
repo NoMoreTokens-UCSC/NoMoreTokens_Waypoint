@@ -1,5 +1,6 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { formatClock, formatLongDate } from '../../../../domain/calendar'
+import { formatLongDate } from '../../../../domain/calendar'
+import { clock12 } from '../lib/timeText'
 import { useStoreAction } from '../lib/useStoreAction'
 import {
   Action,
@@ -37,7 +38,7 @@ export default function ReceiptPage() {
     <StorePage>
       <PageIntro
         title="Confirm receipt"
-        context={`${order.id} · ${outletId}${deliveredAt ? ` · Delivered ${formatLongDate(deliveredAt)} at ${formatClock(deliveredAt)}` : ''}`}
+        context={`${order.id} · ${outletId}${deliveredAt ? ` · Delivered ${formatLongDate(deliveredAt)} at ${clock12(deliveredAt)}` : ''}`}
       />
       <Callout tone="success" title="Delivery recorded by the driver">
         A delivery photo is attached. Count and inspect the goods before confirming receipt.
@@ -77,7 +78,7 @@ export default function ReceiptPage() {
           <ProofImage url={proof.url} alt={`Delivery photograph for ${order.id}`} />
           <p className="sm-photo-caption">
             {order.id}
-            {captured ? ` · Captured ${formatClock(captured)}` : ''}
+            {captured ? ` · Captured ${clock12(captured)}` : ''}
             <br />
             Submitted by the driver{order.vehicleId ? ` · Vehicle ${order.vehicleId}` : ''}
           </p>

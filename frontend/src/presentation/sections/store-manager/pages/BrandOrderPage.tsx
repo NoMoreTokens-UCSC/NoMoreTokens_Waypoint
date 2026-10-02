@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { formatLongDate } from '../../../../domain/calendar'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { formatLongDate, formatWeekday } from '../../../../domain/calendar'
+import { useApis } from '../../../providers/ApisContext'
 import type { OutletProfile } from '../../../../domain/outlets'
 import { useBusinessClock } from '../../../session/useBusinessClock'
 import {
   Action,
   Callout,
   OfflineNotice,
+  PlannedNotice,
+  ReplaceNotice,
   PageIntro,
   Pill,
   StepperField,
@@ -15,7 +18,7 @@ import {
 } from '../components/StoreKit'
 import { WindowPicker } from '../components/WindowPicker'
 import { cutoffLabel } from '../lib/cutoff'
-import { countText, kindOf, quantityText, windowEnd } from '../lib/orderView'
+import { countText, kindOf, quantityText, windowEnd, windowText } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
 import { useStoreOrders } from '../lib/useStore'
 import { useStoreAction } from '../lib/useStoreAction'
@@ -37,17 +40,23 @@ const clampCount = (text: string) => Math.max(0, Math.min(100, Math.trunc(Number
 export default function BrandOrderPage({ profile }: { profile: OutletProfile }) {
   const { loaded } = useStoreOrders()
   // The form starts from the outlet's current order, so wait until it is known.
-  return loaded ? <BrandOrderForm profile={profile} /> : null
+  const changing = useSearchParams()[0].get('order') ?? 'new'
+  // A different order being changed starts the form again.
+  return loaded ? <BrandOrderForm key={changing} profile={profile} /> : null
 }
 
 function BrandOrderForm({ profile }: { profile: OutletProfile }) {
   const brand = profile.brand as 'Style' | 'Tech'
   const navigate = useNavigate()
+  const apis = useApis()
   const action = useStoreAction()
   const clock = useBusinessClock()
   const online = useOnline()
   const { orders } = useStoreOrders()
-  const existing = orders[0]
+  const changingId = useSearchParams()[0].get('order')
+  // Tech orders stand alone: the form adds a new order, or changes the one picked from the list.
+  // Style has one weekly order, which the form replaces.
+  const existing = brand === 'Tech' ? orders.find((order) => order.id === changingId) : orders[0]
   const sizes = perUnit[brand]
   const [count, setCount] = useState(String(existing?.cases ?? sizes.first))
   const [window, setWindow] = useState(
@@ -88,17 +97,38 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
             volume,
             window: parsed.start,
             windowEnd: parsed.end,
+            orderId: brand === 'Tech' ? existing?.id : undefined,
           },
         ],
       },
-      `Confirm ${brand} order`,
+      existing && brand === 'Tech' ? `Change order ${existing.id}` : `Confirm ${brand} order`,
       () => navigate('/store-manager/orders/confirmed'),
+    )
+  }
+  // After the cutoff the order cannot join tomorrow's plan; it is kept as a draft for the next run.
+  const keepDraft = () => {
+    setAttempted(true)
+    if (!valid) return
+    const parsed = parseWindow(window)!
+    action.runThen(
+      () =>
+        apis.orders.saveDrafts(profile.id, [
+          {
+            temperature: 'Ambient',
+            cases: units,
+            weight,
+            volume,
+            window: parsed.start,
+            windowEnd: parsed.end,
+          },
+        ]),
+      () => navigate('/store-manager/orders/draft'),
     )
   }
   return (
     <StorePage>
       <PageIntro
-        title={brand === 'Style' ? 'Weekly order' : 'Create order'}
+        title={brand === 'Style' ? 'Weekly order' : existing ? 'Change order' : 'Create order'}
         context={`${profile.id} · ${profile.name} · Delivery ${formatLongDate(clock.deliveryDate)}`}
       />
       {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
@@ -113,6 +143,35 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
           arrival.
         </Callout>
       )}
+      {brand === 'Tech' && orders.length > 0 && (
+        <section className="sm-panel" aria-label="Orders for this delivery">
+          <h2 className="sm-h22">Already ordered for this delivery</h2>
+          <ul className="sm-feed">
+            {orders.map((order) => (
+              <li key={order.id}>
+                <div>
+                  <strong>
+                    {order.pendingSync && order.id.startsWith('PENDING')
+                      ? 'New order (waiting to send)'
+                      : order.id}
+                  </strong>
+                  <small>
+                    {quantityText(order)} · {windowText(order)}
+                  </small>
+                </div>
+                {!order.pendingSync && ['Confirmed', 'Allocated'].includes(order.status) && (
+                  <Link className="sm-feed-link" to={`/store-manager/orders/new?order=${order.id}`}>
+                    Change
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="sm-muted sm-small">
+            Each order is separate. Add as many as you need before the cutoff.
+          </p>
+        </section>
+      )}
       <section className="sm-card" aria-label={kind.title}>
         <div className="sm-widget-head">
           <div>
@@ -123,9 +182,21 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
             <Pill tone="amber">{brand === 'Style' ? 'Weekly' : 'As needed'}</Pill>
           </span>
         </div>
+        {brand === 'Tech' && !existing && orders.length > 0 && (
+          <p className="sm-planned" role="note">
+            <Pill tone="green">New order</Pill>
+            <span>
+              This is added beside your {orders.length} existing order
+              {orders.length === 1 ? '' : 's'}; they are not changed.
+            </span>
+          </p>
+        )}
+        {existing && <ReplaceNotice order={existing} change={brand === 'Tech'} />}
+        {existing?.status === 'Allocated' && <PlannedNotice />}
         <StepperField
           label={brand === 'Style' ? 'Cartons' : 'Items'}
           unit={sizes.unit}
+          narrow
           value={count}
           error={attempted ? errors.count : undefined}
           onChange={(value) => setCount(value.replace(/\D/g, ''))}
@@ -160,18 +231,28 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
         <p className="sm-note">
           Estimated from typical {brand === 'Style' ? 'garments and cartons' : 'appliances'}; the
           dispatcher confirms the load.
-          {existing &&
-            ` You already have ${existing.id} (${quantityText(existing)}); confirming replaces it.`}
         </p>
       </section>
       <div className="sm-actions">
         {clock.cutoffPassed ? (
-          <Callout title="Today’s cutoff has passed">
-            Place this order before {cutoffLabel(clock.cutoff)} for the next delivery.
-          </Callout>
+          <>
+            <Callout title="Today’s cutoff has passed">
+              {formatWeekday(clock.deliveryDate)}’s intake is locked. Keep this order as a draft and
+              confirm it for the next run.
+            </Callout>
+            <Action variant="outline" onClick={keepDraft} disabled={action.isPending}>
+              Keep draft for {formatWeekday(clock.nextRunDate)}
+            </Action>
+          </>
         ) : (
           <Action onClick={place} disabled={action.isPending}>
-            Confirm {countText(units, { brand })} order
+            {brand === 'Tech'
+              ? existing
+                ? `Save changes to ${existing.id}`
+                : orders.length
+                  ? `Add ${countText(units, { brand })} order`
+                  : `Confirm ${countText(units, { brand })} order`
+              : `Confirm ${countText(units, { brand })} order`}
           </Action>
         )}
       </div>

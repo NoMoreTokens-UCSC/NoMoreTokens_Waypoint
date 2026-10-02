@@ -10,11 +10,13 @@ import {
   PageIntro,
   StorePage,
 } from '../components/StoreKit'
-import { countText, kindSlash } from '../lib/orderView'
+import { countText, kindSlash, unitOf } from '../lib/orderView'
 import { checkIssue, issueSummary, type IssueDraft, type IssueKind } from '../lib/receiptIssue'
 import { useStoreOrders } from '../lib/useStore'
 
 /** Report a delivery issue: structured counts so the dispatcher can act on the discrepancy. */
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
 export default function IssuePage() {
   const { orderId } = useParams()
   const navigate = useNavigate()
@@ -32,14 +34,14 @@ export default function IssuePage() {
   if (!loaded) return null
   if (!order || order.status !== 'Delivered')
     return <Navigate to="/store-manager/deliveries" replace />
-  const errors = attempted ? checkIssue(draft, order.cases) : {}
+  const errors = attempted ? checkIssue(draft, order.cases, unitOf(order)) : {}
   const label = draft.kind === 'Missing' ? 'Missing' : 'Damaged'
   const base = `/store-manager/deliveries/${order.id}`
   const change = (patch: Partial<IssueDraft>) => setDraft((current) => ({ ...current, ...patch }))
   const choose = (kind: IssueKind) => change({ kind })
   const submit = () => {
     setAttempted(true)
-    if (Object.keys(checkIssue(draft, order.cases)).length) return
+    if (Object.keys(checkIssue(draft, order.cases, unitOf(order))).length) return
     action.send(
       {
         kind: 'issue',
@@ -77,14 +79,14 @@ export default function IssuePage() {
         </div>
         <div className="sm-pair">
           <FieldInput
-            label="Cases received · required"
+            label={`${capital(unitOf(order))}s received · required`}
             inputMode="numeric"
             value={draft.received}
             error={errors.received}
             onChange={(event) => change({ received: event.target.value })}
           />
           <FieldInput
-            label={`${label} cases · required`}
+            label={`${label} ${unitOf(order)}s · required`}
             inputMode="numeric"
             value={draft.affected}
             error={errors.affected}
@@ -97,8 +99,8 @@ export default function IssuePage() {
           error={errors.description}
           placeholder={
             draft.kind === 'Missing'
-              ? 'Example: Two cases are missing from the delivery.'
-              : 'Example: Two cases arrived crushed, with damaged contents.'
+              ? `Example: Two ${unitOf(order)}s are missing from the delivery.`
+              : `Example: Two ${unitOf(order)}s arrived crushed, with damaged contents.`
           }
           onChange={(event) => change({ description: event.target.value })}
         />

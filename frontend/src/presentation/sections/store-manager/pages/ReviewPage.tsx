@@ -8,6 +8,8 @@ import {
   ActionLink,
   Callout,
   OfflineNotice,
+  PlannedNotice,
+  ReplaceNotice,
   PageIntro,
   StorePage,
 } from '../components/StoreKit'
@@ -66,6 +68,10 @@ export default function ReviewPage() {
               <div>
                 <strong>{kind.title}</strong>
                 <small>{kind.subtitle}</small>
+                {byTemperature(input.temperature) && (
+                  <ReplaceNotice order={byTemperature(input.temperature)!} />
+                )}
+                {byTemperature(input.temperature)?.status === 'Allocated' && <PlannedNotice />}
               </div>
               <span className="sm-details">{quantityText(input)}</span>
               <span className="sm-window">

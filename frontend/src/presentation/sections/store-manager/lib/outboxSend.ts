@@ -10,6 +10,12 @@ export function perform(apis: Apis, outletId: string, request: OutboxRequest) {
       return apis.orders.confirmReceipt(request.orderId)
     case 'issue':
       return apis.orders.reportReceiptIssue(request.orderId, request.issue)
+    case 'profile':
+      return apis.team.updateContact(request.memberId, {
+        name: request.name,
+        mobile: request.mobile,
+        email: request.email,
+      })
     case 'cancel':
       return apis.orders.cancelOrder(request.orderId)
     case 'acknowledge':

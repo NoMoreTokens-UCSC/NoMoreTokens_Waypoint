@@ -2,13 +2,14 @@ import { formatLongDate, formatWeekday } from '../../../../domain/calendar'
 import { useBusinessClock } from '../../../session/useBusinessClock'
 import { ActionLink, Callout, PageIntro, Pill, StorePage, Tile } from '../components/StoreKit'
 import { quantityText, temperatures, totals } from '../lib/orderView'
-import { useStoreDrafts, useStoreOutlet } from '../lib/useStore'
+import { useStoreDrafts, useStoreOutlet, useStoreProfile } from '../lib/useStore'
 
 /** Draft saved for the next run: saved, not submitted, and no vehicle or window promised. */
 export default function DraftSavedPage() {
   const clock = useBusinessClock()
   const outletId = useStoreOutlet()
   const { drafts } = useStoreDrafts()
+  const brand = useStoreProfile().profile?.brand ?? 'Fresh'
   // The latest draft of each temperature is the one that will be offered at the next intake.
   const latest = temperatures
     .map((temperature) => drafts.filter((draft) => draft.temperature === temperature).at(-1))
@@ -21,16 +22,20 @@ export default function DraftSavedPage() {
     <StorePage>
       <PageIntro
         title="Draft saved for next run"
-        context={`${latest.length} separate Fresh orders · Not submitted · ${outletId}`}
+        context={`${latest.length === 1 ? `1 ${brand} order` : `${latest.length} separate ${brand} orders`} · Not submitted · ${outletId}`}
       />
       <section className="sm-panel" aria-label="Saved draft">
         <Pill>Draft saved</Pill>
         <h2>Ready for {next}’s intake.</h2>
         <Tile size="sm" big label="Next eligible run" value={formatLongDate(clock.nextRunDate)} />
         <p className="sm-muted">
-          {latest.length ? quantityText({ ...sum }) : 'No draft saved yet'}
-          <br />
-          Fresh chilled and Fresh dry remain separate records.
+          {latest.length ? quantityText({ ...sum, brand }) : 'No draft saved yet'}
+          {brand === 'Fresh' && (
+            <>
+              <br />
+              Fresh chilled and Fresh dry remain separate records.
+            </>
+          )}
         </p>
         <Callout title="Confirmation still required">
           This draft is saved, not submitted. Review the new date and receiving windows during the

@@ -1,4 +1,5 @@
-import { formatClock, formatShortDate } from '../../../../domain/calendar'
+import { formatShortDate } from '../../../../domain/calendar'
+import { clock12 } from '../lib/timeText'
 import type { Order } from '../../../../domain/models'
 
 const steps = [
@@ -21,9 +22,7 @@ export function Timeline({ order }: { order: Order }) {
             </span>
             <div>
               <strong>{step.label}</strong>
-              <small>
-                {at ? `${formatShortDate(at)} · ${formatClock(at)}` : 'Awaiting update'}
-              </small>
+              <small>{at ? `${formatShortDate(at)} · ${clock12(at)}` : 'Awaiting update'}</small>
             </div>
           </li>
         )

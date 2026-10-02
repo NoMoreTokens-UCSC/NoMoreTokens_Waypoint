@@ -82,6 +82,7 @@ export const quantityText = (item: {
 
 /** What the store sees: allocation stays private until the dispatcher publishes the plan. */
 export function storeStatus(order: Order & { pendingSync?: boolean }) {
+  if (order.cancelledAt) return 'Cancelled'
   if (order.pendingSync && order.status === 'Confirmed') return 'Waiting to send'
   switch (order.status) {
     case 'Deferred':
@@ -98,6 +99,7 @@ export function storeStatus(order: Order & { pendingSync?: boolean }) {
 }
 /** The pill colour for a store-facing status. */
 export function statusTone(order: Order) {
+  if (order.cancelledAt) return 'red'
   switch (order.status) {
     case 'Deferred':
       return 'red'

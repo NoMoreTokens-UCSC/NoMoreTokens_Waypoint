@@ -4,7 +4,15 @@ import { toast } from 'sonner'
 import { formatClock, formatShortDate } from '../../../../domain/calendar'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { useBusinessClock } from '../../../session/useBusinessClock'
-import { Action, ActionLink, Callout, PageIntro, Pill, StorePage } from '../components/StoreKit'
+import {
+  Action,
+  ActionLink,
+  Callout,
+  PlannedNotice,
+  PageIntro,
+  Pill,
+  StorePage,
+} from '../components/StoreKit'
 import { Timeline } from '../components/Timeline'
 import { deliveredLate, durationText, runningLate } from '../lib/lateness'
 import { deliveryDayLabel, receiptLabel } from '../lib/orderList'
@@ -77,6 +85,9 @@ export default function OrderDetailPage() {
           </Callout>
         )}
         <h2 className="sm-h22">{kind.title}</h2>
+        {order.status === 'Allocated' && live && !order.cancelledAt && (
+          <PlannedNotice action="Changing or cancelling" />
+        )}
         <div className="sm-facts">
           <div className="sm-fact">
             <span>Quantity</span>
@@ -106,7 +117,15 @@ export default function OrderDetailPage() {
         </div>
       </section>
 
-      {order.status === 'Deferred' ? (
+      {order.cancelledAt ? (
+        <section className="sm-panel" aria-label="Cancellation">
+          <h2 className="sm-h22">Cancelled</h2>
+          <p className="sm-muted">
+            You cancelled this order {stamp(order.cancelledAt)}, before the cutoff. It is not in the
+            plan and no vehicle will be sent for it.
+          </p>
+        </section>
+      ) : order.status === 'Deferred' ? (
         <section className="sm-panel" aria-label="Deferral">
           <h2 className="sm-h22">Deferred to the next run</h2>
           <p className="sm-muted">
@@ -153,6 +172,8 @@ export default function OrderDetailPage() {
         <Callout tone="danger" title={`Cancel order ${order.id}?`}>
           Dispatch will remove it from the next run and you will have no {kind.short.toLowerCase()}{' '}
           groceries ordered for that day. You can place a new order until the cutoff.
+          {order.status === 'Allocated' &&
+            ' The dispatcher has already planned it, so they will plan that run again.'}
         </Callout>
       )}
       {locked && !order.pendingSync && (
@@ -174,7 +195,7 @@ export default function OrderDetailPage() {
         )}
         {editable && !confirmingCancel && (
           <>
-            <ActionLink to="/store-manager/orders/new">Edit order</ActionLink>
+            <ActionLink to={`/store-manager/orders/new?order=${order.id}`}>Edit order</ActionLink>
             <Action variant="grey" onClick={() => setConfirmingCancel(true)}>
               Cancel order
             </Action>

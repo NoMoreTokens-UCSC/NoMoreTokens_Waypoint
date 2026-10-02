@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
-import { formatClock, formatLongDate } from '../../../../domain/calendar'
+import { formatLongDate } from '../../../../domain/calendar'
+import { clock12 } from '../lib/timeText'
 import { Action, ActionLink, Callout, PageIntro, Pill, StorePage } from '../components/StoreKit'
 import { ProofDialog } from '../components/ProofPhoto'
 import { countText, kindOf } from '../lib/orderView'
@@ -24,7 +25,7 @@ export default function ReceiptConfirmedPage() {
     <StorePage>
       <PageIntro
         title="Receipt confirmed"
-        context={`${order.id} · ${outletId}${at ? ` · ${formatLongDate(at)} · ${formatClock(at)}` : ''}`}
+        context={`${order.id} · ${outletId}${at ? ` · ${formatLongDate(at)} · ${clock12(at)}` : ''}`}
       />
       <section className="sm-panel sm-result" aria-label="Receipt">
         <Pill>Receipt confirmed</Pill>
