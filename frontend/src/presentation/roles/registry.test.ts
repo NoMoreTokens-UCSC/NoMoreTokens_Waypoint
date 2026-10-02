@@ -6,6 +6,9 @@ describe('module registry', () => {
     const paths = appRoutes.map((route) => route.path)
     expect(new Set(paths).size).toBe(paths.length)
   })
+  it('names every page for the breadcrumb', () => {
+    for (const route of appRoutes) expect(route.title.trim(), route.path).not.toBe('')
+  })
   it('uses unique module keys', () => {
     const keys = appModules.map((module) => module.key)
     expect(new Set(keys).size).toBe(keys.length)

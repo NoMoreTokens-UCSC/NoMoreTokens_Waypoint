@@ -4,7 +4,10 @@ import type { Snapshot, Workspace } from '../../domain/models'
 
 /** One URL owned by a module. `shell` pages render inside the shared workspace layout. */
 export interface ModuleRoute {
+  /** May contain parameters, e.g. `/store-manager/deliveries/:orderId`. */
   path: string
+  /** Page name shown in the breadcrumb. */
+  title: string
   component: LazyExoticComponent<ComponentType>
   shell: boolean
 }
