@@ -1,6 +1,6 @@
 # WAYPOINT frontend
 
-A responsive operations demo built from the Waypoint design reference. Includes Dispatcher, Store Manager, Loader, Driver, Entry & Account, Administration, and Recovery. All workspaces share one persistent local dataset.
+A responsive operations demo for Waypoint. Includes Dispatcher, Store Manager, Loader, Driver, Entry & Account, Administration, and Recovery. All workspaces share one persistent local dataset. Working on a role? Start with [docs/ROLE_MODULES.md](docs/ROLE_MODULES.md).
 
 ## Run locally
 
@@ -50,7 +50,7 @@ If npm cannot write its default cache, set `$env:npm_config_cache` to the projec
 6. Offline proof stays pending after reload. Recovery retries or simulates acceptance. A route change requires review before acceptance.
 7. Store Manager: view accepted driver evidence and separately confirm receipt or report missing/damaged quantities.
 
-The featured live handoff is VEH055 Trip 1. `/design` lists original source fixtures; `/demo/map` exposes the Leaflet adapter separately from the original Figma map compositions.
+The featured live handoff is VEH055 Trip 1. `/demo/map` exposes the Leaflet adapter on its own.
 
 ## Reset and persistence
 
@@ -70,29 +70,13 @@ Dexie stores snapshots, image blobs, and queue entries in IndexedDB. Evidence, i
 
 ## Project documentation
 
+- `docs/ROLE_MODULES.md`: module ownership, adding screens, the data contract and backend integration.
 - `docs/ARCHITECTURE.md`: layers, transactions, backend integration seams.
-- `docs/SCREEN_COVERAGE.md`: screen families, states, route coverage, and deliberate adaptations.
-- `docs/figma/frame-index.md`: all 271 exported frame names and suggested screen families.
-- `docs/figma/reference.json`: local REST-derived text, dimensions, and tokens.
-- `docs/figma/SOURCE.md`: source provenance and how to refresh the copy through REST.
+- `docs/FIGMA_DEAD_CODE.md`: the unrouted Figma renderer and how to delete it.
+- `docs/SCREEN_COVERAGE.md`, `docs/figma/`: records from the Figma-rendered build (historical).
 - `docs/REFERENCES.md`: Guide, Personas, and AI Disclosure reference pages.
 - `docs/VERIFICATION.md`: verification scope and limitations.
 
 ## Stack
 
-React, TypeScript, Vite, Tailwind CSS, shadcn/ui with Radix controls, TanStack Query, Dexie, vite-plugin-pwa, Leaflet, Framer Motion, Vitest, and Playwright. DM Sans fonts are bundled locally. Screen modules and maps are loaded separately; the production service worker precaches them for offline navigation.
-
-## Correction records and remaining acceptance
-
-See `docs/figma/correction-status.md`, `inventory.json`, `pixel-comparisons.json`, `repaired-links.md` and `additional-flows.md`.
-
-Node 438:154 is deferred at the user's request. Component hover/drag variants outside the page export and remaining screenshot differences require review. This is not a pixel-perfect completion claim. The production precache includes roughly 43 MB of source presentation data/assets; measure initial download and storage costs before deployment.
-
-## Responsive correction reports
-
-- [Issues, fixes and before/after images](docs/figma/responsive-issues.md)
-- [Per-frame responsive coverage](docs/figma/responsive-coverage.md)
-- [Verification record](docs/VERIFICATION.md)
-- [Home alignment and motion](docs/figma/home-motion.md)
-
-Product pages reflow at 768px and 1200px; pinned source frame URLs preserve their workflow step while selecting the current counterpart. `/design/:frameId` remains the fixed source inspector. `/demo/responsive/:frameId` is a development comparison scene, not product navigation.
+React, TypeScript, Vite, Tailwind CSS, shadcn/ui with Radix controls, TanStack Query, Dexie, vite-plugin-pwa, Leaflet, Framer Motion, Vitest, and Playwright. DM Sans fonts are bundled locally. Each route is loaded as its own chunk; the production service worker precaches them for offline navigation. Product pages reflow at 760px and 1100px.
