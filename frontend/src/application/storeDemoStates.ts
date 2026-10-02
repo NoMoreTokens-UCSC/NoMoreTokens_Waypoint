@@ -2,16 +2,20 @@ import type { Order, Snapshot } from '../domain/models'
 
 /** Demo states for the store's orders, so every store screen can be opened without the other roles. */
 export type StoreDemoState =
-  'confirmed' | 'scheduled' | 'en-route' | 'delivered' | 'received' | 'issue'
+  'confirmed' | 'scheduled' | 'en-route' | 'late' | 'delivered' | 'received' | 'issue'
 
 export const storeDemoStates: { value: StoreDemoState; label: string }[] = [
   { value: 'confirmed', label: 'Awaiting allocation' },
   { value: 'scheduled', label: 'Scheduled · one order deferred' },
   { value: 'en-route', label: 'En route · one order deferred' },
+  { value: 'late', label: 'En route · running late' },
   { value: 'delivered', label: 'Delivered · receipt pending' },
   { value: 'received', label: 'Receipt confirmed · deferral acknowledged' },
   { value: 'issue', label: 'Issue reported · 2 cases missing' },
 ]
+
+const ON_TIME_ETA = '05:40'
+const LATE_ETA = '08:25'
 
 /** The story's timestamps: ordered Friday 25 September, delivered Saturday 26 September. */
 const at = {
@@ -45,6 +49,7 @@ const order = (state: StoreDemoState): Partial<Order> => {
     case 'scheduled':
       return scheduled as Partial<Order>
     case 'en-route':
+    case 'late':
       return enRoute
     case 'delivered':
       return delivered
@@ -95,5 +100,9 @@ export function applyStoreDemoState(
   }
   const delivered = ['delivered', 'received', 'issue'].includes(state)
   for (const stop of snapshot.stops)
-    if (stop.outlet === outletId) stop.status = delivered ? 'Delivered' : 'Upcoming'
+    if (stop.outlet === outletId) {
+      stop.status = delivered ? 'Delivered' : 'Upcoming'
+      // The late story: the vehicle is held up and now expected after the window closes.
+      stop.eta = state === 'late' ? LATE_ETA : ON_TIME_ETA
+    }
 }

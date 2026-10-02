@@ -1,3 +1,4 @@
+import type { ReceivingLimits } from '../../../../domain/outlets'
 import {
   FRESH_LIMITS,
   endOptions,
@@ -30,9 +31,11 @@ export function WindowPicker({
   label = 'Receiving window',
   value,
   error,
+  limits = FRESH_LIMITS,
   onChange,
 }: {
   label?: string
+  limits?: ReceivingLimits
   value: string
   error?: string
   onChange: (window: string) => void
@@ -43,7 +46,7 @@ export function WindowPicker({
   const changeStart = (next: string) => {
     // Keep the same length of window where possible, otherwise the closest end that is allowed.
     const length = start && end ? minutes(end) - minutes(start) : 120
-    const options = endOptions(next)
+    const options = endOptions(next, limits)
     const wanted = minutes(next) + length
     const kept = [...options].reverse().find((time) => minutes(time) <= wanted)
     onChange(formatWindow(next, kept ?? options[0]))
@@ -60,7 +63,7 @@ export function WindowPicker({
             onChange={(event) => changeStart(event.target.value)}
           >
             {!start && <option value="">Choose…</option>}
-            {withCurrent(startOptions(), start).map((time) => (
+            {withCurrent(startOptions(limits), start).map((time) => (
               <option key={time} value={time}>
                 {formatTime12(time)}
               </option>
@@ -78,7 +81,7 @@ export function WindowPicker({
             aria-invalid={Boolean(error)}
             onChange={(event) => onChange(formatWindow(start, event.target.value))}
           >
-            {withCurrent(start ? endOptions(start) : [], end).map((time) => (
+            {withCurrent(start ? endOptions(start, limits) : [], end).map((time) => (
               <option key={time} value={time}>
                 {formatTime12(time)}
               </option>
@@ -95,7 +98,7 @@ export function WindowPicker({
           {current
             ? `${formatTime12(start)} to ${formatTime12(end)} · ${lengthText(minutes(end) - minutes(start))}. `
             : ''}
-          Fresh goods must arrive before the store opens at {formatTime12(FRESH_LIMITS.latest)}.
+          {limits.reason}
         </small>
       )}
     </fieldset>

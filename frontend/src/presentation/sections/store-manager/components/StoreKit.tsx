@@ -1,11 +1,17 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 import { AlertIcon, CheckIcon } from './StoreIcons'
+import { SyncStatus } from './SyncStatus'
 import '../store.css'
 
 /** Page wrapper: applies the store theme and the Figma vertical rhythm. */
 export function StorePage({ children }: { children: ReactNode }) {
-  return <div className="sm-page">{children}</div>
+  return (
+    <div className="sm-page">
+      <SyncStatus />
+      {children}
+    </div>
+  )
 }
 
 export function PageIntro({ title, context }: { title: string; context?: ReactNode }) {

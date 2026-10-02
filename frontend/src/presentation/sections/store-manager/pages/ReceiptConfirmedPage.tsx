@@ -3,7 +3,7 @@ import { Navigate, useParams } from 'react-router-dom'
 import { formatClock, formatLongDate } from '../../../../domain/calendar'
 import { Action, ActionLink, Callout, PageIntro, Pill, StorePage } from '../components/StoreKit'
 import { ProofDialog } from '../components/ProofPhoto'
-import { orderKinds } from '../lib/orderView'
+import { countText, kindOf } from '../lib/orderView'
 import { receiptDestination } from '../lib/receiptRoutes'
 import { useProof } from '../lib/useProof'
 import { useStoreOrders } from '../lib/useStore'
@@ -28,14 +28,19 @@ export default function ReceiptConfirmedPage() {
       />
       <section className="sm-panel sm-result" aria-label="Receipt">
         <Pill>Receipt confirmed</Pill>
-        <h2>All {order.cases} cases received.</h2>
+        <h2>All {countText(order.cases, order)} received.</h2>
         <p className="sm-result-lines">
-          {orderKinds[order.temperature].title}
+          {kindOf(order).title}
           <br />
           {order.cases} received / {order.cases} expected
           <br />
           No damage or shortage reported
         </p>
+        {order.pendingSync && (
+          <Callout title="Saved on this device">
+            You are offline. This will be sent automatically when your connection returns.
+          </Callout>
+        )}
         <Callout tone="success" title="Acknowledgment saved">
           The receipt record is linked to {order.id} and its driver delivery photograph.
         </Callout>

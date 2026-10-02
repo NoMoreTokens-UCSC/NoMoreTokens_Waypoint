@@ -40,8 +40,10 @@ export function matchesFilter(order: Order, filter: OrderFilter) {
 }
 
 /** The receipt pill shown beside a delivered order. */
-export function receiptLabel(order: Order) {
+export function receiptLabel(order: Order & { pendingSync?: boolean }) {
   if (order.status !== 'Delivered') return undefined
+  if (order.pendingSync && order.receipt !== 'Pending')
+    return { text: 'Waiting to send', tone: 'orange' as const }
   return order.receipt === 'Confirmed'
     ? { text: 'Receipt confirmed', tone: 'green' as const }
     : order.receipt === 'Issue reported'

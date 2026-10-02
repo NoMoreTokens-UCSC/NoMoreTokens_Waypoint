@@ -13,7 +13,8 @@ import {
 } from '../components/StoreKit'
 import { RouteMapCard } from '../components/RouteMapCard'
 import { Timeline } from '../components/Timeline'
-import { kindSlash, orderKinds, windowText } from '../lib/orderView'
+import { deliveredLate, durationText, runningLate } from '../lib/lateness'
+import { kindSlash, kindOf, windowText } from '../lib/orderView'
 import { deferredOrders, pickActiveOrder, useStoreOrders } from '../lib/useStore'
 import { useProof } from '../lib/useProof'
 
@@ -47,6 +48,8 @@ export default function TrackingPage() {
   const stop = proof.stop
   const arrival = stop?.eta ?? order.window
   const delivered = order.status === 'Delivered'
+  const late = runningLate(order, stop)
+  const wasLate = deliveredLate(order)
   const stamp = (at?: string) => (at ? `${formatLongDate(at)} · ${formatClock(at)}` : '')
   const heading = delivered
     ? order.receipt === 'Pending'
@@ -62,6 +65,16 @@ export default function TrackingPage() {
   return (
     <StorePage>
       <PageIntro title={heading} context={context} />
+      {late && (
+        <Callout
+          tone="danger"
+          title={`Expected ${durationText(late.minutesLate)} after your window closes`}
+        >
+          The vehicle is now expected at {late.expected}; your receiving window ends at{' '}
+          {late.windowEnd}. Keep receiving staff available, and tell the dispatcher if the goods can
+          no longer be accepted.
+        </Callout>
+      )}
       <section className="sm-panel sm-progress-top" aria-label="Delivery progress">
         <Timeline order={order} />
       </section>
@@ -71,6 +84,7 @@ export default function TrackingPage() {
             <Pill tone={delivered ? 'green' : dispatched ? 'orange' : 'amber'}>
               {dispatched ? order.status : 'Awaiting allocation'}
             </Pill>
+            {late && <Pill tone="red">Running late</Pill>}
             {live.length > 1 ? (
               <div className="sm-segments" role="group" aria-label="Order">
                 {live.map((candidate) => (
@@ -80,13 +94,13 @@ export default function TrackingPage() {
                     variant={candidate.id === order.id ? 'primary' : 'outline'}
                     onClick={() => setParams({ order: candidate.id })}
                   >
-                    {orderKinds[candidate.temperature].short}
+                    {kindOf(candidate).short}
                   </Action>
                 ))}
               </div>
             ) : null}
             <p className="sm-order-line">
-              {order.id} · {kindSlash(order.temperature)}
+              {order.id} · {kindSlash(order)}
             </p>
             {delivered ? (
               <Tile
@@ -104,7 +118,7 @@ export default function TrackingPage() {
             )}
             <p className="sm-arrival-context">
               {delivered
-                ? 'Photographic proof is attached. Receipt confirmation is still pending.'
+                ? `${wasLate ? `Arrived ${durationText(wasLate)} after your window closed. ` : ''}Photographic proof is attached.${order.receipt === 'Pending' ? ' Receipt confirmation is still pending.' : ''}`
                 : !dispatched
                   ? 'No vehicle or arrival time yet. Both appear after the dispatcher publishes the plan.'
                   : order.status === 'Scheduled'

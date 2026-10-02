@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
 
-type Stage = 'scheduled' | 'delivered'
+type Stage = 'scheduled' | 'late' | 'delivered'
 const stageLabel: Record<Stage, string> = {
   scheduled: 'Scheduled · one order deferred',
+  late: 'En route · running late',
   delivered: 'Delivered · receipt pending',
 }
 
@@ -289,5 +290,173 @@ test.describe('store manager', () => {
     await expect(page.getByRole('navigation', { name: 'Order pages' })).toHaveCount(0)
     await page.getByLabel('Search orders').fill('nothing like this')
     await expect(page.getByRole('heading', { name: 'No orders here' })).toBeVisible()
+  })
+
+  const setOffline = async (page: Page, offline: boolean) => {
+    await page.goto('/demo')
+    const toggle = page.getByRole('switch', { name: 'Simulate offline' })
+    if ((await toggle.isChecked()) !== offline) await toggle.click()
+    if (offline) await expect(toggle).toBeChecked()
+    else await expect(toggle).not.toBeChecked()
+  }
+
+  test('orders made offline wait to send, then go out when the connection returns', async ({
+    page,
+  }) => {
+    await clearStorage(page)
+    await setOffline(page, true)
+    await page.goto('/store-manager/orders/new')
+    await page.getByRole('button', { name: 'Review 2 orders' }).click()
+    await page.getByRole('button', { name: 'Confirm 2 orders' }).click()
+    await expect(page.getByText('Saved on this device, not sent yet')).toBeVisible()
+    await expect(page.getByText('1 change waiting to send')).toBeVisible()
+    await expect(page.getByText('Confirm 2 Fresh orders')).toBeVisible()
+    // Dispatch has not received them: the shared data is unchanged, the store sees them as waiting.
+    await page.getByRole('link', { name: 'Orders', exact: true }).first().click()
+    await expect(page.getByText('Waiting to send').first()).toBeVisible()
+    await setOffline(page, false)
+    await page.goto('/store-manager/overview')
+    await expect(page.getByText('waiting to send')).toHaveCount(0)
+    await expect(page.getByText('Awaiting allocation')).toHaveCount(2)
+  })
+
+  test('a receipt confirmed offline is sent later', async ({ page }) => {
+    await clearStorage(page)
+    await seed(page, 'delivered')
+    await setOffline(page, true)
+    await page.goto('/store-manager/deliveries/ORD1042/receipt')
+    await page.getByRole('button', { name: 'Confirm all 18 cases received' }).click()
+    await expect(page.getByRole('heading', { name: 'Receipt confirmed' })).toBeVisible()
+    await expect(page.getByText('Saved on this device', { exact: true })).toBeVisible()
+    await expect(page.getByText('1 change waiting to send')).toBeVisible()
+    await setOffline(page, false)
+    await page.goto('/store-manager/orders/ORD1042')
+    await expect(page.getByText('waiting to send')).toHaveCount(0)
+    await expect(page.getByText('Receipt confirmed').first()).toBeVisible()
+  })
+
+  test('the store has its own notifications, profile and preferences', async ({ page }) => {
+    await clearStorage(page)
+    await seed(page, 'delivered')
+    await page.goto('/store-manager/overview')
+    // The bell and the account menu open the store's pages, not the shared ones.
+    await page.getByRole('link', { name: /^Notifications/ }).click()
+    await expect(page).toHaveURL(/\/store-manager\/notifications$/)
+    await expect(page.getByRole('heading', { name: 'Notifications', level: 1 })).toBeVisible()
+    const needs = page.getByRole('region', { name: 'Needs your action' })
+    await expect(needs.getByText('ORD1042 was delivered')).toBeVisible()
+    // Issues reported earlier, with where they stand.
+    const issues = page.getByRole('region', { name: 'Issues you reported' })
+    await expect(issues.getByText('ISS-0910-M · Missing items')).toBeVisible()
+    await expect(issues.getByText('Open · Awaiting review').first()).toBeVisible()
+    // The activity feed filters.
+    await page.getByRole('button', { name: 'Issues' }).click()
+    const activity = page.getByRole('region', { name: 'Activity' })
+    await expect(activity.getByText('Missing items reported').first()).toBeVisible()
+    await expect(activity.getByText('Order placed')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Your account' }).click()
+    await page.getByRole('menuitem', { name: 'Profile' }).click()
+    await expect(page).toHaveURL(/\/store-manager\/profile$/)
+    await expect(page.getByText('Store manager').first()).toBeVisible()
+    await expect(page.getByText('OUT001').first()).toBeVisible()
+    await expect(
+      page.getByText('Fresh goods must arrive before the store opens at 8:00 AM'),
+    ).toBeVisible()
+    await page.goto('/store-manager/settings')
+    await expect(page.getByRole('heading', { name: 'Saved on this device' })).toBeVisible()
+    await expect(page.getByText('Everything has been sent.')).toBeVisible()
+  })
+
+  test('warns when the vehicle is expected after the receiving window', async ({ page }) => {
+    await clearStorage(page)
+    await seed(page, 'late')
+    await page.goto('/store-manager/deliveries')
+    await expect(
+      page.getByText('Expected 55 minutes after your window closes').first(),
+    ).toBeVisible()
+    await expect(page.getByText('now expected at 08:25')).toBeVisible()
+    await expect(page.getByText('Running late').first()).toBeVisible()
+    await page.goto('/store-manager/overview')
+    await expect(page.getByText('Running late')).toBeVisible()
+    // The bell counts the late delivery and the unacknowledged deferral.
+    await expect(page.getByRole('link', { name: /Notifications, 2 new/ })).toBeVisible()
+    await page.goto('/store-manager/notifications')
+    await expect(
+      page.getByRole('region', { name: 'Running late' }).getByText(/ORD1042 is expected/),
+    ).toBeVisible()
+    // An on-time delivery shows none of this.
+    await seed(page, 'scheduled')
+    await page.goto('/store-manager/deliveries')
+    await expect(page.getByText('Running late')).toHaveCount(0)
+  })
+
+  test('an order can be cancelled until the cutoff, then it is locked', async ({ page }) => {
+    await clearStorage(page)
+    await page.goto('/store-manager/orders/ORD1042')
+    await page.getByRole('button', { name: 'Cancel order' }).click()
+    await expect(page.getByText('Cancel order ORD1042?')).toBeVisible()
+    await page.getByRole('button', { name: 'Keep order' }).click()
+    await expect(page.getByRole('button', { name: 'Cancel order' })).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel order' }).click()
+    await page.getByRole('button', { name: 'Yes, cancel order' }).click()
+    await expect(page).toHaveURL(/\/store-manager\/orders$/)
+    await expect(page.getByText('ORD1042')).toHaveCount(0)
+    await expect(page.getByText('ORD1043').first()).toBeVisible()
+    // After the cutoff the remaining order is locked.
+    await page.goto('/demo')
+    await page.getByRole('switch', { name: 'Intake cutoff passed' }).click()
+    await expect(page.getByRole('switch', { name: 'Intake cutoff passed' })).toBeChecked()
+    await page.goto('/store-manager/orders/ORD1043')
+    await expect(page.getByText('This order is locked')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Cancel order' })).toHaveCount(0)
+  })
+
+  const signInAs = async (page: Page, outlet: string) => {
+    await page.goto('/demo')
+    await page.getByLabel('Store outlet').selectOption({ label: outlet })
+    await expect(page.getByText('Store workspace switched').first()).toBeVisible()
+  }
+
+  test('a Style outlet places one weekly order inside its mall window', async ({ page }) => {
+    await clearStorage(page)
+    await signInAs(page, 'OUT016 · Style Liberty Mall · Style')
+    await page.goto('/store-manager/overview')
+    await expect(page.getByRole('region', { name: 'Style · Garments' })).toContainText('20 cartons')
+    await expect(page.getByRole('region', { name: 'Fresh · Chilled' })).toHaveCount(0)
+    await page.goto('/store-manager/orders/new')
+    await expect(page.getByRole('heading', { name: 'Weekly order' })).toBeVisible()
+    const from = page.getByLabel('From')
+    const to = page.getByLabel('To')
+    await expect(from).toBeVisible()
+    // Only times inside the mall's 5:30 AM to 9:00 AM access window are offered.
+    const labels = (select: typeof from) => select.locator('option').allTextContents()
+    expect((await labels(from)).at(0)).toBe('5:30 AM')
+    expect((await labels(to)).at(-1)).toBe('9:00 AM')
+    await page.getByRole('button', { name: 'Add one carton' }).click()
+    await page.getByRole('button', { name: /Confirm 21 cartons order/ }).click()
+    await expect(page.getByRole('heading', { name: 'Orders confirmed' })).toBeVisible()
+    await expect(page.getByText('Your Style order is confirmed')).toBeVisible()
+    await page.goto('/store-manager/orders')
+    await expect(page.getByText('21 cartons').first()).toBeVisible()
+    await page.goto('/store-manager/profile')
+    await expect(page.getByText('Waypoint Style')).toBeVisible()
+    await expect(page.getByText('mall only accepts deliveries')).toBeVisible()
+  })
+
+  test('a Tech outlet orders a single fragile item and must confirm receiving staff', async ({
+    page,
+  }) => {
+    await clearStorage(page)
+    await signInAs(page, 'OUT019 · Tech Kandy City · Tech')
+    await page.goto('/store-manager/orders/new')
+    await expect(page.getByText('Fragile and high value')).toBeVisible()
+    await page.getByRole('button', { name: /Confirm \d+ items? order/ }).click()
+    await expect(
+      page.getByText('Confirm that staff will be there to inspect and sign.'),
+    ).toBeVisible()
+    await page.getByLabel('Staff will be available to inspect and sign for the delivery.').check()
+    await page.getByRole('button', { name: /Confirm \d+ items? order/ }).click()
+    await expect(page.getByRole('heading', { name: 'Orders confirmed' })).toBeVisible()
+    await expect(page.getByText('Your Tech order is confirmed')).toBeVisible()
   })
 })

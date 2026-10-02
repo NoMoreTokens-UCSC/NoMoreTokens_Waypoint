@@ -5,7 +5,7 @@ import { ActionLink, OfflineNotice, PageIntro, Pill, StorePage } from '../compon
 import { ParcelIcon } from '../components/StoreIcons'
 import { cutoffLabel } from '../lib/cutoff'
 import {
-  orderKinds,
+  kindOf,
   quantityText,
   statusTone,
   storeStatus,
@@ -13,11 +13,17 @@ import {
   windowText,
 } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
-import { useStoreOrders } from '../lib/useStore'
+import { runningLate } from '../lib/lateness'
+import { useStoreOrders, useStoreProfile, useStoreStops } from '../lib/useStore'
 
 /** Order placement: the cutoff countdown and this outlet's two separate Fresh orders. */
 export default function OverviewPage() {
   const { byTemperature, outletId } = useStoreOrders()
+  const { stops } = useStoreStops()
+  const { profile } = useStoreProfile()
+  const brand = profile?.brand ?? 'Fresh'
+  // Fresh places a chilled and a dry order; Style and Tech place one.
+  const cards = brand === 'Fresh' ? temperatures : (['Ambient'] as const)
   const clock = useBusinessClock()
   const online = useOnline()
   return (
@@ -29,9 +35,9 @@ export default function OverviewPage() {
       {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
       <CutoffPanel clock={clock} />
       <div className="sm-widgets">
-        {temperatures.map((temperature) => {
+        {cards.map((temperature) => {
           const order = byTemperature(temperature)
-          const kind = orderKinds[temperature]
+          const kind = kindOf({ brand, temperature })
           return (
             <section className="sm-card" key={temperature} aria-label={kind.title}>
               <div className="sm-widget-head">
@@ -45,6 +51,10 @@ export default function OverviewPage() {
                 {order && (
                   <span className="sm-widget-status">
                     <Pill tone={statusTone(order)}>{storeStatus(order)}</Pill>
+                    {runningLate(
+                      order,
+                      stops.find((stop) => stop.orderIds.includes(order.id)),
+                    ) && <Pill tone="red">Running late</Pill>}
                   </span>
                 )}
               </div>
@@ -69,8 +79,9 @@ export default function OverviewPage() {
         })}
       </div>
       <p className="sm-note">
-        {outletId} is a Fresh outlet. Dry groceries and chilled goods are submitted as separate
-        order records.
+        {brand === 'Fresh'
+          ? `${outletId} is a Fresh outlet. Dry groceries and chilled goods are submitted as separate order records.`
+          : `${outletId} is a ${brand} outlet. ${profile?.schedule}.`}
       </p>
       <div className="sm-actions-row">
         <ActionLink variant="grey" to="/store-manager/deliveries">

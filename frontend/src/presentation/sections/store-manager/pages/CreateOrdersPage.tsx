@@ -24,11 +24,16 @@ import { cutoffLabel } from '../lib/cutoff'
 import { parseForm, useOrderForm } from '../lib/orderForm'
 import { orderKinds, temperatures, totals } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
-import { useStoreOrders } from '../lib/useStore'
+import { useStoreOrders, useStoreProfile } from '../lib/useStore'
+import BrandOrderPage from './BrandOrderPage'
 
 /** Create orders (before the cutoff) or the cutoff-passed screen (after it). */
 export default function CreateOrdersPage() {
   const clock = useBusinessClock()
+  const { profile, loaded } = useStoreProfile()
+  if (!loaded) return null
+  // Style and Tech order as one order on their own schedule; the Fresh form is two orders a day.
+  if (profile && profile.brand !== 'Fresh') return <BrandOrderPage profile={profile} />
   return clock.cutoffPassed ? <CutoffPassed /> : <CreateOrders />
 }
 

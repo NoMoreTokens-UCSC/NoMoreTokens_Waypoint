@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Check } from 'lucide-react'
 import { formatClock, formatLongDate, formatWeekday } from '../../../../domain/calendar'
 import type { Order } from '../../../../domain/models'
-import { useAction } from '../../../hooks/useOperations'
-import { useApis } from '../../../providers/ApisContext'
+import { toast } from 'sonner'
+import { useStoreAction } from '../lib/useStoreAction'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { useBusinessClock } from '../../../session/useBusinessClock'
 import { Action, ActionLink, Callout, PageIntro, Pill, StorePage } from '../components/StoreKit'
@@ -18,8 +18,7 @@ const explanation = (reason?: string) =>
 
 /** One deferral notice: why the order is not coming, when it will, and the store's acknowledgment. */
 function DeferralCard({ order, outletId }: { order: Order; outletId: string }) {
-  const apis = useApis()
-  const action = useAction()
+  const action = useStoreAction()
   const clock = useBusinessClock()
   const [understood, setUnderstood] = useState(false)
   const missed = formatWeekday(clock.deliveryDate)
@@ -44,7 +43,7 @@ function DeferralCard({ order, outletId }: { order: Order; outletId: string }) {
         <div className="sm-fact">
           <span>Order</span>
           <strong>
-            {order.id} · {kindSlash(order.temperature)}
+            {order.id} · {kindSlash(order)}
           </strong>
         </div>
         <div className="sm-fact">
@@ -97,7 +96,11 @@ function DeferralCard({ order, outletId }: { order: Order; outletId: string }) {
           <Action
             disabled={!understood || action.isPending || !order.deferralReason}
             onClick={() =>
-              action.run(() => apis.orders.acknowledgeDeferral(order.id), 'Deferral acknowledged')
+              action.send(
+                { kind: 'acknowledge', orderId: order.id },
+                `Acknowledge deferral of ${order.id}`,
+                () => toast.success('Deferral acknowledged'),
+              )
             }
           >
             Acknowledge deferral
@@ -128,6 +131,11 @@ export default function AlertsPage() {
           <p className="sm-muted">
             Deferrals will appear here when the dispatcher moves an order to a later run.
           </p>
+          <div className="sm-actions">
+            <ActionLink variant="outline" to="/store-manager/notifications">
+              See all notifications
+            </ActionLink>
+          </div>
         </section>
       </StorePage>
     )
@@ -146,6 +154,11 @@ export default function AlertsPage() {
       {deferred.map((order) => (
         <DeferralCard key={order.id} order={order} outletId={outletId} />
       ))}
+      <div className="sm-actions">
+        <ActionLink variant="outline" to="/store-manager/notifications">
+          See all notifications
+        </ActionLink>
+      </div>
     </StorePage>
   )
 }

@@ -38,9 +38,16 @@ describe('local API adapters', () => {
     )
     expect(chilled).toMatchObject({ cases: 20, weight: 130, status: 'Confirmed' })
   })
+  it('cancels an order before the cutoff and refuses once it has passed', async () => {
+    await apis.orders.cancelOrder('ORD1042')
+    const left = await apis.orders.listOrders({ outletId: 'OUT001' })
+    expect(left.map((order) => order.id)).toEqual(['ORD1043'])
+    await apis.account.updateSettings({ cutoffClosed: true })
+    await expect(apis.orders.cancelOrder('ORD1043')).rejects.toThrow(/locked/)
+  })
   it('refuses outlets the local demo does not model', async () => {
     await expect(apis.orders.createOrder('OUT002', 'Chilled', 10, '05:30')).rejects.toThrow(
-      /OUT001 only/,
+      /OUT016 and OUT019 only/,
     )
   })
   it('projects trips from allocations', async () => {

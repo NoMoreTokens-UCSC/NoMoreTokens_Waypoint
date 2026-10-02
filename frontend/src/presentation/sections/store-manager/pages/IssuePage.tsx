@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useStoreAction } from '../lib/useStoreAction'
-import { useApis } from '../../../providers/ApisContext'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import {
   Action,
@@ -11,7 +10,7 @@ import {
   PageIntro,
   StorePage,
 } from '../components/StoreKit'
-import { kindSlash } from '../lib/orderView'
+import { countText, kindSlash } from '../lib/orderView'
 import { checkIssue, issueSummary, type IssueDraft, type IssueKind } from '../lib/receiptIssue'
 import { useStoreOrders } from '../lib/useStore'
 
@@ -19,7 +18,6 @@ import { useStoreOrders } from '../lib/useStore'
 export default function IssuePage() {
   const { orderId } = useParams()
   const navigate = useNavigate()
-  const apis = useApis()
   const action = useStoreAction()
   const { orders, loaded } = useStoreOrders()
   const order = orders.find((candidate) => candidate.id === orderId)
@@ -42,14 +40,18 @@ export default function IssuePage() {
   const submit = () => {
     setAttempted(true)
     if (Object.keys(checkIssue(draft, order.cases)).length) return
-    action.runThen(
-      () =>
-        apis.orders.reportReceiptIssue(order.id, {
+    action.send(
+      {
+        kind: 'issue',
+        orderId: order.id,
+        issue: {
           kind: draft.kind,
           received: Number(draft.received),
           affected: Number(draft.affected),
           description: draft.description.trim(),
-        }),
+        },
+      },
+      `Report ${draft.kind.toLowerCase()} items on ${order.id}`,
       () => navigate(`${base}/issue/submitted`),
     )
   }
@@ -57,7 +59,7 @@ export default function IssuePage() {
     <StorePage>
       <PageIntro
         title="Report a delivery issue"
-        context={`${order.id} · ${kindSlash(order.temperature)} · ${order.cases} cases expected`}
+        context={`${order.id} · ${kindSlash(order)} · ${countText(order.cases, order)} expected`}
       />
       <section className="sm-panel" aria-label="Issue report">
         <h2 className="sm-h22">What needs attention?</h2>

@@ -1,50 +1,81 @@
-import { Navigate, useParams } from 'react-router-dom'
+import { useState } from 'react'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { formatClock, formatShortDate } from '../../../../domain/calendar'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { useBusinessClock } from '../../../session/useBusinessClock'
-import { ActionLink, Callout, PageIntro, Pill, StorePage } from '../components/StoreKit'
+import { Action, ActionLink, Callout, PageIntro, Pill, StorePage } from '../components/StoreKit'
 import { Timeline } from '../components/Timeline'
+import { deliveredLate, durationText, runningLate } from '../lib/lateness'
 import { deliveryDayLabel, receiptLabel } from '../lib/orderList'
 import {
   issueReference,
   kindSlash,
-  orderKinds,
+  kindOf,
   quantityText,
   statusTone,
   storeStatus,
   windowText,
 } from '../lib/orderView'
-import { useStoreHistory, useStoreOrders } from '../lib/useStore'
+import type { StoreOrder } from '../lib/outbox'
+import { useStoreAction } from '../lib/useStoreAction'
+import { useStoreHistory, useStoreOrders, useStoreStops } from '../lib/useStore'
 
 const stamp = (at?: string) => (at ? `${formatShortDate(at)} · ${formatClock(at)}` : '—')
 
 /** One order: what was ordered, how its delivery went and what happened to it afterwards. */
 export default function OrderDetailPage() {
   const { orderId } = useParams()
+  const navigate = useNavigate()
+  const action = useStoreAction()
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
   const clock = useBusinessClock()
   const { orders, loaded } = useStoreOrders()
   const { history, loaded: historyLoaded } = useStoreHistory()
-  const order = [...orders, ...history].find((candidate) => candidate.id === orderId)
+  const { stops } = useStoreStops()
+  const order = ([...orders, ...history] as StoreOrder[]).find(
+    (candidate) => candidate.id === orderId,
+  )
   useBreadcrumb([{ label: 'Orders', to: '/store-manager/orders' }, { label: orderId ?? 'Order' }])
   if (!loaded || !historyLoaded) return null
   if (!order) return <Navigate to="/store-manager/orders" replace />
-  const kind = orderKinds[order.temperature]
+  const kind = kindOf(order)
   const receipt = receiptLabel(order)
   const live = orders.some((candidate) => candidate.id === order.id)
   const delivered = order.status === 'Delivered'
   const report = order.receiptReport
+  const late = runningLate(
+    order,
+    stops.find((stop) => stop.orderIds.includes(order.id)),
+  )
+  const wasLate = deliveredLate(order)
+  // Until the cutoff an order that is still waiting for the plan can be changed or withdrawn.
+  const editable =
+    live &&
+    ['Confirmed', 'Allocated'].includes(order.status) &&
+    !clock.cutoffPassed &&
+    !order.pendingSync
+  const locked = live && ['Confirmed', 'Allocated'].includes(order.status) && !editable
   const waiting = live && delivered && order.receipt === 'Pending'
   return (
     <StorePage>
       <PageIntro
         title={`Order ${order.id}`}
-        context={`${kindSlash(order.temperature)} · ${deliveryDayLabel(order, clock)}`}
+        context={`${kindSlash(order)} · ${deliveryDayLabel(order, clock)}`}
       />
       <section className="sm-panel" aria-label="Order">
         <div className="sm-pills">
           <Pill tone={statusTone(order)}>{storeStatus(order)}</Pill>
           {receipt && <Pill tone={receipt.tone}>{receipt.text}</Pill>}
         </div>
+        {late && (
+          <Callout
+            tone="danger"
+            title={`Expected ${durationText(late.minutesLate)} after your window closes`}
+          >
+            Now expected at {late.expected}; your window ends at {late.windowEnd}.
+          </Callout>
+        )}
         <h2 className="sm-h22">{kind.title}</h2>
         <div className="sm-facts">
           <div className="sm-fact">
@@ -70,6 +101,7 @@ export default function OrderDetailPage() {
           <div className="sm-fact">
             <span>Delivered</span>
             <strong>{stamp(order.deliveredAt)}</strong>
+            {wasLate && <small>{durationText(wasLate)} after the window closed</small>}
           </div>
         </div>
       </section>
@@ -117,6 +149,18 @@ export default function OrderDetailPage() {
         </section>
       )}
 
+      {confirmingCancel && editable && (
+        <Callout tone="danger" title={`Cancel order ${order.id}?`}>
+          Dispatch will remove it from the next run and you will have no {kind.short.toLowerCase()}{' '}
+          groceries ordered for that day. You can place a new order until the cutoff.
+        </Callout>
+      )}
+      {locked && !order.pendingSync && (
+        <Callout title="This order is locked">
+          Orders can be changed or cancelled until the cutoff. After that the dispatcher plans
+          around them; ask the dispatcher if something has to change.
+        </Callout>
+      )}
       {waiting && (
         <Callout title="Waiting for you">
           Count the goods and confirm receipt, or report what is missing or damaged.
@@ -128,10 +172,40 @@ export default function OrderDetailPage() {
             Confirm receipt
           </ActionLink>
         )}
+        {editable && !confirmingCancel && (
+          <>
+            <ActionLink to="/store-manager/orders/new">Edit order</ActionLink>
+            <Action variant="grey" onClick={() => setConfirmingCancel(true)}>
+              Cancel order
+            </Action>
+          </>
+        )}
+        {editable && confirmingCancel && (
+          <>
+            <Action
+              disabled={action.isPending}
+              onClick={() =>
+                action.send(
+                  { kind: 'cancel', orderId: order.id },
+                  `Cancel order ${order.id}`,
+                  () => {
+                    toast.success(`Order ${order.id} cancelled`)
+                    navigate('/store-manager/orders')
+                  },
+                )
+              }
+            >
+              Yes, cancel order
+            </Action>
+            <Action variant="outline" onClick={() => setConfirmingCancel(false)}>
+              Keep order
+            </Action>
+          </>
+        )}
         {live && order.status === 'Deferred' && !order.deferralAcknowledged && (
           <ActionLink to="/store-manager/alerts">Acknowledge deferral</ActionLink>
         )}
-        {live && order.status !== 'Deferred' && !waiting && (
+        {live && order.status !== 'Deferred' && !waiting && !editable && (
           <ActionLink variant="grey" to={`/store-manager/deliveries?order=${order.id}`}>
             Track delivery
           </ActionLink>

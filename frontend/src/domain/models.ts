@@ -201,6 +201,8 @@ export interface Snapshot {
   fleetReferenceVersion?: number
   designDataVersion?: number
   activeDriverId?: string
+  /** Demo only: which outlet the store manager workspace is signed in as (default: the member's). */
+  activeOutletId?: string
   unlistedAuditCount?: number
   auditReferenceVersion?: number
 }
