@@ -44,6 +44,7 @@ A page is done when all of these hold. Reviewers check this list.
       values from the data and format them with `formatTime` (`shared/lib/utils`).
 - [ ] Records that deserve a link get a route parameter (e.g. `/store-manager/deliveries/:orderId`) so
       a page can be refreshed or shared. Route paths in your `index.ts` may use `:params`.
+      Detail pages set their breadcrumb with `useBreadcrumb` (see ROLE_MODULES.md).
 
 **States**
 

@@ -19,16 +19,19 @@ export const loaderModule: RoleModule = {
   routes: [
     {
       path: '/loader/queue',
+      title: 'Shift dashboard',
       component: lazyPage(() => pages().then((m) => m.LoaderQueuePage)),
       shell: true,
     },
     {
       path: '/loader/loading',
+      title: 'Load workspace',
       component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage)),
       shell: true,
     },
     {
       path: '/loader/proof',
+      title: 'Loading proof',
       component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage), { proofOnly: true }),
       shell: true,
     },

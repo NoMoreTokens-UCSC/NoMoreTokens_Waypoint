@@ -20,21 +20,25 @@ export const driverModule: RoleModule = {
   routes: [
     {
       path: '/driver/home',
+      title: 'Home',
       component: lazyPage(() => pages().then((m) => m.DriverHomePage)),
       shell: true,
     },
     {
       path: '/driver/route',
+      title: 'Current route',
       component: lazyPage(() => pages().then((m) => m.DriverRoutePage)),
       shell: true,
     },
     {
       path: '/driver/delivery',
+      title: 'Delivery proof',
       component: lazyPage(() => pages().then((m) => m.DriverDeliveryPage)),
       shell: true,
     },
     {
       path: '/driver/issues',
+      title: 'Issues',
       component: lazyPage(() => pages().then((m) => m.DriverIssuesPage)),
       shell: true,
     },

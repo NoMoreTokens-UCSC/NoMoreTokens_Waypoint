@@ -20,21 +20,25 @@ export const storeManagerModule: RoleModule = {
   routes: [
     {
       path: '/store-manager/overview',
+      title: 'Overview',
       component: lazyPage(() => pages().then((m) => m.StoreOrdersPage), { overview: true }),
       shell: true,
     },
     {
       path: '/store-manager/orders',
+      title: 'Orders',
       component: lazyPage(() => pages().then((m) => m.StoreOrdersPage)),
       shell: true,
     },
     {
       path: '/store-manager/deliveries',
+      title: 'Deliveries',
       component: lazyPage(() => pages().then((m) => m.StoreDeliveriesPage)),
       shell: true,
     },
     {
       path: '/store-manager/alerts',
+      title: 'Alerts',
       component: lazyPage(() => pages().then((m) => m.StoreAlertsPage)),
       shell: true,
     },

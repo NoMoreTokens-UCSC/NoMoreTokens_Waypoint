@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { NavLink, Outlet, Link, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, Link } from 'react-router-dom'
 import {
   Bell,
   Menu,
   Navigation,
   ArrowLeftRight,
-  Home,
   Settings,
   User,
   LogOut,
@@ -18,6 +17,7 @@ import { useConnectivity, useOperations } from '../../hooks/useOperations'
 import { roleModules } from '../../roles/registry'
 import { useSession } from '../../session/useSession'
 import { workspaceSearch } from './workspaceSearch'
+import { BreadcrumbContext, Breadcrumbs, type Crumb } from './Breadcrumbs'
 import { toast } from 'sonner'
 
 export function Brand() {
@@ -32,14 +32,13 @@ export function Brand() {
 }
 /** Shared chrome for every role: sidebar, header and mobile navigation come from the role's module. */
 export default function WorkspaceLayout() {
-  const location = useLocation(),
-    { data, isPending, error } = useOperations(),
+  const { data, isPending, error } = useOperations(),
     online = useConnectivity(),
     session = useSession()
   const [menu, setMenu] = useState(false),
     [switcher, setSwitcher] = useState(false),
-    [search, setSearch] = useState('')
-  const prefix = location.pathname.split('/')[1]
+    [search, setSearch] = useState(''),
+    [trail, setTrail] = useState<Crumb[]>([])
   const workspace = roleModules.find((module) => module.key === session.role)!
   const headerSearch = workspace.search ?? workspaceSearch
   const pendingCount = data?.queue.filter((q) => q.status !== 'accepted').length ?? 0
@@ -162,23 +161,7 @@ export default function WorkspaceLayout() {
           </div>
         )}
         <main className="main-content" id="main-content">
-          <div className="breadcrumbs">
-            <Link to={workspace.home} aria-label={`${workspace.label} home`}>
-              <Home size={13} />
-            </Link>
-            <span>/</span>
-            <span>
-              {prefix === 'account'
-                ? 'Account'
-                : prefix === 'recovery'
-                  ? 'Recovery'
-                  : workspace.label}
-            </span>
-            <span>/</span>
-            <span className="capitalize">
-              {location.pathname.split('/')[2]?.replaceAll('-', ' ') ?? 'Workspace'}
-            </span>
-          </div>
+          <Breadcrumbs home={workspace.home} trail={trail} />
           {offline && (
             <Notice title="Offline · your work is saved on this device">
               {pendingCount} record{pendingCount === 1 ? '' : 's'} waiting.{' '}
@@ -198,7 +181,9 @@ export default function WorkspaceLayout() {
               {error.message} · Check that browser storage is available, then reload.
             </Notice>
           ) : (
-            <Outlet />
+            <BreadcrumbContext.Provider value={setTrail}>
+              <Outlet />
+            </BreadcrumbContext.Provider>
           )}
         </main>
       </div>

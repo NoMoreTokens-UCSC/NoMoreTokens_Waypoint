@@ -7,7 +7,7 @@ const recovery = lazyPage(() => import('./pages/RecoveryPage').then((m) => m.def
 export const recoveryModule: AppModule = {
   key: 'recovery',
   routes: [
-    { path: '/recovery', component: recovery, shell: true },
-    { path: '/recovery/review', component: recovery, shell: true },
+    { path: '/recovery', title: 'Saved records', component: recovery, shell: true },
+    { path: '/recovery/review', title: 'Review updated route', component: recovery, shell: true },
   ],
 }

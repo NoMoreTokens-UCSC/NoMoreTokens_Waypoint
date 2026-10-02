@@ -74,3 +74,22 @@ test('the root opens the welcome page and leads to sign-in and workspaces', asyn
   await page.getByRole('link', { name: /Store manager/ }).click()
   await expect(page).toHaveURL(/\/store-manager\/orders$/)
 })
+
+test('breadcrumbs name the page, link home and go back', async ({ page }) => {
+  const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' })
+  const current = crumbs.locator('[aria-current="page"]')
+  const sidebar = page.getByRole('navigation', { name: 'Workspace navigation' })
+  await page.goto('/loader/queue')
+  await expect(current).toHaveText('Home')
+  await sidebar.getByRole('link', { name: 'Load workspace' }).click()
+  await expect(current).toHaveText('Load workspace')
+  await crumbs.getByRole('button', { name: 'Back' }).click()
+  await expect(page).toHaveURL(/\/loader\/queue$/)
+  await sidebar.getByRole('link', { name: 'Loading proof' }).click()
+  await crumbs.getByRole('link', { name: 'Home' }).click()
+  await expect(page).toHaveURL(/\/loader\/queue$/)
+  // Opened directly, Back has nowhere to return to and goes to the role's home.
+  await page.goto('/dispatcher/fleet')
+  await crumbs.getByRole('button', { name: 'Back' }).click()
+  await expect(page).toHaveURL(/\/dispatcher\/orders$/)
+})

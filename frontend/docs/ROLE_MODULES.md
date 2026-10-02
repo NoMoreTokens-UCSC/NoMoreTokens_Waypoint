@@ -32,6 +32,7 @@ label, icon, home page, navigation and routes:
 routes: [
   {
     path: '/store-manager/deliveries',
+    title: 'Deliveries', // shown in the breadcrumb
     component: lazyPage(() => pages().then((m) => m.StoreDeliveriesPage)),
     shell: true, // render inside the shared sidebar and header
   },
@@ -72,6 +73,10 @@ Rules of thumb:
   `Field`, `Modal`, `Metric`, `EmptyState`), `shared/atoms/*` and `shared/organisms/*`
   (`OperationsMap`, `EvidenceDetails`, `PhotoCapture`).
 - **Header search**: set `search` in your module to change what the header search finds.
+- **Breadcrumb**: the shell shows "< Back | Home / {route title}". Home links to your module's `home`;
+  Back returns to the previous screen (or home when opened directly). On a detail page, replace the page
+  part with `useBreadcrumb([{ label: 'Deliveries', to: '/store-manager/deliveries' }, { label: orderId }])`
+  from `shared/templates/Breadcrumbs`. Every item except the last is a link.
 - **Design reference**: the Figma screen images, not the Figma renderer code. The renderer is dead
   code (`docs/FIGMA_DEAD_CODE.md`) and lint blocks importing it.
 
