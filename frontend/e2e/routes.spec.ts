@@ -18,6 +18,13 @@ const routes = [
   '/store-manager/orders',
   '/store-manager/deliveries',
   '/store-manager/alerts',
+  '/store-manager/orders/review',
+  '/store-manager/orders/confirmed',
+  '/store-manager/orders/draft',
+  '/store-manager/deliveries/ORD1042/receipt',
+  '/store-manager/deliveries/ORD1042/receipt/confirmed',
+  '/store-manager/deliveries/ORD1042/issue',
+  '/store-manager/deliveries/ORD1042/issue/submitted',
   '/loader/queue',
   '/loader/loading',
   '/loader/proof',
@@ -72,7 +79,7 @@ test('the root opens the welcome page and leads to sign-in and workspaces', asyn
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).toHaveURL(/\/workspaces$/)
   await page.getByRole('link', { name: /Store manager/ }).click()
-  await expect(page).toHaveURL(/\/store-manager\/orders$/)
+  await expect(page).toHaveURL(/\/store-manager\/overview$/)
 })
 
 test('breadcrumbs name the page, link home and go back', async ({ page }) => {
