@@ -2,6 +2,7 @@ import { sourceFleet } from './fleetReference'
 import { sourceAudit } from './auditReference'
 import type { Order, Snapshot, Vehicle } from '../../domain/models'
 import { sourceTeam, unlistedTeamCounts } from './teamReference'
+import { outletOrderHistory } from './orderHistory'
 
 const demand: [string, string, Order['brand'], string, number, number, Order['temperature']][] = [
   ['ORD1042', 'OUT001', 'Fresh', '05:30', 1.2, 120, 'Chilled'],
@@ -114,6 +115,8 @@ export function createSeed(): Snapshot {
     members: sourceTeam.map((member) => ({ ...member })),
     unlistedTeamCounts: { ...unlistedTeamCounts },
     designDataVersion: 1,
+    orderHistory: outletOrderHistory.map((order) => ({ ...order })),
+    orderHistoryVersion: 1,
     activeDriverId: 'USR001',
     queue: [],
     drafts: [],

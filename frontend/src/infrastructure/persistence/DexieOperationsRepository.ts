@@ -5,6 +5,7 @@ import { createSeed } from '../demo/seed'
 import { WaypointDatabase } from './database'
 import { sourceTeam, unlistedTeamCounts } from '../demo/teamReference'
 import { sourceAudit } from '../demo/auditReference'
+import { outletOrderHistory } from '../demo/orderHistory'
 
 export class DexieOperationsRepository implements OperationsRepository {
   private ready: Promise<void> | undefined
@@ -51,6 +52,12 @@ export class DexieOperationsRepository implements OperationsRepository {
           vehicle.status = featured.status
         }
         record.data.fleetReferenceVersion = 1
+        await this.db.snapshots.put(record)
+      }
+      if (record && !record.data.orderHistoryVersion) {
+        // Browsers that stored data before order history existed receive the sample history.
+        record.data.orderHistory = outletOrderHistory.map((order) => ({ ...order }))
+        record.data.orderHistoryVersion = 1
         await this.db.snapshots.put(record)
       }
       // Interrupted uploads remain recoverable after a tab closes.

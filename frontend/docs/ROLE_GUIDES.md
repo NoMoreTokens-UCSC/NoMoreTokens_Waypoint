@@ -122,36 +122,118 @@ release, fleet filters and drawers, live map, capacity outlook).
 
 ## Store manager
 
-**Pages** (`sections/store-manager/pages/StorePages.tsx`): `StoreOrdersPage` (overview and orders),
-`StoreDeliveriesPage`, `StoreAlertsPage`. Exported Figma images are in `Figma Store manager/` (outside
-the repo).
+**Status: built to the Figma frames** (all 18 desktop states, plus tablet and phone). It is the worked
+example for the other roles: copy its structure, not its content.
 
-**API to use:** `apis.orders` (`listOrders({ outletId })`, `getIntakeStatus`, `placeOrders`,
-`editOrder`, `saveDrafts`, `listDrafts`, `confirmReceipt`, `reportReceiptIssue`, `acknowledgeDeferral`),
-`apis.delivery.listStops({ outletId })` (ETA, proof), `apis.delivery.getEvidence` (delivery photo).
+**Where things are** (`sections/store-manager`):
 
-**Change**
+| Folder        | Contains                                                                                                                                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pages/`      | one file per screen: overview, orders (history), order detail, create orders (and cutoff passed), review, confirmed, draft saved, tracking, receipt, receipt confirmed, issue, issue submitted, alerts                                                     |
+| `components/` | `StoreKit` (page, callout, pill, tile, buttons, field), `StoreIcons`, `RouteMap`, `ProofPhoto`                                                                                                                                                             |
+| `lib/`        | `orderView` (labels, windows, status), `orderForm` (form state that survives navigation), `useStore` (outlet-scoped data), `useStoreAction` (do work, wait for refresh, then navigate), `useProof`, `receiptRoutes`, `receiptIssue` (validation), `cutoff` |
+| `store.css`   | all styles, prefixed `sm-`, with desktop / tablet / phone rules                                                                                                                                                                                            |
+| `assets/`     | the route map artwork and the delivery-photo placeholder, copied from the design                                                                                                                                                                           |
 
-- `'OUT001'` appears 8 times and the map filters `'VEH055'`: use `useSession().outletId` and the stop's
-  vehicle.
-- Use `placeOrders` (chilled and dry confirmed together, as Figma "Create separate orders → Review →
-  Orders confirmed"), not one `createOrder` per record.
-- Use `saveDrafts` for "Cutoff passed → Draft saved for next run".
-- Use `reportReceiptIssue({ kind, received, affected, description })` for missing/damaged reports
-  (Figma: "Report missing items", "Report damaged items"). The page currently sends free text through
-  `confirmReceipt`, which loses the counts.
-- ETA "05:40" and window "05:30–07:30" are fixed text: read them from the stop.
-- The window picker offers 08:30 and 10:00. Fresh deliveries must arrive before 8 AM (outlet windows
-  can differ): offer the outlet's window from data.
-- Deferral notice needs the acknowledgment gate (Figma: "Acknowledgment required" → "selected" →
-  "acknowledged").
-- Offline: orders and receipts made without a connection are not queued yet. Agree the approach with
-  the backend developers (same pattern as driver proof).
-- Note: the local adapter accepts outlet `OUT001` only, because the seed data models one store.
+**Patterns worth copying**
 
-**Figma:** 20 screens (order placement, create/review/confirm, cutoff passed, draft saved, scheduled
-delivery, live tracking, delivered/receipt pending, confirm receipt, missing/damaged reports and
-submitted states, deferral acknowledgment, delivery photograph, navigation).
+- Data only through `useApis()` and outlet-scoped hooks; an empty outlet requests nothing (an empty
+  filter would return every outlet's orders).
+- `useStoreAction().runThen(work, next)`: waits for every screen's data to refresh before navigating.
+  Without it the next screen briefly sees stale data and its guard sends the person away.
+- Result screens are guarded so a finished receipt always lands on its result (`receiptRoutes`).
+- Breadcrumbs: route `title` in `index.ts`; detail pages override with `useBreadcrumb`.
+- Shell options in `index.ts` (`shell: { compactBelow: 1200, compactNav: 'menu', ... }`), custom nav icons
+  (`renderIcon`), header search scoped to the outlet, header bell count from unacknowledged deferrals.
+- Event times (`placedAt`, `scheduledAt`, `departedAt`, `deliveredAt`, `deferredAt`,
+  `deferralAcknowledgedAt`, `receiptAt`) and `windowEnd` are optional fields on `Order`, set by the
+  workflow; the backend must supply them. Dates come from `domain/calendar` (Sri Lanka time, Mon-Sat).
+- Tests: `e2e/store-manager.spec.ts` covers ordering, cutoff, deferral, tracking, receipt and issues.
+  Later delivery states are loaded with the **Store orders** control in the demo panel (`/demo`), because
+  the dispatcher, loader and driver steps are other roles' work. It sets sample states (scheduled, en
+  route, delivered, receipt confirmed, issue reported) for the store's orders only; **Reset demo**
+  restores everything. The states live in `application/storeDemoStates.ts`.
+
+**Checked against the challenge booklet**
+
+| Booklet says                                                                      | In the store module                                                                                          |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Place and confirm the order before the 4 PM cutoff; later orders wait (l.90, 214) | Cutoff countdown, cutoff-passed screen, draft for the next run                                               |
+| Fresh orders dry every operating day, chilled on several days a week (l.88)       | Each order has an Ordering switch; a dry-only day is one order (the service accepts one or two)              |
+| Fresh must arrive before the stores open at 08:00 (l.62, 136)                     | The window picker offers only valid times: start 4-7 AM, end by 8 AM, at least an hour (`lib/windows.ts`)    |
+| Stores place orders by phone with no confirmation (l.188)                         | Order references and a status on every order (awaiting allocation, scheduled, en route, delivered, deferred) |
+| Needs an expected arrival time to staff the dock (l.194)                          | Planned/expected arrival, receiving window and "Ready by" on tracking                                        |
+| Clear notice of a deferral (l.196)                                                | Alert with reason, next run and an acknowledgment step; bell count                                           |
+| Confirm receipt and report issues (l.196, 219)                                    | Confirm receipt, missing/damaged report with counts, issue reference                                         |
+| Work away from the depot must remain usable offline (l.154)                       | Orders are saved on the device and an offline notice says what that means; the map keeps the route offline   |
+
+Making ordering friendlier: cases use a stepper, and weight and volume follow the number of cases
+(`estimateLoad`) until they are edited; windows are chosen from From/To lists in 12-hour form (AM/PM), never typed.
+
+**Still to do**
+
+- Offline sending: changes made offline (confirming orders, confirming receipt, reporting an issue,
+  acknowledging a deferral) go into an outbox on the device (`lib/outbox.ts`, localStorage) and show as
+  "Waiting to send"; the screens treat them as made (`applyOutbox`). `components/SyncStatus.tsx`
+  sends them in order through the same `OrdersApi` calls when the connection returns (`lib/outboxSend.ts`),
+  reports failures with Try again / Dismiss, and keeps an order that arrives after the cutoff as a draft.
+  With a backend, nothing here changes except that the API calls reach a server; a server-side
+  idempotency key per outbox item (`OutboxItem.id`) is advisable so a retry cannot place an order twice.
+- Style and Tech outlets: `useStoreProfile()` (in `lib/useStore.ts`) reads the outlet's brand, schedule
+  and receiving limits (`domain/outlets.ts`, `OrdersApi.getOutletProfile`; a backend serves them from
+  `outlets.csv`: brand, `parking_constraint`, `mall_window`). A Style or Tech outlet gets
+  `pages/BrandOrderPage.tsx` instead of the Fresh form: one order (Style weekly, in cartons, inside the
+  mall's access window; Tech as needed, in items, with an inspect-and-sign confirmation). Weight and
+  volume are estimated per unit. Open the workspace as another outlet with the demo panel's "Store
+  manager signed in as". After the cutoff a Style or Tech
+  order is kept as a draft (drafts are scoped by outlet). The "Store orders" demo control and the issue
+  form follow the signed-in outlet (cartons, items). A Tech outlet can have
+  several orders for a delivery: confirming adds a new order, or changes one picked from the list
+  (`StoreOrderInput.orderId`, `?order=` on the create page); Style has one weekly order, which a new
+  confirmation replaces. Not built: the dispatcher and loader screens treating mall windows.
+- Selecting the vehicle on the tracking map opens a small panel at the map's top right with its kind
+  (`FleetApi.getVehicle`: van or truck, refrigerated or not), the driver's name (from the team list), the
+  trip, the depot and the planned or expected arrival (`components/VehiclePanel.tsx`). Phone numbers and
+  live telemetry are left out on purpose; the vehicle's position is still an illustration.
+- Confirming again replaces the outlet's live order (Fresh: per kind; Style: the weekly order). Every
+  create form, the review and the Style form say so with a "Replaces ORD…" tag showing what the order is
+  now (`ReplaceNotice`); a Tech outlet sees "Changing ORD…" when editing one order or "New order" when
+  adding another.
+- An order the dispatcher has already allocated (status `Allocated`, plan not yet published) shows an
+  "Already planned" tag on the create form, the review, the order detail and the cancel confirmation:
+  changing or cancelling it is allowed until the cutoff, but it goes back to be planned again. The vehicle
+  stays hidden from the store. The demo panel's "Planned by the dispatcher" state shows it.
+- Cancelling: a waiting order can be cancelled from its detail page until the cutoff
+  (`OrdersApi.cancelOrder`, also queued offline); after that it is locked. The order leaves the live
+  list and is kept in the history with `cancelledAt`, shown as "Cancelled" (filter and detail page).
+- Late arrival: a dispatched order whose stop `eta` is after the window end shows "Running late" on
+  the overview, tracking, order detail and notifications, and counts on the bell (`lib/lateness.ts`). The
+  demo panel's "En route · running late" state shows it. A backend can also send a lateness probability.
+- Orders (`/store-manager/orders`, with search, filters and paging) and Order detail
+  (`/orders/:orderId`) are not in the Figma frames; they follow the same look. The create form is at
+  `/store-manager/orders/new`. Past orders come from `OrdersApi.listHistory({ outletId })`
+  (`Snapshot.orderHistory`, demo data in `infrastructure/demo/orderHistory.ts`); the backend must return
+  earlier orders with `deliveryDate` and their event times, and should page and search on the server.
+- The store has its own Notifications (`/store-manager/notifications`: what needs action, running-late
+  deliveries, issues reported and where they stand, and an activity feed built from each order's event
+  times in `lib/notifications.ts`), Profile and Preferences. On the profile the manager edits their own
+  name, phone and email (`TeamApi.updateContact`, queued offline like other changes); role, outlet and
+  depot are read-only and changed by asking an administrator (`TeamApi.requestAccountChange`). A role points the shell's bell and account
+  menu at its own pages with `shell.accountPaths` in `index.ts`; the shared `/account/*` pages stay for
+  roles that do not. A backend can serve the feed from a notifications endpoint, and issue outcomes from
+  the issue record: today every reported issue reads "Open · Awaiting review" because nothing resolves
+  them yet.
+- "Repeat last order" on the Fresh create form copies the most recent earlier day's quantities and
+  windows (`lastOrders` in `lib/orderList.ts`). Not built: the dispatcher, loader and driver screens
+  acting specially on the store's cancellations, mall windows and Style/Tech orders.
+- The business clock is fixed on Friday 25 September, 15:42 (`session/useBusinessClock`); with a backend
+  it returns server time and the real cutoff.
+- The route map is a real Leaflet map (OpenStreetMap tiles, muted to the design's grey) showing this
+  outlet, its depot and the vehicle. There is no telemetry yet, so the vehicle is drawn on the route as
+  an illustration while en route; "Refresh" only reloads data. Live position, ETA updates and "minutes
+  away" need telemetry from the backend.
+- The local adapter accepts outlet `OUT001` only for writes (the seed models one store).
+- Compare against Figma again after the dispatcher publish bug is fixed, using real flow data.
 
 ## Loader
 

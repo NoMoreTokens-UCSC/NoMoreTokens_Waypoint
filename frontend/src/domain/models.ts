@@ -8,6 +8,8 @@ export interface StoreOrderInput {
   window: string
   /** End of the receiving window, e.g. "07:30". Defaults to two hours after `window`. */
   windowEnd?: string
+  /** Tech only: change this existing order instead of adding another (Tech orders as needed). */
+  orderId?: string
 }
 export type OrderStatus =
   'Confirmed' | 'Allocated' | 'Deferred' | 'Scheduled' | 'En route' | 'Delivered'
@@ -26,6 +28,8 @@ export interface Order {
   trip?: number
   deferralReason?: string
   priority: boolean
+  /** The delivery day this order was for, "2026-09-24". Absent on the live orders (next run). */
+  deliveryDate?: string
   /** Event times (ISO), set as the order moves through the workflow. */
   placedAt?: string
   scheduledAt?: string
@@ -34,6 +38,8 @@ export interface Order {
   deferredAt?: string
   deferralAcknowledgedAt?: string
   receiptAt?: string
+  /** Set when the store withdrew the order before the cutoff; such orders are kept in the history. */
+  cancelledAt?: string
   windowEnd?: string
   receipt: 'Pending' | 'Confirmed' | 'Issue reported'
   issue?: string
@@ -191,11 +197,18 @@ export interface Snapshot {
     weight?: number
     volume?: number
     windowEnd?: string
+    /** The outlet that saved it; absent on drafts saved before outlets were tracked (OUT001). */
+    outlet?: string
   }[]
+  /** Earlier orders, kept apart from the live orders so planning screens are unaffected. */
+  orderHistory?: Order[]
+  orderHistoryVersion?: number
   unlistedTeamCounts?: { Active: number; Invited: number; Suspended: number }
   fleetReferenceVersion?: number
   designDataVersion?: number
   activeDriverId?: string
+  /** Demo only: which outlet the store manager workspace is signed in as (default: the member's). */
+  activeOutletId?: string
   unlistedAuditCount?: number
   auditReferenceVersion?: number
 }
