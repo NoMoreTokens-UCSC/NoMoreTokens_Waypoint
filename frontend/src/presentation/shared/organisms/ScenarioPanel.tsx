@@ -5,6 +5,11 @@ import { Switch } from '../atoms/switch'
 import { Modal, Field, Notice } from '../molecules/Common'
 import { useOperations, useAction } from '../../hooks/useOperations'
 import { useServices } from '../../providers/ServicesContext'
+import {
+  applyStoreDemoState,
+  storeDemoStates,
+  type StoreDemoState,
+} from '../../../application/storeDemoStates'
 
 export function ScenarioPanel({
   open,
@@ -69,6 +74,32 @@ export function ScenarioPanel({
           <option value="accepted">Accept proof</option>
           <option value="retry">Interrupt upload · retry required</option>
           <option value="review">Route review required</option>
+        </select>
+      </Field>
+      <Field
+        label="Store orders · OUT001"
+        hint="Loads sample delivery states for the store screens. Other outlets are not changed; Reset demo restores everything."
+      >
+        <select
+          className="native-select"
+          aria-label="Store orders"
+          value=""
+          disabled={action.isPending}
+          onChange={(e) => {
+            const state = e.target.value as StoreDemoState
+            if (!state) return
+            action.run(
+              () => service.repository.update((snapshot) => applyStoreDemoState(snapshot, state)),
+              'Store orders updated',
+            )
+          }}
+        >
+          <option value="">Choose a state…</option>
+          {storeDemoStates.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </Field>
       <p role="status" className="text-xs text-muted-foreground">
