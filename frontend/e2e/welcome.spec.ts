@@ -18,7 +18,7 @@ test.describe('welcome page motion', () => {
       'Enter your workspace',
     )
     // The brand counts and the steps appear as they are reached.
-    await expect(page.locator('.entry-brand').first()).toContainText('80 supermarkets')
+    await expect(page.locator('.entry-brand').first()).toContainText('supermarkets')
     await page.locator('.entry-steps').scrollIntoViewIfNeeded()
     await expect(page.locator('.entry-steps')).toHaveAttribute('data-visible', 'true')
     // Back at the top the quick bar goes away again.

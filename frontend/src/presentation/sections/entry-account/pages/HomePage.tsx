@@ -1,5 +1,5 @@
 import { useInView } from 'framer-motion'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Laptop, Shirt, ShoppingBasket } from 'lucide-react'
 import { useRef, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { EntryFooter, Wordmark, fieldRoles, rolePhotos, roleTitle } from '../components/EntryChrome'
@@ -14,9 +14,33 @@ import {
 } from '../components/WelcomeMotion'
 
 const brands = [
-  { name: 'Waypoint Fresh', count: 80, unit: 'supermarkets', tone: 'fresh' },
-  { name: 'Waypoint Style', count: 25, unit: 'fashion outlets', tone: 'style' },
-  { name: 'Waypoint Tech', count: 15, unit: 'electronics outlets', tone: 'tech' },
+  {
+    name: 'Waypoint Fresh',
+    count: 80,
+    unit: 'supermarkets',
+    tone: 'fresh',
+    Icon: ShoppingBasket,
+    goods: 'Groceries, chilled and frozen goods.',
+    schedule: 'Daily · before 8 AM',
+  },
+  {
+    name: 'Waypoint Style',
+    count: 25,
+    unit: 'fashion outlets',
+    tone: 'style',
+    Icon: Shirt,
+    goods: 'Hanging garments and cartons.',
+    schedule: 'Weekly · seasonal peaks',
+  },
+  {
+    name: 'Waypoint Tech',
+    count: 15,
+    unit: 'electronics outlets',
+    tone: 'tech',
+    Icon: Laptop,
+    goods: 'Appliances and consumer electronics.',
+    schedule: 'As needed · fragile, high value',
+  },
 ]
 const steps = [
   ['Order', 'Store managers place orders before the 4 PM cutoff.'],
@@ -155,11 +179,21 @@ function Welcome() {
         <div className="entry-brands">
           {brands.map((brand, index) => (
             <Reveal key={brand.name} delay={index * 0.1} className="entry-cell">
-              <div className="entry-brand">
-                <strong className={`entry-brand-${brand.tone}`}>{brand.name}</strong>
-                <span>
-                  <CountUp to={brand.count} /> {brand.unit}
-                </span>
+              <div className={`entry-brand entry-brand-${brand.tone}`}>
+                <div className="entry-brand-head">
+                  <span className="entry-brand-icon" aria-hidden="true">
+                    <brand.Icon size={20} strokeWidth={1.75} />
+                  </span>
+                  <strong>{brand.name}</strong>
+                </div>
+                <div className="entry-brand-count">
+                  <b>
+                    <CountUp to={brand.count} />
+                  </b>
+                  <span>{brand.unit}</span>
+                </div>
+                <p>{brand.goods}</p>
+                <span className="entry-brand-schedule">{brand.schedule}</span>
               </div>
             </Reveal>
           ))}
