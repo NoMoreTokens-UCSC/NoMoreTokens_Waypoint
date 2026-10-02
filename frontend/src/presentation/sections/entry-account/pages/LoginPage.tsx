@@ -13,7 +13,7 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
-  const [remember, setRemember] = useState(false)
+  const [remember, setRemember] = useState(true)
   const [failed, setFailed] = useState(false)
   const [recovery, setRecovery] = useState<'closed' | 'request' | 'sent'>('closed')
   const [recoveryId, setRecoveryId] = useState('')
