@@ -47,8 +47,8 @@ export function createLocalApis(service: OperationsService): Apis {
       editOrder: (orderId, cases, window) => service.editOrder(orderId, cases, window),
       saveDraft: (temperature, cases, window) => service.saveDraft(temperature, cases, window),
       saveDrafts: async (outletId, inputs) => {
-        requireDemoOutlet(outletId)
-        await service.saveStoreDrafts(inputs)
+        const profile = requireDemoOutlet(outletId)
+        await service.saveStoreDrafts(inputs, profile)
       },
       confirmReceipt: (orderId) => service.confirmReceipt(orderId),
       reportReceiptIssue: (orderId, issue) =>
@@ -134,6 +134,7 @@ export function createLocalApis(service: OperationsService): Apis {
       inviteByMobile: (invitation) => service.inviteByMobile(invitation),
       completeInvitation: (memberId) => service.completeInvitation(memberId),
       resetAccess: (memberId) => service.resetAccess(memberId),
+      updateContact: (memberId, contact) => service.updateMemberContact(memberId, contact),
       requestAccountChange: (memberId, detail) => service.requestAccountChange(memberId, detail),
       changeAssignment: (memberId, depot, assignment) =>
         service.changeAssignment(memberId, depot, assignment),

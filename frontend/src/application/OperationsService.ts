@@ -589,11 +589,14 @@ export class OperationsService {
       log(s, 'Store issue reported', `${order.id} · ${kind} · ${affected} cases`)
     })
   }
-  saveStoreDrafts(inputs: StoreOrderInput[]) {
+  saveStoreDrafts(
+    inputs: StoreOrderInput[],
+    outlet: { id: string; brand: Order['brand'] } = { id: 'OUT001', brand: 'Fresh' },
+  ) {
     return this.repository.update((s) => {
       assert(
         inputs.length >= 1 &&
-          inputs.length <= 2 &&
+          inputs.length <= (outlet.brand === 'Fresh' ? 2 : 1) &&
           new Set(inputs.map((input) => input.temperature)).size === inputs.length,
         'Provide at most one chilled and one dry order.',
       )
@@ -614,8 +617,9 @@ export class OperationsService {
           windowEnd: input.windowEnd,
           weight: input.weight,
           volume: input.volume,
+          outlet: outlet.id,
         })
-      log(s, 'Store drafts saved', 'Chilled and dry orders · next eligible run')
+      log(s, 'Store drafts saved', `${outlet.id} · next eligible run`)
     })
   }
   saveDraft(temperature: 'Ambient' | 'Chilled', cases: number, window: string) {
@@ -703,10 +707,16 @@ export class OperationsService {
         )
       }
       const placedAt = new Date().toISOString()
-      for (const input of inputs) {
-        const order = s.orders.find(
-          (o) => o.outlet === outlet.id && o.temperature === input.temperature,
-        )
+      for (const { orderId, ...input } of inputs) {
+        // Tech orders as needed, so each order stands alone: a new one is added unless an existing
+        // order is being changed. Fresh and Style have one live order per kind.
+        const order =
+          outlet.brand === 'Tech'
+            ? orderId
+              ? s.orders.find((o) => o.id === orderId && o.outlet === outlet.id)
+              : undefined
+            : s.orders.find((o) => o.outlet === outlet.id && o.temperature === input.temperature)
+        assert(!orderId || order, 'That order is no longer open. Start a new order instead.')
         if (order)
           Object.assign(order, input, {
             status: 'Confirmed',
@@ -717,7 +727,13 @@ export class OperationsService {
         else
           s.orders.push({
             ...input,
-            id: `ORD${Date.now().toString().slice(-7)}${input.temperature === 'Chilled' ? 'C' : 'A'}`,
+            id: `ORD${Date.now().toString().slice(-7)}${
+              outlet.brand === 'Tech'
+                ? `T${s.orders.filter((o) => o.outlet === outlet.id).length + 1}`
+                : input.temperature === 'Chilled'
+                  ? 'C'
+                  : 'A'
+            }`,
             outlet: outlet.id,
             outletName: outlet.name,
             brand: outlet.brand,
@@ -758,6 +774,11 @@ export class OperationsService {
         'Only an order that is still waiting for the plan can be cancelled.',
       )
       s.orders = s.orders.filter((o) => o.id !== orderId)
+      // Kept in the history so the store can see what it withdrew and when.
+      s.orderHistory = [
+        ...(s.orderHistory ?? []),
+        { ...order, vehicleId: undefined, trip: undefined, cancelledAt: new Date().toISOString() },
+      ]
       s.settings.allocationReviewed = false
       for (const stop of s.stops.filter((candidate) => candidate.orderIds.includes(orderId))) {
         stop.orderIds = stop.orderIds.filter((id) => id !== orderId)
@@ -973,6 +994,21 @@ export class OperationsService {
       assert(member, 'Team member was not found.')
       member.accessState = 'Recovery requested'
       log(s, 'Demo access recovery requested', `${member.name} · no message sent`)
+    })
+  }
+  /** A person's own contact details. Role, outlet and depot are changed by an administrator. */
+  updateMemberContact(memberId: string, contact: { name: string; mobile: string; email: string }) {
+    return this.repository.update((s) => {
+      const member = s.members.find((candidate) => candidate.id === memberId)
+      assert(member, 'Select a team member.')
+      const name = contact.name.trim()
+      const mobile = contact.mobile.trim()
+      const email = contact.email.trim()
+      assert(name.length >= 2, 'Enter your full name.')
+      assert(/^[+\d][\d\s-]{6,}$/.test(mobile), 'Enter a phone number with at least 7 digits.')
+      assert(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), 'Enter a valid email address.')
+      Object.assign(member, { name, mobile, email })
+      log(s, 'Contact details updated', member.name)
     })
   }
   requestAccountChange(memberId: string, detail: string) {

@@ -8,6 +8,8 @@ export interface StoreOrderInput {
   window: string
   /** End of the receiving window, e.g. "07:30". Defaults to two hours after `window`. */
   windowEnd?: string
+  /** Tech only: change this existing order instead of adding another (Tech orders as needed). */
+  orderId?: string
 }
 export type OrderStatus =
   'Confirmed' | 'Allocated' | 'Deferred' | 'Scheduled' | 'En route' | 'Delivered'
@@ -36,6 +38,8 @@ export interface Order {
   deferredAt?: string
   deferralAcknowledgedAt?: string
   receiptAt?: string
+  /** Set when the store withdrew the order before the cutoff; such orders are kept in the history. */
+  cancelledAt?: string
   windowEnd?: string
   receipt: 'Pending' | 'Confirmed' | 'Issue reported'
   issue?: string
@@ -193,6 +197,8 @@ export interface Snapshot {
     weight?: number
     volume?: number
     windowEnd?: string
+    /** The outlet that saved it; absent on drafts saved before outlets were tracked (OUT001). */
+    outlet?: string
   }[]
   /** Earlier orders, kept apart from the live orders so planning screens are unaffected. */
   orderHistory?: Order[]
