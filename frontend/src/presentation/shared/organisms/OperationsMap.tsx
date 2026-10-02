@@ -1,22 +1,44 @@
-import { MapContainer, CircleMarker, Polyline, Popup, TileLayer } from 'react-leaflet'
+import { useEffect } from 'react'
+import { MapContainer, CircleMarker, Polyline, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { useConnectivity } from '../../hooks/useOperations'
 import type { Stop, Vehicle } from '../../../domain/models'
 import 'leaflet/dist/leaflet.css'
+
+function FitMapToPoints({ vehicles, stops }: { vehicles: Vehicle[]; stops: Stop[] }) {
+  const map = useMap()
+  useEffect(() => {
+    const points = [
+      ...vehicles.map((vehicle) => [vehicle.lat, vehicle.lng] as [number, number]),
+      ...stops.map((stop) => [stop.lat, stop.lng] as [number, number]),
+    ]
+    if (points.length > 1) map.fitBounds(points, { padding: [64, 64], maxZoom: 11 })
+  }, [map, vehicles, stops])
+  return null
+}
 
 export default function OperationsMap({
   vehicles = [],
   stops = [],
   offline = false,
+  onVehicleSelect,
+  delayedVehicleIds = [],
 }: {
   vehicles?: Vehicle[]
   stops?: Stop[]
   offline?: boolean
+  onVehicleSelect?: (vehicle: Vehicle) => void
+  delayedVehicleIds?: string[]
 }) {
   const connected = useConnectivity()
   const points: [number, number][] = [
     [6.953, 79.884],
     ...stops.map((s) => [s.lat, s.lng] as [number, number]),
   ]
+  const orderedVehicles = [...vehicles].sort((a, b) => {
+    const aPriority = a.id === 'VEH027' ? 2 : a.status === 'Offline' ? 1 : 0
+    const bPriority = b.id === 'VEH027' ? 2 : b.status === 'Offline' ? 1 : 0
+    return aPriority - bPriority
+  })
   return (
     <div className="map-wrap">
       <MapContainer
@@ -26,6 +48,7 @@ export default function OperationsMap({
         className="operations-map"
         aria-label="Operations map"
       >
+        <FitMapToPoints vehicles={vehicles} stops={stops} />
         {connected && !offline && (
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -35,25 +58,36 @@ export default function OperationsMap({
         {stops.length > 0 && (
           <Polyline positions={points} pathOptions={{ color: '#f26a2e', weight: 4 }} />
         )}
-        {vehicles.map((v) => (
+        {orderedVehicles.map((v) => (
           <CircleMarker
             key={v.id}
-            center={[v.lat, v.lng]}
+            center={v.id === 'VEH027' ? [v.lat + 0.002, v.lng + 0.002] : [v.lat, v.lng]}
             radius={7}
+            eventHandlers={onVehicleSelect ? { click: () => onVehicleSelect(v) } : undefined}
             pathOptions={{
               color: '#fff',
               weight: 2,
-              fillColor: v.status === 'Offline' ? '#6e737b' : '#f26a2e',
+              fillColor: v.status === 'Offline' ? '#6e737b' : delayedVehicleIds.includes(v.id) ? '#c63a2f' : '#f26a2e',
               fillOpacity: 1,
             }}
           >
-            <Popup>
-              <strong>{v.id}</strong>
-              <br />
-              {v.location} · {v.status}
-              <br />
-              {v.reefer ? 'Refrigerated' : 'Ambient'} {v.type.toLowerCase()}
-            </Popup>
+            <Tooltip
+              permanent={v.id === 'VEH027' || v.status === 'Offline'}
+              direction="top"
+              offset={[0, -8]}
+              className="vehicle-map-label"
+            >
+              {v.id}
+            </Tooltip>
+            {!onVehicleSelect && (
+              <Popup>
+                <strong>{v.id}</strong>
+                <br />
+                {v.location} · {v.status}
+                <br />
+                {v.reefer ? 'Refrigerated' : 'Ambient'} {v.type.toLowerCase()}
+              </Popup>
+            )}
           </CircleMarker>
         ))}
         {stops.map((s) => (
