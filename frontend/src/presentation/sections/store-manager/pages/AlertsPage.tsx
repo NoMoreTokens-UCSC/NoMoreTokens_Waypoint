@@ -10,6 +10,7 @@ import { Action, ActionLink, Callout, PageIntro, Pill, StorePage } from '../comp
 import { AlertIcon } from '../components/StoreIcons'
 import { kindSlash } from '../lib/orderView'
 import { deferredOrders, useStoreOrders } from '../lib/useStore'
+import { DeliveryAlerts } from '../../../shared/organisms/DeliveryAlerts'
 
 const explanation = (reason?: string) =>
   reason && /capacity/i.test(reason)
@@ -115,7 +116,7 @@ function DeferralCard({ order, outletId }: { order: Order; outletId: string }) {
   )
 }
 
-/** Alerts: deferrals that need the store's acknowledgment. */
+/** Delivery updates and deferrals that need the store's acknowledgment. */
 export default function AlertsPage() {
   const { orders, outletId, loaded } = useStoreOrders()
   const deferred = deferredOrders(orders)
@@ -125,9 +126,10 @@ export default function AlertsPage() {
   if (!first)
     return (
       <StorePage>
-        <PageIntro title="Alerts" context={`${outletId} · Nothing needs your attention`} />
+        <PageIntro title="Alerts" context={outletId} />
+        <DeliveryAlerts />
         <section className="sm-panel">
-          <h2>No alerts</h2>
+          <h2>No deferral alerts</h2>
           <p className="sm-muted">
             Deferrals will appear here when the dispatcher moves an order to a later run.
           </p>
@@ -151,6 +153,7 @@ export default function AlertsPage() {
             : undefined
         }
       />
+      <DeliveryAlerts />
       {deferred.map((order) => (
         <DeferralCard key={order.id} order={order} outletId={outletId} />
       ))}

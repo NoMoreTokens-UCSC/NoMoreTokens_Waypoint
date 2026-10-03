@@ -1,5 +1,6 @@
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, Link } from 'react-router-dom'
+import { DriverRuntimeBoundary } from '../presentation/sections/driver/hooks/DriverRuntime'
 import WorkspaceLayout from '../presentation/shared/templates/WorkspaceLayout'
 import { appRoutes } from '../presentation/roles/registry'
 
@@ -35,39 +36,41 @@ export function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <Suspense
-          fallback={
-            <div className="min-h-[70dvh] grid place-items-center text-muted-foreground">
-              Opening your workspace…
-            </div>
-          }
-        >
-          <Routes>
-            <Route path="/demo/map" element={<DemoMapPage />} />
-            <Route path="/demo" element={<DemoPage />} />
-            <Route path="/" element={<Navigate to="/welcome" replace />} />
-            {standaloneRoutes.map(({ path, component: Page }) => (
-              <Route key={path} path={path} element={<Page />} />
-            ))}
-            <Route element={<WorkspaceLayout />}>
-              {shellRoutes.map(({ path, component: Page }) => (
+        <DriverRuntimeBoundary>
+          <Suspense
+            fallback={
+              <div className="min-h-[70dvh] grid place-items-center text-muted-foreground">
+                Opening your workspace…
+              </div>
+            }
+          >
+            <Routes>
+              <Route path="/demo/map" element={<DemoMapPage />} />
+              <Route path="/demo" element={<DemoPage />} />
+              <Route path="/" element={<Navigate to="/welcome" replace />} />
+              {standaloneRoutes.map(({ path, component: Page }) => (
                 <Route key={path} path={path} element={<Page />} />
               ))}
-              <Route
-                path="*"
-                element={
-                  <div className="empty-state">
-                    <h1>Screen not found</h1>
-                    <p>Choose a workspace to continue.</p>
-                    <Link to="/welcome">
-                      <Button>Choose workspace</Button>
-                    </Link>
-                  </div>
-                }
-              />
-            </Route>
-          </Routes>
-        </Suspense>
+              <Route element={<WorkspaceLayout />}>
+                {shellRoutes.map(({ path, component: Page }) => (
+                  <Route key={path} path={path} element={<Page />} />
+                ))}
+                <Route
+                  path="*"
+                  element={
+                    <div className="empty-state">
+                      <h1>Screen not found</h1>
+                      <p>Choose a workspace to continue.</p>
+                      <Link to="/welcome">
+                        <Button>Choose workspace</Button>
+                      </Link>
+                    </div>
+                  }
+                />
+              </Route>
+            </Routes>
+          </Suspense>
+        </DriverRuntimeBoundary>
       </BrowserRouter>
     </ErrorBoundary>
   )

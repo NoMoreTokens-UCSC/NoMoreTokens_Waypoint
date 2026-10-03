@@ -3,6 +3,8 @@ import { BackIcon } from '../../../shared/templates/shellIcons'
 import { Action } from './StoreKit'
 import { formatShortDate } from '../../../../domain/calendar'
 import { clock12 } from '../lib/timeText'
+import type { Evidence } from '../../../../domain/models'
+import { ManagerSignOffDetails } from '../../../shared/organisms/ManagerSignOffDetails'
 import fallback from '../assets/delivery-photo.png'
 
 /** The delivery photograph, or the design's placeholder illustration before a photo is synced. */
@@ -21,6 +23,7 @@ export function ProofDialog({
   outletId,
   url,
   capturedAt,
+  evidence,
 }: {
   open: boolean
   onClose: () => void
@@ -28,12 +31,13 @@ export function ProofDialog({
   outletId: string
   url?: string
   capturedAt?: string
+  evidence?: Evidence
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent
         showCloseButton={false}
-        className="sm-dialog !gap-4 !rounded-2xl !p-5 sm:!max-w-[380px]"
+        className="sm-dialog max-h-[calc(100dvh-32px)] overflow-y-auto !gap-4 !rounded-2xl !p-5 sm:!max-w-[380px]"
       >
         <div className="breadcrumbs !mb-0" aria-hidden="true">
           <button type="button" className="breadcrumb-back" onClick={onClose} tabIndex={-1}>
@@ -63,6 +67,9 @@ export function ProofDialog({
             ? `Captured by driver · ${formatShortDate(capturedAt)}, ${clock12(capturedAt)}`
             : 'Captured by driver'}
         </p>
+        {evidence?.kind === 'delivery' && (
+          <ManagerSignOffDetails signature={evidence.signature} signOff={evidence.managerSignOff} />
+        )}
         <Action variant="grey" onClick={onClose}>
           Close
         </Action>

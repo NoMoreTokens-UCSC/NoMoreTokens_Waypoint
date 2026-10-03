@@ -1,3 +1,6 @@
+import type { DeliveryNotice, DevicePosition, WebPushRegistration } from './api/driverSignals'
+import type { ManagerSignOff } from './deliveryVerification'
+
 export type Workspace = 'dispatcher' | 'store-manager' | 'loader' | 'driver' | 'administration'
 export type Temperature = 'Ambient' | 'Chilled'
 export interface StoreOrderInput {
@@ -64,6 +67,9 @@ export interface Vehicle {
   lat: number
   lng: number
   updatedMinutes: number
+  positionSource?: 'device' | 'demo'
+  positionUpdatedAt?: string
+  positionAccuracy?: number
 }
 export interface Load {
   id: string
@@ -96,11 +102,14 @@ export interface Stop {
   address: string
   window: string
   eta: string
+  originalEta?: string
+  etaUpdatedAt?: string
   lat: number
   lng: number
   orderIds: string[]
   cases: number
   status: 'Upcoming' | 'Arrived' | 'Proof pending' | 'Delivered' | 'Cannot deliver'
+  arrivedAt?: string
   proofId?: string
   issue?: string
 }
@@ -114,11 +123,12 @@ export interface Evidence {
   quantity?: number
   receiver?: string
   signature?: Blob
+  managerSignOff?: ManagerSignOff
   receiverException?: string
   revision: number
   accepted: boolean
 }
-export type QueueStatus = 'pending' | 'syncing' | 'accepted' | 'review' | 'retry'
+export type QueueStatus = 'pending' | 'syncing' | 'accepted' | 'review' | 'retry' | 'superseded'
 export interface QueuedAction {
   id: string
   evidenceId: string
@@ -168,6 +178,7 @@ export interface Settings {
   cutoffClosed: boolean
   published: boolean
   routeStarted: boolean
+  routeStartedAt?: string
   routeRevision: number
   simulatedOffline: boolean
   syncOutcome: 'accepted' | 'review' | 'retry'
@@ -181,6 +192,10 @@ export interface Settings {
   compactRows: boolean
 }
 export interface Snapshot {
+  routeEvents?: import('./routeHistory').RouteEvent[]
+  pendingPushSubscriptions?: WebPushRegistration[]
+  pendingPositions?: DevicePosition[]
+  deliveryNotices?: DeliveryNotice[]
   orders: Order[]
   vehicles: Vehicle[]
   loads: Load[]
