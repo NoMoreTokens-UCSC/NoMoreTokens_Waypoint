@@ -20,21 +20,25 @@ export const administrationModule: RoleModule = {
   routes: [
     {
       path: '/administration/team',
+      title: 'Team & access',
       component: lazyPage(() => pages().then((m) => m.TeamPage)),
       shell: true,
     },
     {
       path: '/administration/roles',
+      title: 'Roles & access',
       component: lazyPage(() => pages().then((m) => m.RolesPage)),
       shell: true,
     },
     {
       path: '/administration/assignments',
+      title: 'Assignments',
       component: lazyPage(() => pages().then((m) => m.AssignmentsPage)),
       shell: true,
     },
     {
       path: '/administration/audit',
+      title: 'Audit log',
       component: lazyPage(() => pages().then((m) => m.AuditPage)),
       shell: true,
     },

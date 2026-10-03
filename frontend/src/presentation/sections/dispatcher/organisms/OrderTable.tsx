@@ -37,11 +37,12 @@ export function OrderTable({
   return (
     <>
       <div className="table-scroll">
-        <table className="data-table">
+        <table className="data-table order-table">
           <thead>
             <tr>
-              <th>Order / outlet</th>
-              <th>Demand type</th>
+              <th>Order</th>
+              <th>Outlet</th>
+              <th>Brand</th>
               {(
                 [
                   ['window', 'Delivery window'],
@@ -54,26 +55,41 @@ export function OrderTable({
                   key={key}
                   aria-sort={sort === key ? (descending ? 'descending' : 'ascending') : 'none'}
                 >
-                  <button onClick={() => sortBy(key)}>
+                  <button
+                    className={sort === key ? 'sort-active' : undefined}
+                    onClick={() => sortBy(key)}
+                  >
                     {label}
-                    {sort === key && (descending ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
+                    {sort === key &&
+                      (descending ? (
+                        <ArrowDown className="sort-arrow" size={12} />
+                      ) : (
+                        <ArrowUp className="sort-arrow" size={12} />
+                      ))}
                   </button>
                 </th>
               ))}
-              <th>Queue status</th>
+              <th>Plan status</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {sorted.slice(current * 10, current * 10 + 10).map((o) => (
-              <tr key={o.id} className={compact ? 'compact' : ''}>
+              <tr
+                key={o.id}
+                className={`order-row ${compact ? 'compact' : ''}`}
+                data-brand={o.brand.toLowerCase()}
+                onClick={() => onSelect(o)}
+              >
                 <td>
                   <button className="table-link" onClick={() => onSelect(o)}>
-                    {o.id} <span className="text-muted-foreground font-normal">· {o.outlet}</span>
+                    {o.id}
                   </button>
                   {o.priority && (
                     <small className="!text-primary">Priority · previously skipped</small>
                   )}
                 </td>
+                <td>{o.outlet}</td>
                 <td>
                   <span className={`brand-pill ${o.brand.toLowerCase()}`}>{o.brand}</span>
                 </td>
@@ -89,6 +105,11 @@ export function OrderTable({
                 </td>
                 <td>
                   <StatusBadge>{o.status}</StatusBadge>
+                </td>
+                <td className="order-row-action">
+                  <span className="row-arrow">
+                    <ChevronRight size={16} />
+                  </span>
                 </td>
               </tr>
             ))}

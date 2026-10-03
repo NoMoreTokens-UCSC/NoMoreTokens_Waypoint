@@ -1,6 +1,7 @@
 import { useEvidence } from '../../hooks/useOperations'
 import { Notice } from '../molecules/Common'
 import { formatTime } from '../lib/utils'
+import { ManagerSignOffDetails } from './ManagerSignOffDetails'
 
 export function EvidenceDetails({ evidenceId }: { evidenceId: string }) {
   const { evidence, url } = useEvidence(evidenceId)
@@ -14,6 +15,9 @@ export function EvidenceDetails({ evidenceId }: { evidenceId: string }) {
       </p>
       {evidence.receiverException && (
         <Notice title="Recorded exception">{evidence.receiverException}</Notice>
+      )}
+      {evidence.kind === 'delivery' && (
+        <ManagerSignOffDetails signature={evidence.signature} signOff={evidence.managerSignOff} />
       )}
       <p className="text-xs text-muted-foreground">
         Original revision {evidence.revision} · {evidence.fileName} ·{' '}

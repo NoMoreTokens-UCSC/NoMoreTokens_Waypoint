@@ -92,9 +92,24 @@
   min-height: 775px;
   padding: 48px 48px 64px;
   color: white;
-  background:
-    linear-gradient(rgba(30, 32, 37, 0.55), rgba(30, 32, 37, 0.65)),
-    url('/images/entry/warehouse-hero.jpg') center / cover;
+  background: #1e2025;
+  isolation: isolate;
+  overflow: hidden;
+}
+/* The photo sits behind a dark wash. */
+.entry-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: url('/images/entry/warehouse-hero.jpg') center / cover;
+}
+.entry-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(rgba(30, 32, 37, 0.55), rgba(30, 32, 37, 0.65));
 }
 .entry-hero-header {
   display: flex;
@@ -235,12 +250,26 @@
   box-shadow: 0 2px 10px rgba(34, 37, 42, 0.06);
 }
 .entry-brand strong {
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 20px;
+  font-weight: 600;
 }
 .entry-brand span {
-  font-size: 12px;
+  font-size: 13px;
   color: #6e737b;
+}
+/* The number leads: larger and bold, with the unit beside it. */
+.entry-brand b {
+  margin-right: 4px;
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  color: #22252a;
+  font-variant-numeric: tabular-nums;
+}
+.entry-brand b span {
+  font-size: inherit;
+  color: inherit;
 }
 .entry-brand-fresh {
   color: #c2501d;
@@ -661,8 +690,15 @@
   padding: 48px;
   color: white;
   background:
-    linear-gradient(rgba(30, 32, 37, 0.45), rgba(30, 32, 37, 0.6)),
-    url('/images/entry/warehouse-hero.jpg') 30% center / cover;
+    linear-gradient(
+      90deg,
+      rgba(20, 22, 26, 0.88) 0%,
+      rgba(20, 22, 26, 0.6) 30%,
+      rgba(20, 22, 26, 0.18) 65%,
+      rgba(20, 22, 26, 0) 100%
+    ),
+    linear-gradient(0deg, rgba(20, 22, 26, 0.55), rgba(20, 22, 26, 0) 38%),
+    url('/images/entry/warehouse-hero.jpg') 50% center / cover;
 }
 .entry-login-photo blockquote {
   margin: 0 0 40px;
@@ -674,6 +710,7 @@
 }
 .entry-login-photo footer {
   font-size: 13px;
+  color: rgba(255, 255, 255, 0.62);
 }
 .entry-login-panel {
   display: grid;
@@ -682,19 +719,28 @@
 }
 .entry-login-form {
   display: grid;
-  gap: 18px;
+  gap: 20px;
   width: 100%;
-  max-width: 400px;
+  max-width: 430px;
+}
+.entry-login-form .entry-wordmark {
+  font-size: 16px;
 }
 .entry-login-form h1 {
-  font-size: 28px;
-  font-weight: 500;
-  letter-spacing: -0.4px;
-  margin-top: 18px;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  margin-top: -2px;
 }
 .entry-login-lead {
   color: #6e737b;
-  margin-top: -10px;
+  font-size: 12px;
+  margin-top: -15px;
+}
+.entry-login-form .entry-button {
+  height: 42px;
+  font-size: 11.5px;
 }
 .entry-login-error {
   display: flex;
@@ -708,15 +754,17 @@
 }
 .entry-field {
   display: grid;
-  gap: 8px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 11.5px;
+  line-height: 15px;
   font-weight: 500;
 }
 .entry-field input {
-  height: 44px;
-  padding: 0 16px;
+  height: 38px;
+  padding: 0 14px;
+  font-size: 11.5px;
   border: 1px solid transparent;
-  border-radius: 22px;
+  border-radius: 10px;
   background: #f2f1ef;
   font: inherit;
   font-weight: 400;
@@ -731,7 +779,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
+  font-size: 11.5px;
 }
 .entry-login-options label {
   display: inline-flex;
@@ -739,8 +787,8 @@
   gap: 8px;
 }
 .entry-login-options input {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   accent-color: #f26a2e;
 }
 .entry-login-options button {
@@ -763,7 +811,7 @@
 }
 .entry-login-help {
   color: #8a8c90;
-  font-size: 12px;
+  font-size: 10.5px;
 }
 
 @media (max-width: 1100px) {
@@ -906,6 +954,9 @@
   }
   .entry-login-photo {
     padding: 24px;
+    background:
+      linear-gradient(0deg, rgba(20, 22, 26, 0.7), rgba(20, 22, 26, 0.1) 70%),
+      url('/images/entry/warehouse-hero.jpg') 50% center / cover;
   }
   .entry-login-photo blockquote {
     margin: 0;
@@ -916,5 +967,367 @@
   .entry-login-panel {
     place-items: start center;
     padding: 24px;
+  }
+}
+
+/* Welcome: motion */
+@keyframes entry-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(30, 138, 87, 0.5);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 8px rgba(30, 138, 87, 0);
+  }
+}
+@keyframes entry-drive {
+  from {
+    left: 0;
+  }
+  to {
+    left: calc(100% - 10px);
+  }
+}
+@keyframes entry-cue {
+  0% {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+@keyframes entry-sheen {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.entry-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  height: 3px;
+  background: #f26a2e;
+  transform-origin: 0 50%;
+}
+.entry-sticky {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 48px;
+  background: rgba(245, 244, 242, 0.88);
+  border-bottom: 1px solid #e6e3df;
+  color: #22252a;
+  backdrop-filter: blur(10px);
+}
+.entry-sticky nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.entry-sticky-link {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4b4f56;
+}
+.entry-sticky-link:hover {
+  color: #c2501d;
+}
+.entry-sticky .entry-sticky-cta {
+  height: 40px;
+  min-width: 0;
+  padding: 0 22px;
+}
+
+.entry-scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+.entry-scroll-cue i {
+  position: relative;
+  width: 1px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.35);
+  overflow: hidden;
+}
+.entry-scroll-cue i::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 12px;
+  background: white;
+  animation: entry-cue 1.8s ease-in-out infinite;
+}
+.entry-scroll-cue:hover {
+  color: white;
+}
+
+.entry-cell {
+  display: grid;
+}
+.entry-preview-tilt {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.entry-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.entry-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1e8a57;
+  animation: entry-pulse 1.8s ease-out infinite;
+}
+.entry-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.entry-route span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f26a2e;
+}
+.entry-route i {
+  position: relative;
+  flex: 1;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, #f3c9b4 0 6px, transparent 6px 12px);
+}
+.entry-route i::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1e8a57;
+  box-shadow: 0 0 0 4px rgba(30, 138, 87, 0.18);
+  animation: entry-drive 4.5s ease-in-out infinite alternate;
+}
+.entry-run-status {
+  display: block;
+  min-height: 16px;
+}
+.entry-run-status span {
+  display: inline-block;
+  font-weight: 600;
+  transition: color 0.3s;
+}
+.entry-run-status[data-stage='0'] span {
+  color: #8a8c90;
+}
+.entry-run-status[data-stage='1'] span {
+  color: #c2501d;
+}
+.entry-run-status[data-stage='2'] span {
+  color: #2f7189;
+}
+.entry-run-status[data-stage='3'] span {
+  color: #1e8a57;
+}
+
+/* Buttons respond to the pointer. */
+.entry-button {
+  transition:
+    filter 0.15s,
+    background 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+.entry-button:hover {
+  transform: translateY(-1px);
+}
+.entry-button:active {
+  transform: scale(0.98);
+}
+.entry-button-primary:hover {
+  box-shadow: 0 8px 20px rgba(242, 106, 46, 0.35);
+}
+.entry-cta-arrow svg {
+  transition: transform 0.2s;
+}
+.entry-cta-arrow:hover svg {
+  transform: translateX(4px);
+}
+
+/* Cards lift, photos zoom and the role card says where it goes. */
+.entry-brand {
+  transition:
+    transform 0.25s,
+    box-shadow 0.25s;
+}
+.entry-brand:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(34, 37, 42, 0.1);
+}
+.entry-role-card {
+  transition:
+    transform 0.25s,
+    box-shadow 0.25s;
+}
+.entry-role-card img {
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.entry-role-card:hover img {
+  transform: scale(1.07);
+}
+.entry-role-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c2501d;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition:
+    opacity 0.25s,
+    transform 0.25s;
+}
+.entry-role-card:hover .entry-role-go,
+.entry-role-card:focus-visible .entry-role-go {
+  opacity: 1;
+  transform: none;
+}
+@media (hover: none) {
+  .entry-role-go {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* How it works: the line draws and the numbers pop in, one after another, when the row is reached. */
+.entry-steps li:not(:last-child)::before {
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.7s ease calc(var(--i) * 0.3s + 0.25s);
+}
+.entry-steps[data-visible='true'] li:not(:last-child)::before {
+  transform: scaleX(1);
+}
+.entry-step-number {
+  transform: scale(0.5);
+  opacity: 0;
+  transition:
+    transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) calc(var(--i) * 0.3s),
+    opacity 0.3s calc(var(--i) * 0.3s),
+    box-shadow 0.25s;
+}
+.entry-steps li > div {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 0.5s calc(var(--i) * 0.3s + 0.15s),
+    transform 0.5s calc(var(--i) * 0.3s + 0.15s);
+}
+.entry-steps[data-visible='true'] .entry-step-number {
+  transform: scale(1);
+  opacity: 1;
+}
+.entry-steps[data-visible='true'] li > div {
+  opacity: 1;
+  transform: none;
+}
+.entry-steps li:hover .entry-step-number {
+  box-shadow: 0 0 0 8px rgba(242, 106, 46, 0.16);
+}
+
+/* The photo section and the closing call to action. */
+.entry-rush > .entry-rush-photo {
+  padding: 0;
+  align-self: stretch;
+  overflow: hidden;
+}
+.entry-cta {
+  background: linear-gradient(115deg, #f26a2e, #ff8a4c 50%, #f26a2e);
+  background-size: 220% 220%;
+  animation: entry-sheen 14s ease-in-out infinite;
+}
+.entry-cta-inner {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+}
+
+@media (max-width: 760px) {
+  .entry-sticky {
+    padding: 10px 16px;
+  }
+  .entry-sticky-link {
+    display: none;
+  }
+  .entry-scroll-cue {
+    display: none;
+  }
+  .entry-steps li:not(:last-child)::before {
+    transform: scaleY(0);
+    transform-origin: top center;
+  }
+  .entry-steps[data-visible='true'] li:not(:last-child)::before {
+    transform: scaleY(1);
+  }
+}
+
+/* Everything moves less, or not at all, when the device asks for it. */
+@media (prefers-reduced-motion: reduce) {
+  .entry-live,
+  .entry-route i::after,
+  .entry-scroll-cue i::after,
+  .entry-cta {
+    animation: none;
+  }
+  .entry-button,
+  .entry-brand,
+  .entry-role-card,
+  .entry-role-card img,
+  .entry-role-go {
+    transition: none;
+  }
+  .entry-button:hover,
+  .entry-button:active,
+  .entry-brand:hover,
+  .entry-role-card:hover img {
+    transform: none;
+  }
+  .entry-steps li:not(:last-child)::before,
+  .entry-step-number,
+  .entry-steps li > div {
+    transition: none;
+    transform: none;
+    opacity: 1;
   }
 }
