@@ -5,5 +5,8 @@
 figma-exports/
 
 __pycache__/
-
+*.py[cod]
+.venv/
+node_modules/
+dist/
 .env
