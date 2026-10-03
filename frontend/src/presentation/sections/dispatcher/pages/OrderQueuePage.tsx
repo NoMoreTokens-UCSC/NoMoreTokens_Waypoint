@@ -31,52 +31,70 @@ export default function OrderQueuePage() {
       (status === 'All' || o.status === status),
   )
   const order = data.orders.find((o) => o.id === selected),
-    closed = data.settings.cutoffClosed
+    closed = data.settings.cutoffClosed,
+    deferred = data.orders.filter((o) => o.status === 'Deferred').length,
+    unassigned = data.orders.filter((o) => !o.vehicleId && o.status !== 'Deferred').length
   return (
     <>
       <PageHeading
-        title="Order queue"
-        description="Delivery · Saturday, 26 September · Friday intake closes at 16:00"
+        eyebrow="Dispatch · Saturday, 26 September"
+        title="Orders"
+        description="Turn incoming demand into a feasible delivery plan."
         action={
           <Link to="/dispatcher/planning">
-            <Button variant="outline">
-              Open allocation
+            <Button>
+              Start allocation
               <ArrowRight size={16} />
             </Button>
           </Link>
         }
       />
       <PlanningSteps current={0} />
-      <div className="metrics">
+      <div className="metrics four">
         <Metric
-          label="Confirmed orders"
+          label={closed ? 'Confirmed' : 'Incoming'}
           value={data.orders.length}
-          detail={['Fresh', 'Style', 'Tech']
-            .map((b) => `${data.orders.filter((o) => o.brand === b).length} ${b}`)
-            .join(' · ')}
+          detail={closed ? 'Fixed after cutoff' : 'Total confirmed orders'}
           icon={<Package size={17} />}
         />
-        <Metric
-          label="Temperature controlled"
-          value={data.orders.filter((o) => o.temperature === 'Chilled').length}
-          detail="Chilled orders require a reefer"
-          icon={<Snowflake size={17} />}
-        />
-        <Metric
-          label="Cutoff"
-          value={closed ? 'Closed' : '18 min'}
-          detail={closed ? '16:00 · Intake locked for review' : '15:42 · Orders can still change'}
-          icon={<Clock size={17} />}
-        />
+        {!closed && (
+          <Metric
+            label="Chilled"
+            value={data.orders.filter((o) => o.temperature === 'Chilled').length}
+            detail="Chilled orders require a reefer"
+            icon={<Snowflake size={17} />}
+          />
+        )}
+        <Metric label="Deferred" value={deferred} detail="Orders moved to the next run" />
+        {closed && (
+          <Metric
+            label="Unassigned"
+            value={unassigned}
+            detail="Orders still needing a trip"
+          />
+        )}
+        {closed && (
+          <Metric
+            label="Chilled"
+            value={data.orders.filter((o) => o.temperature === 'Chilled').length}
+            detail="Chilled orders require a reefer"
+            icon={<Snowflake size={17} />}
+          />
+        )}
+        {!closed && (
+          <Metric
+            label="Cutoff"
+            value="18 min"
+            detail="15:42 · Orders can still change"
+            icon={<Clock size={17} />}
+          />
+        )}
       </div>
       <div className="toolbar">
         <div className="flex items-center gap-3">
           <StatusBadge tone={closed ? 'neutral' : 'success'}>
             {closed ? 'Intake closed' : 'Accepting orders'}
           </StatusBadge>
-          <span className="text-xs text-muted-foreground hidden lg:block">
-            All demand in one operational view
-          </span>
         </div>
         <Button
           variant="outline"
@@ -97,7 +115,10 @@ export default function OrderQueuePage() {
                 className={`filter-tab ${status === s ? 'selected' : ''}`}
                 onClick={() => setStatus(s)}
               >
-                {s}
+                {s}{' '}
+                <span className="ml-1 text-[10px] opacity-60">
+                  {s === 'All' ? data.orders.length : data.orders.filter((o) => o.status === s).length}
+                </span>
               </button>
             ))}
           </div>

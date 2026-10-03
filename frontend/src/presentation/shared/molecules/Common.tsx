@@ -184,7 +184,7 @@ export function CapacityBar({
   total: number
   unit?: string
 }) {
-  const ratio = Math.round((used / total) * 100)
+  const ratio = total > 0 ? Math.round((used / total) * 100) : 0
   return (
     <div className="capacity">
       <div>

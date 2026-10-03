@@ -10,5 +10,9 @@ import { snapshotKey } from './useOperations'
  */
 export function useApiQuery<T>(key: readonly unknown[], read: (apis: Apis) => Promise<T>) {
   const apis = useApis()
-  return useQuery({ queryKey: [...snapshotKey, 'api', ...key], queryFn: () => read(apis) })
+  return useQuery({
+    queryKey: [...snapshotKey, 'api', ...key],
+    queryFn: () => read(apis),
+    networkMode: 'always',
+  })
 }

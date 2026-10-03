@@ -1,12 +1,15 @@
+import { DriverSignalsService } from '../../application/DriverSignalsService'
 import type { Apis } from '../../domain/api'
+import { profileOf } from '../../domain/outlets'
+import { assignedDriverLoad, isAssignedStop } from '../../domain/driverWorkflow'
 import { tripsFromOrders } from '../../domain/trips'
 import type { OperationsService } from '../../application/OperationsService'
 
-/** The local demo models a single store workspace; a backend scopes every outlet. */
-const demoOutlet = 'OUT001'
+/** The local demo models three outlets (one per brand); a backend scopes every outlet. */
 function requireDemoOutlet(outletId: string) {
-  if (outletId !== demoOutlet)
-    throw new Error(`The local demo places orders for ${demoOutlet} only.`)
+  const profile = profileOf(outletId)
+  if (!profile) throw new Error('The local demo places orders for OUT001, OUT016 and OUT019 only.')
+  return profile
 }
 
 /**
@@ -16,7 +19,16 @@ function requireDemoOutlet(outletId: string) {
  */
 export function createLocalApis(service: OperationsService): Apis {
   const snapshot = () => service.repository.getSnapshot()
+  const signals = new DriverSignalsService(service.repository)
   return {
+    driverSignals: {
+      registerPushSubscription: (subscription) => signals.registerPushSubscription(subscription),
+      recordPosition: (position) => signals.recordPosition(position),
+      pendingPositions: () => signals.pendingPositions(),
+      listNotices: (outletId) => signals.listNotices(outletId),
+      acknowledgeNotice: (id) => signals.acknowledgeNotice(id),
+      checkDeliveryWindows: (now) => signals.checkDeliveryWindows(now),
+    },
     orders: {
       listOrders: async (filter = {}) =>
         (await snapshot()).orders.filter(
@@ -24,24 +36,30 @@ export function createLocalApis(service: OperationsService): Apis {
             (!filter.outletId || order.outlet === filter.outletId) &&
             (!filter.status || order.status === filter.status),
         ),
+      listHistory: async (filter = {}) =>
+        ((await snapshot()).orderHistory ?? [])
+          .filter((order) => !filter.outletId || order.outlet === filter.outletId)
+          .sort((a, b) => (b.deliveryDate ?? '').localeCompare(a.deliveryDate ?? '')),
+      getOutletProfile: async (outletId) => requireDemoOutlet(outletId),
       listDrafts: async () => (await snapshot()).drafts,
       getIntakeStatus: async () => {
         const { cutoffClosed, published } = (await snapshot()).settings
         return { cutoffClosed, published }
       },
       createOrder: async (outletId, temperature, cases, window) => {
-        requireDemoOutlet(outletId)
+        if (requireDemoOutlet(outletId).id !== 'OUT001')
+          throw new Error('createOrder models OUT001 only; use placeOrders.')
         await service.createOrder(temperature, cases, window)
       },
       placeOrders: async (outletId, inputs) => {
-        requireDemoOutlet(outletId)
-        await service.confirmStoreOrders(inputs)
+        const profile = requireDemoOutlet(outletId)
+        await service.confirmStoreOrders(inputs, profile)
       },
       editOrder: (orderId, cases, window) => service.editOrder(orderId, cases, window),
       saveDraft: (temperature, cases, window) => service.saveDraft(temperature, cases, window),
       saveDrafts: async (outletId, inputs) => {
-        requireDemoOutlet(outletId)
-        await service.saveStoreDrafts(inputs)
+        const profile = requireDemoOutlet(outletId)
+        await service.saveStoreDrafts(inputs, profile)
       },
       confirmReceipt: (orderId) => service.confirmReceipt(orderId),
       reportReceiptIssue: (orderId, issue) =>
@@ -52,6 +70,7 @@ export function createLocalApis(service: OperationsService): Apis {
           issue.affected,
           issue.description,
         ),
+      cancelOrder: (orderId) => service.cancelStoreOrder(orderId),
       acknowledgeDeferral: (orderId) => service.acknowledgeDeferral(orderId),
     },
     planning: {
@@ -73,22 +92,64 @@ export function createLocalApis(service: OperationsService): Apis {
       release: (loadId) => service.release(loadId),
     },
     loading: {
-      listLoads: async () => (await snapshot()).loads,
+      listLoads: async (filter = {}) =>
+        (await snapshot()).loads.filter((load) => !filter.depot || load.depot === filter.depot),
       getLoad: async (loadId) => (await snapshot()).loads.find((load) => load.id === loadId),
-      setLoaded: (loadId, outlet, quantity) => service.setLoaded(loadId, outlet, quantity),
-      setCheck: (loadId, check, checked) => service.setCheck(loadId, check, checked),
-      reportIssue: (loadId, issue) => service.reportLoadIssue(loadId, issue),
+      getWorkspace: async (loadId, depot) => {
+        const current = await snapshot()
+        const load = current.loads.find(
+          (entry) => entry.id === loadId && (!depot || entry.depot === depot),
+        )
+        const vehicle = current.vehicles.find((entry) => entry.id === load?.vehicleId)
+        if (!load || !vehicle) return undefined
+        const orders = current.orders.filter(
+          (order) =>
+            order.vehicleId === load.vehicleId &&
+            order.trip === load.trip &&
+            order.status !== 'Deferred',
+        )
+        return {
+          load: { ...load, items: [...load.items].sort((a, b) => b.stop - a.stop) },
+          vehicle,
+          published: current.settings.published,
+          stops: current.stops.filter(
+            (stop) =>
+              stop.loadId === load.id ||
+              (!stop.loadId && stop.orderIds.some((id) => orders.some((order) => order.id === id))),
+          ),
+          weight: orders.reduce((total, order) => total + order.weight, 0),
+          volume: orders.reduce((total, order) => total + order.volume, 0),
+        }
+      },
+      acknowledgeRevision: (loadId, revision) => service.acknowledgeLoadRevision(loadId, revision),
+      setLoaded: (loadId, outlet, quantity, revision) =>
+        service.setLoaded(loadId, outlet, quantity, revision),
+      setCheck: (loadId, check, checked, revision) =>
+        service.setCheck(loadId, check, checked, revision),
+      reportIssue: (loadId, issue, revision) => service.reportLoadIssue(loadId, issue, revision),
       resolveIssue: (loadId) => service.resolveLoadIssue(loadId),
-      attachPhoto: (loadId, file) => service.attachLoadingPhoto(loadId, file),
-      complete: (loadId) => service.completeLoading(loadId),
+      attachPhoto: (loadId, file, revision) => service.attachLoadingPhoto(loadId, file, revision),
+      complete: (loadId, revision) => service.completeLoading(loadId, revision),
     },
     delivery: {
       getRoute: async () => {
         const current = await snapshot()
+        const driver = current.members.find(
+          (member) => member.id === (current.activeDriverId ?? 'USR001'),
+        )
+        const load = current.loads
+          .filter((load) => load.vehicleId === driver?.vehicleId)
+          .sort((a, b) => a.trip - b.trip)[0]
         return {
           started: current.settings.routeStarted,
           revision: current.settings.routeRevision,
-          stops: current.stops,
+          stops: current.stops.filter(
+            (stop) =>
+              load &&
+              (stop.loadId === load.id ||
+                isAssignedStop(stop, current.orders, load) ||
+                (!stop.loadId && load.items.some((item) => item.outlet === stop.outlet))),
+          ),
         }
       },
       listStops: async (filter = {}) =>
@@ -105,13 +166,29 @@ export function createLocalApis(service: OperationsService): Apis {
           proof.receiver,
           proof.exception,
           proof.signature,
+          proof.capturedRevision,
+          proof.managerSignOff,
         ),
+      confirmManagerHandoff: (outletId, stopId, proof) =>
+        service.confirmManagerHandoff(outletId, stopId, proof),
       reportIssue: (stopId, issue) => service.reportDeliveryIssue(stopId, issue),
+      reportDelay: (stopId, note, revisedEta, kind) =>
+        service.reportDelay(stopId, note, revisedEta, kind),
+      listRouteHistory: async () => {
+        const current = await snapshot()
+        const load = assignedDriverLoad(current)
+        return (current.routeEvents ?? []).filter((event) => event.vehicleId === load?.vehicleId)
+      },
       saveAttemptProof: (stopId, photo, issue) => service.saveAttemptProof(stopId, photo, issue),
       retryStop: (stopId) => service.retryStop(stopId),
+      reopenProofForSignOff: (actionId) => service.reopenProofForSignOff(actionId),
       getEvidence: (evidenceId) => service.repository.getEvidence(evidenceId),
+      getProofDraft: (stopId) => service.repository.getProofDraft(stopId),
+      listProofDrafts: () => service.repository.listProofDrafts(),
+      saveProofDraft: (draft) => service.saveProofDraft(draft),
+      deleteProofDraft: (stopId) => service.repository.deleteProofDraft(stopId),
       listQueue: async () => (await snapshot()).queue,
-      sync: (isOnline) => service.sync(isOnline),
+      sync: (isOnline, options) => service.sync(isOnline, options?.retryFailed ?? true),
       reviewQueuedRecord: (actionId) => service.reviewQueuedRecord(actionId),
     },
     fleet: {
@@ -126,6 +203,7 @@ export function createLocalApis(service: OperationsService): Apis {
       inviteByMobile: (invitation) => service.inviteByMobile(invitation),
       completeInvitation: (memberId) => service.completeInvitation(memberId),
       resetAccess: (memberId) => service.resetAccess(memberId),
+      updateContact: (memberId, contact) => service.updateMemberContact(memberId, contact),
       requestAccountChange: (memberId, detail) => service.requestAccountChange(memberId, detail),
       changeAssignment: (memberId, depot, assignment) =>
         service.changeAssignment(memberId, depot, assignment),
