@@ -169,6 +169,8 @@ export interface TeamMember {
   invitationExpiresAt?: string
   /** Shown in the team list: "Just now", "05:10", "3 days ago". Blank until the person signs in. */
   lastActive?: string
+  /** The name this person signs in with. The password is never kept; see `NewUser`. */
+  username?: string
   /** "24 September": when the person accepted their invitation. */
   joined?: string
   /** "05:44 · near Peliyagoda": the last place or time the person was seen working. */
@@ -188,6 +190,15 @@ export interface TeamSummary {
   invited: number
   suspended: number
   auditEvents: number
+}
+/**
+ * A new account. The administrator chooses (or generates) the username and a temporary password and
+ * hands them to the person outside this system. The password is checked and passed on to whatever
+ * stores credentials; the demo keeps only the username.
+ */
+export interface NewUser extends MobileInvitation {
+  username: string
+  password: string
 }
 export interface MobileInvitation {
   name: string

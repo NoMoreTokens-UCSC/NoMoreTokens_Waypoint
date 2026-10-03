@@ -319,7 +319,7 @@ look. The old renderer file `pages/FigmaAdminPage.tsx` is dead code and the firs
 `lib/team.ts` (role order and labels, the capability matrix, the "will / will not" lists, data hooks,
 `useCompactLayout`), `admin.css` (styles prefixed `ad-`, desktop table and phone cards).
 
-**API used:** `apis.team` (`listMembers`, `getSummary`, `listActivity`, `listAudit`, `inviteByMobile`,
+**API used:** `apis.team` (`listMembers`, `getSummary`, `listActivity`, `listAudit`, `createUser`,
 `resetAccess`, `updateRole`, `changeAssignment`, `reassignTrip`, `suspend`), `apis.fleet.listVehicles` for
 the free vehicles and `apis.delivery` for the driver's stops and unsynced records.
 
@@ -329,7 +329,15 @@ the free vehicles and `apis.delivery` for the driver's stops and unsynced record
   list shows the people the demo holds, the totals include the rest. A backend returns real counts and
   pages the list and the log on the server.
 - Add user: pick the role, the form adapts (vehicle for a driver, dock bay for a loader, outlet for a
-  store manager). On a phone it is two steps. No message is sent in the demo.
+  store manager). On a phone it is two steps. The administrator also sets a **username** (suggested from
+  the name, unique) and a **temporary password** (generated, or typed: 8+ characters with letters and
+  numbers). `createUser` creates the account as "Invited"; the next screen shows the username and
+  password once, with copy buttons, for the administrator to give to the person **outside this system**.
+  Nothing is sent. The password is never stored by the demo (not in the team record, the audit log or
+  the browser data) and is wiped from the browser history, so a reload does not bring it back. A backend
+  should hash it, flag it for change at first sign-in, and return nothing but success.
+- Reset access works the same way: a new temporary password is generated (or typed) and shown once to
+  hand over. The login page still accepts any credentials in the demo.
 - Suspending a driver who is on route is blocked: reassign the trip, schedule the suspension after the
   trip, or suspend now with a reason (the dispatcher is alerted). `suspend(memberId, scheduled?,
 reason?)` enforces this behind the API. The demo panel's "Driver on route" switch shows it.

@@ -322,6 +322,44 @@ describe('local API adapters', () => {
     expect(driver).toHaveLength(5)
     expect(await apis.team.listActivity('USR999')).toEqual([])
   })
+  it('creates an account with a username and keeps no password', async () => {
+    const user = {
+      name: 'Dilani Rajapaksa',
+      mobile: '+94 77 555 0101',
+      role: 'loader' as const,
+      depot: 'Peliyagoda',
+      assignment: 'Dock bay 04',
+      username: 'dilani.rajapaksa',
+      password: 'Kp7mQx2RtWn4',
+    }
+    await apis.team.createUser(user)
+    const created = (await apis.team.listMembers()).find(
+      (member) => member.username === user.username,
+    )
+    expect(created).toMatchObject({ status: 'Invited', role: 'loader', assignment: 'Dock bay 04' })
+    // Nothing the demo keeps (people, audit, the whole workspace) contains the password.
+    const snapshot = await repository.getSnapshot()
+    expect(JSON.stringify(snapshot)).not.toContain(user.password)
+    expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Account created' })
+    await expect(apis.team.createUser({ ...user, mobile: '+94 77 555 0102' })).rejects.toThrow(
+      /username is already taken/,
+    )
+    await expect(
+      apis.team.createUser({ ...user, username: 'second.user', password: 'short' }),
+    ).rejects.toThrow(/at least 8 characters/)
+    await expect(
+      apis.team.createUser({ ...user, username: 'Bad Name!', mobile: '+94 77 555 0103' }),
+    ).rejects.toThrow(/Usernames are/)
+  })
+  it('resets access with a valid temporary password and records it without the password', async () => {
+    await apis.team.resetAccess('USR004', 'Wq4nLm8Zxk2P')
+    const snapshot = await repository.getSnapshot()
+    expect(JSON.stringify(snapshot)).not.toContain('Wq4nLm8Zxk2P')
+    expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Access reset' })
+    await expect(apis.team.resetAccess('USR004', 'nodigits')).rejects.toThrow(
+      /at least 8 characters/,
+    )
+  })
   it('suspends an on-route driver only after a schedule or with a reason', async () => {
     await repository.update((snapshot) => {
       snapshot.members.find((member) => member.id === 'USR001')!.onRoute = true

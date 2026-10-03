@@ -4,6 +4,7 @@ import type {
   Load,
   LoadIssueInput,
   MobileInvitation,
+  NewUser,
   QueuedAction,
   Settings,
   Snapshot,
@@ -1480,12 +1481,69 @@ export class OperationsService {
       )
     })
   }
-  resetAccess(memberId: string) {
+  /** An account with a username and a temporary password the administrator hands over. */
+  createUser(input: NewUser) {
+    return this.repository.update((s) => {
+      const mobile = input.mobile.replace(/[^\d+]/g, '')
+      const username = input.username.trim().toLowerCase()
+      assert(
+        input.name.trim().length > 1 && /^\+947\d{8}$/.test(mobile),
+        'Enter a full name and valid Sri Lankan mobile number.',
+      )
+      assert(
+        /^[a-z0-9][a-z0-9._-]{2,29}$/.test(username),
+        'Usernames are 3 to 30 letters, numbers, dots, dashes or underscores.',
+      )
+      assert(
+        input.password.length >= 8 && /[A-Za-z]/.test(input.password) && /\d/.test(input.password),
+        'The password needs at least 8 characters, with letters and numbers.',
+      )
+      assert(['Peliyagoda', 'Kandy'].includes(input.depot), 'Choose Peliyagoda or Kandy.')
+      assert(input.assignment.trim().length > 1, 'Choose an assignment for this role.')
+      assert(
+        !s.members.some((member) => member.username === username),
+        'That username is already taken.',
+      )
+      assert(
+        !s.members.some((member) => member.mobile?.replace(/[^\d+]/g, '') === mobile),
+        'This mobile number already belongs to a team member.',
+      )
+      s.members.push({
+        id: id(),
+        name: input.name.trim(),
+        email: '',
+        mobile: input.mobile.trim(),
+        username,
+        role: input.role,
+        depot: input.depot,
+        assignment: input.assignment.trim(),
+        vehicleId: input.role === 'driver' ? /VEH\d+/.exec(input.assignment)?.[0] : undefined,
+        outletId: input.role === 'store-manager' ? /OUT\d+/.exec(input.assignment)?.[0] : undefined,
+        status: 'Invited',
+        onRoute: false,
+        accessState: 'Invitation pending',
+      })
+      // The password is deliberately not written anywhere.
+      log(s, 'Account created', `${input.name.trim()} · ${input.role} · username ${username}`)
+    })
+  }
+  resetAccess(memberId: string, password?: string) {
     return this.repository.update((s) => {
       const member = s.members.find((member) => member.id === memberId)
       assert(member, 'Team member was not found.')
+      if (password !== undefined)
+        assert(
+          password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password),
+          'The password needs at least 8 characters, with letters and numbers.',
+        )
       member.accessState = 'Recovery requested'
-      log(s, 'Demo access recovery requested', `${member.name} · no message sent`)
+      log(
+        s,
+        password === undefined ? 'Demo access recovery requested' : 'Access reset',
+        password === undefined
+          ? `${member.name} · no message sent`
+          : `${member.name} · new temporary password set, handed over by the administrator`,
+      )
     })
   }
   /** A person's own contact details. Role, outlet and depot are changed by an administrator. */

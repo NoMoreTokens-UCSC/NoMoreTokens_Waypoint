@@ -31,7 +31,7 @@ test.describe('administration', () => {
     await expect(page.getByText('No one matches these filters.')).toBeVisible()
   })
 
-  test('adding a user checks the details, sends the invite and lists them as invited', async ({
+  test('adding a user creates sign-in details to hand over, and lists them as invited', async ({
     page,
   }) => {
     await page.goto('/administration/team')
@@ -41,19 +41,78 @@ test.describe('administration', () => {
     // The form follows the role: a loader gets a dock bay, not a vehicle.
     await expect(page.getByLabel('Dock bay')).toBeVisible()
     await expect(page.getByText('See their route and stop sequence')).toHaveCount(0)
-    await page.getByRole('button', { name: 'Send invite' }).click()
+    // A password is already generated for the administrator to hand over.
+    await expect(page.getByLabel('Temporary password')).toHaveValue(/^[A-Za-z0-9]{12}$/)
+    await page.getByRole('button', { name: 'Create user' }).click()
     await expect(page.getByText('Enter their full name.')).toBeVisible()
     await expect(page.getByText('Enter a Sri Lankan mobile such as +94 77 123 4567.')).toBeVisible()
     await page.getByLabel('Full name').fill('Dilani Rajapaksa')
+    // The username follows the name until it is edited.
+    await expect(page.getByLabel('Username')).toHaveValue('dilani.rajapaksa')
     await page.getByLabel('Mobile number').fill('+94 77 555 0101')
     await page.getByLabel('Dock bay').selectOption('Dock bay 04')
-    await page.getByRole('button', { name: 'Send invite' }).click()
-    await expect(page.getByRole('heading', { name: 'Dilani has been invited.' })).toBeVisible()
-    await expect(page.getByText('+94 77 555 0101')).toBeVisible()
-    await page.getByRole('link', { name: 'Back to Team & access' }).click()
+    const password = await page.getByLabel('Temporary password').inputValue()
+    await page.getByRole('button', { name: 'Create user' }).click()
+    await expect(page.getByRole('heading', { name: 'Dilani’s account is ready.' })).toBeVisible()
+    await expect(page.getByText('This system does not send them')).toBeVisible()
+    await expect(page.getByText('dilani.rajapaksa', { exact: true })).toBeVisible()
+    await expect(page.getByText(password, { exact: true })).toBeVisible()
+    // Shown once: reloading loses the password and goes back to the team.
+    await page.reload()
+    await expect(page).toHaveURL(/\/administration\/team$/)
     await expect(rows(page)).toHaveCount(7)
     await expect(rows(page).filter({ hasText: 'Dilani Rajapaksa' })).toContainText('Invited')
     await expect(page.getByRole('region', { name: 'Team totals' })).toContainText('49')
+    await page.getByRole('link', { name: 'Dilani Rajapaksa' }).click()
+    await expect(page.getByRole('region', { name: 'Access' })).toContainText('dilani.rajapaksa')
+    await expect(page.getByRole('region', { name: 'Access' })).toContainText(
+      'Account created · not signed in yet',
+    )
+    // The password is not kept anywhere in the saved data.
+    const stored = await page.evaluate(
+      (word) =>
+        new Promise<boolean>((resolve) => {
+          const open = indexedDB.databases ? indexedDB.databases() : Promise.resolve([])
+          open.then(async (databases) => {
+            for (const info of databases) {
+              if (!info.name) continue
+              const db = await new Promise<IDBDatabase>((done) => {
+                const request = indexedDB.open(info.name!)
+                request.onsuccess = () => done(request.result)
+              })
+              for (const name of Array.from(db.objectStoreNames)) {
+                const rowsOf = await new Promise<unknown[]>((done) => {
+                  const request = db.transaction(name).objectStore(name).getAll()
+                  request.onsuccess = () => done(request.result)
+                })
+                if (JSON.stringify(rowsOf).includes(word)) return resolve(true)
+              }
+            }
+            resolve(false)
+          })
+        }),
+      password,
+    )
+    expect(stored).toBe(false)
+  })
+
+  test('a username that is already taken is refused', async ({ page }) => {
+    await page.goto('/administration/team/new')
+    await page.getByLabel('Full name').fill('Another Person')
+    await page.getByLabel('Username').fill('nimal.perera')
+    await page.getByLabel('Mobile number').fill('+94 77 555 0303')
+    await page.getByLabel('Vehicle').selectOption({ index: 1 })
+    await page.getByRole('button', { name: 'Create user' }).click()
+    await expect(page.getByText('That username is already taken.')).toBeVisible()
+    await page.getByLabel('Username').fill('another.person')
+    await page.getByLabel('Temporary password').fill('short')
+    await page.getByRole('button', { name: 'Create user' }).click()
+    await expect(
+      page.getByText('Use at least 8 characters, with letters and numbers.'),
+    ).toBeVisible()
+    await page.getByRole('button', { name: 'Generate' }).click()
+    await page.getByRole('button', { name: 'Create user' }).click()
+    await expect(page.getByRole('heading', { name: 'Another’s account is ready.' })).toBeVisible()
   })
 
   test('a person’s page shows their assignment, access and activity', async ({ page }) => {
@@ -76,8 +135,15 @@ test.describe('administration', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Change role' }).click()
     await expect(page.getByText('Nimal Perera is now a dispatcher')).toBeVisible()
     await page.getByRole('button', { name: 'Reset access' }).click()
-    await page.getByRole('dialog').getByRole('button', { name: 'Reset access' }).click()
-    await expect(page.getByText('Access reset. A new invite link was recorded.')).toBeVisible()
+    const reset = page.getByRole('dialog')
+    const next = await reset.getByLabel('New temporary password').inputValue()
+    expect(next).toMatch(/^[A-Za-z0-9]{12}$/)
+    await reset.getByRole('button', { name: 'Reset access' }).click()
+    // The new password is shown once, for the administrator to hand over.
+    await expect(reset.getByText('this system does not send it', { exact: false })).toBeVisible()
+    await expect(reset.getByText(next, { exact: true })).toBeVisible()
+    await expect(reset.getByText('nimal.perera', { exact: true })).toBeVisible()
+    await reset.getByRole('button', { name: 'Done' }).click()
     await page.getByRole('button', { name: 'Suspend user' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Suspend user' }).click()
     await expect(page.getByText('Nimal Perera was suspended')).toBeVisible()
@@ -197,8 +263,8 @@ test.describe('administration', () => {
     await expect(page.getByText('Step 2 of 2 · Contact and assignment')).toBeVisible()
     await page.getByLabel('Mobile number').fill('+94 77 555 0202')
     await page.getByLabel('Vehicle').selectOption({ index: 1 })
-    await page.getByRole('button', { name: 'Send invite' }).click()
-    await expect(page.getByRole('heading', { name: 'Chamod has been invited.' })).toBeVisible()
+    await page.getByRole('button', { name: 'Create user' }).click()
+    await expect(page.getByRole('heading', { name: 'Chamod’s account is ready.' })).toBeVisible()
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )

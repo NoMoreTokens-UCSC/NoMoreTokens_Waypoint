@@ -1,5 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { toast } from 'sonner'
 import { Link, type LinkProps } from 'react-router-dom'
+import { copyText } from '../lib/credentials'
 import '../admin.css'
 
 /** Page wrapper: the administration theme and vertical rhythm. */
@@ -110,5 +112,29 @@ export function Field({
       {children}
       {error ? <small role="alert">{error}</small> : hint ? <small>{hint}</small> : null}
     </label>
+  )
+}
+
+/** A sign-in detail the administrator hands over, with a button to copy it. */
+export function Credential({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="ad-credential">
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <Btn
+        small
+        variant="grey"
+        aria-label={`Copy ${label.toLowerCase()}`}
+        onClick={async () => {
+          const copied = await copyText(value)
+          if (copied) toast.success(`${label} copied`)
+          else toast.error('Copying is not available here')
+        }}
+      >
+        Copy
+      </Btn>
+    </div>
   )
 }

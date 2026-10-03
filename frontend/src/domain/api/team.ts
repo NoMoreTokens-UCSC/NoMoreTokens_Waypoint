@@ -2,6 +2,7 @@ import type {
   AuditEntry,
   MemberActivity,
   MobileInvitation,
+  NewUser,
   TeamMember,
   TeamSummary,
   Workspace,
@@ -17,8 +18,14 @@ export interface TeamApi {
   listActivity(memberId: string): Promise<MemberActivity[]>
   invite(name: string, email: string, role: Workspace): Promise<void>
   inviteByMobile(invitation: MobileInvitation): Promise<void>
+  /**
+   * Creates an account with a username and a temporary password. The system does not send them: the
+   * administrator gives them to the person. Fails if the username or mobile number is taken.
+   */
+  createUser(user: NewUser): Promise<void>
   completeInvitation(memberId: string): Promise<void>
-  resetAccess(memberId: string): Promise<void>
+  /** Sets a new temporary password for the administrator to hand over. It is not stored here. */
+  resetAccess(memberId: string, password?: string): Promise<void>
   /** The person's own name, phone and email. Role, outlet and depot need an administrator. */
   updateContact(
     memberId: string,

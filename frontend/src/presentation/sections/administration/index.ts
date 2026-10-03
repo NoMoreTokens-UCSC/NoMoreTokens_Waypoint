@@ -51,7 +51,7 @@ export const administrationModule: RoleModule = {
     route('/administration/team', 'Team & access', () => import('./pages/TeamPage')),
     // Fixed paths first: the user detail route takes any other id.
     route('/administration/team/new', 'Add user', () => import('./pages/AddUserPage')),
-    route('/administration/team/invited', 'Invite sent', () => import('./pages/InvitedPage')),
+    route('/administration/team/created', 'Account created', () => import('./pages/InvitedPage')),
     route('/administration/team/:memberId', 'User', () => import('./pages/UserDetailPage')),
     route('/administration/roles', 'Roles & access', () => import('./pages/RolesPage')),
     route('/administration/assignments', 'Assignments', () => import('./pages/AssignmentsPage')),

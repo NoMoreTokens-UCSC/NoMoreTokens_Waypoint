@@ -8,6 +8,12 @@ import { useAction } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { AdminIntro, AdminPage, Btn, Card, CardLabel, Field, Pill } from '../components/AdminKit'
+import {
+  generatePassword,
+  passwordProblem,
+  suggestUsername,
+  usernameProblem,
+} from '../lib/credentials'
 import { invitableRoles, roleLabels, roleSummary, useCompactLayout, useMembers } from '../lib/team'
 
 const depots = ['Peliyagoda', 'Kandy']
@@ -31,11 +37,17 @@ interface Draft {
   mobile: string
   depot: string
   assignment: string
+  username: string
+  password: string
 }
-type Errors = Partial<Record<'name' | 'mobile' | 'assignment', string>>
+type Errors = Partial<Record<'name' | 'mobile' | 'assignment' | 'username' | 'password', string>>
 
-function check(draft: Draft): Errors {
+function check(draft: Draft, taken: Set<string>): Errors {
   const errors: Errors = {}
+  errors.username = usernameProblem(draft.username, taken)
+  errors.password = passwordProblem(draft.password)
+  if (!errors.username) delete errors.username
+  if (!errors.password) delete errors.password
   if (draft.name.trim().length < 2) errors.name = 'Enter their full name.'
   if (!validMobile(draft.mobile))
     errors.mobile = 'Enter a Sri Lankan mobile such as +94 77 123 4567.'
@@ -61,12 +73,17 @@ export default function AddUserPage() {
     mobile: '',
     depot: 'Peliyagoda',
     assignment: '',
+    username: '',
+    password: generatePassword(),
   })
+  // The username follows the name until the administrator types their own.
+  const [usernameEdited, setUsernameEdited] = useState(false)
   const [step, setStep] = useState(1)
   const [attempted, setAttempted] = useState(false)
   useBreadcrumb([{ label: 'Team & access', to: '/administration/team' }, { label: 'Add user' }])
 
-  const errors = attempted ? check(draft) : {}
+  const usernames = new Set(members.map((member) => member.username).filter(Boolean) as string[])
+  const errors = attempted ? check(draft, usernames) : {}
   const taken = new Set(members.map((member) => member.vehicleId).filter(Boolean))
   const free = (vehicles.data ?? []).filter((vehicle) => !taken.has(vehicle.id))
   const here = free.filter((vehicle) => vehicle.location === draft.depot)
@@ -81,20 +98,24 @@ export default function AddUserPage() {
 
   const send = () => {
     setAttempted(true)
-    if (Object.keys(check(draft)).length) {
-      if (compact && (check(draft).name || !draft.name.trim())) setStep(1)
+    const problems = check(draft, usernames)
+    if (Object.keys(problems).length) {
+      if (compact && problems.name) setStep(1)
       toast.error('Check the highlighted details.')
       return
     }
     action.run(async () => {
-      await apis.team.inviteByMobile({
+      await apis.team.createUser({
         name: draft.name.trim(),
         mobile: draft.mobile.trim(),
         role: draft.role,
         depot: draft.depot,
         assignment: draft.assignment.trim(),
+        username: draft.username.trim().toLowerCase(),
+        password: draft.password,
       })
-      navigate('/administration/team/invited', { state: draft })
+      // The password is passed on in memory only, to show once on the next screen.
+      navigate('/administration/team/created', { state: draft })
     })
   }
   const next = () => {
@@ -146,12 +167,21 @@ export default function AddUserPage() {
         placeholder="Chamari Wijesinghe"
         autoComplete="off"
         aria-invalid={Boolean(errors.name)}
-        onChange={(event) => change({ name: event.target.value })}
+        onChange={(event) =>
+          change({
+            name: event.target.value,
+            ...(usernameEdited ? {} : { username: suggestUsername(event.target.value) }),
+          })
+        }
       />
     </Field>
   )
   const mobileField = (
-    <Field label="Mobile number" hint="The invite is sent by SMS." error={errors.mobile}>
+    <Field
+      label="Mobile number"
+      hint="Shown in the team list and on run sheets."
+      error={errors.mobile}
+    >
       <input
         type="tel"
         value={draft.mobile}
@@ -230,6 +260,46 @@ export default function AddUserPage() {
     </Field>
   )
 
+  const usernameField = (
+    <Field
+      label="Username"
+      hint="They sign in with this. Letters, numbers, dots and dashes."
+      error={errors.username}
+    >
+      <input
+        value={draft.username}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
+        aria-invalid={Boolean(errors.username)}
+        onChange={(event) => {
+          setUsernameEdited(true)
+          change({ username: event.target.value.toLowerCase() })
+        }}
+      />
+    </Field>
+  )
+  const passwordField = (
+    <Field
+      label="Temporary password"
+      hint="You give these sign-in details to them yourself. This system does not send them."
+      error={errors.password}
+    >
+      <span className="ad-inline">
+        <input
+          value={draft.password}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={Boolean(errors.password)}
+          onChange={(event) => change({ password: event.target.value })}
+        />
+        <Btn variant="grey" onClick={() => change({ password: generatePassword() })}>
+          Generate
+        </Btn>
+      </span>
+    </Field>
+  )
+
   if (compact)
     return (
       <AdminPage>
@@ -251,6 +321,8 @@ export default function AddUserPage() {
               {mobileField}
               {depotField}
               {assignmentField}
+              {usernameField}
+              {passwordField}
             </div>
           </>
         )}
@@ -260,7 +332,7 @@ export default function AddUserPage() {
           ) : (
             <>
               <Btn onClick={send} disabled={action.isPending}>
-                Send invite
+                Create user
               </Btn>
               <Btn variant="grey" onClick={() => setStep(1)}>
                 Back
@@ -293,6 +365,13 @@ export default function AddUserPage() {
               {assignmentField}
             </div>
           </Card>
+          <Card label="Sign-in details">
+            <CardLabel>Step 3 · Sign-in</CardLabel>
+            <div className="ad-form-grid">
+              {usernameField}
+              {passwordField}
+            </div>
+          </Card>
         </div>
         <div className="ad-stack">
           <Card label="What this role can do">
@@ -321,16 +400,17 @@ export default function AddUserPage() {
               <Pill>{roleLabels[draft.role]}</Pill>
               <Pill>{draft.depot}</Pill>
               {draft.assignment && <Pill>{draft.assignment}</Pill>}
+              {draft.username && <Pill>{draft.username}</Pill>}
             </div>
           </Card>
           <div className="ad-actions">
             <Btn onClick={send} disabled={action.isPending}>
-              Send invite
+              Create user
             </Btn>
             <Btn variant="grey" onClick={() => navigate('/administration/team')}>
               Cancel
             </Btn>
-            <p className="ad-note">The invite link expires in 48 hours.</p>
+            <p className="ad-note">You give them the username and password yourself.</p>
           </div>
         </div>
       </div>
