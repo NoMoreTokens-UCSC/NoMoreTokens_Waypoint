@@ -949,3 +949,34 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Paging */
+.ad-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #6e737b;
+}
+.ad-pager .ad-btn {
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 12px;
+}
+.ad-foot-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
+}
+.ad-cards-pager {
+  display: none;
+  justify-content: center;
+}
+@media (max-width: 899px) {
+  .ad-cards-pager {
+    display: flex;
+  }
+  .ad-table-foot .ad-pager {
+    display: none;
+  }
+}

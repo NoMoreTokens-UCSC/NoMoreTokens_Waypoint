@@ -358,6 +358,7 @@ export default function UserDetailPage() {
     ['Role', roleLabels[member.role]],
     ['Workspace', workspaceText[member.role]],
     ['Username', member.username ?? '—'],
+    ['Email', member.email || '—'],
     [
       'Sign-in',
       member.status === 'Invited'

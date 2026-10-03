@@ -10,6 +10,7 @@ interface Created {
   role: Workspace
   name: string
   mobile: string
+  email: string
   depot: string
   assignment: string
   username: string
@@ -62,6 +63,10 @@ export default function InvitedPage() {
           <div>
             <dt>Role</dt>
             <dd>{roleLabels[state.role]}</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd>{state.email}</dd>
           </div>
           <div>
             <dt>Depot</dt>

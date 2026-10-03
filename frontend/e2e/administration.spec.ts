@@ -50,10 +50,13 @@ test.describe('administration', () => {
     await page.getByRole('button', { name: 'Create user' }).click()
     await expect(page.getByText('Enter their full name.')).toBeVisible()
     await expect(page.getByText('Enter a Sri Lankan mobile such as +94 77 123 4567.')).toBeVisible()
+    await expect(page.getByText('Enter their email address.')).toBeVisible()
+    await expect(page.getByText('Enter a username.')).toBeVisible()
     await page.getByLabel('Full name').fill('Dilani Rajapaksa')
     // The username follows the name until it is edited.
     await expect(page.getByLabel('Username')).toHaveValue('dilani.rajapaksa')
     await page.getByLabel('Mobile number').fill('+94 77 555 0101')
+    await page.getByLabel('Email').fill('dilani@example.test')
     await page.getByLabel('Dock bay').selectOption('Dock bay 04')
     const password = await page.getByLabel('Temporary password').inputValue()
     await page.getByRole('button', { name: 'Create user' }).click()
@@ -69,6 +72,7 @@ test.describe('administration', () => {
     await expect(page.getByRole('region', { name: 'Team totals' })).toContainText('49')
     await page.getByRole('link', { name: 'Dilani Rajapaksa' }).click()
     await expect(page.getByRole('region', { name: 'Access' })).toContainText('dilani.rajapaksa')
+    await expect(page.getByRole('region', { name: 'Access' })).toContainText('dilani@example.test')
     await expect(page.getByRole('region', { name: 'Access' })).toContainText(
       'Account created · not signed in yet',
     )
@@ -105,9 +109,17 @@ test.describe('administration', () => {
     await page.getByLabel('Full name').fill('Another Person')
     await page.getByLabel('Username').fill('nimal.perera')
     await page.getByLabel('Mobile number').fill('+94 77 555 0303')
+    await page.getByLabel('Email').fill('nimal@example.test')
     await vehicleSelect(page).selectOption({ index: 1 })
     await page.getByRole('button', { name: 'Create user' }).click()
     await expect(page.getByText('That username is already taken.')).toBeVisible()
+    await expect(
+      page.getByText('That email address already belongs to a team member.'),
+    ).toBeVisible()
+    await page.getByLabel('Email').fill('not-an-email')
+    await page.getByRole('button', { name: 'Create user' }).click()
+    await expect(page.getByText('Enter a valid email address.')).toBeVisible()
+    await page.getByLabel('Email').fill('another@example.test')
     await page.getByLabel('Username').fill('another.person')
     await page.getByLabel('Temporary password').fill('short')
     await page.getByRole('button', { name: 'Create user' }).click()
@@ -211,7 +223,7 @@ test.describe('administration', () => {
   test('the audit log can be searched, filtered and exported', async ({ page }) => {
     await page.goto('/administration/audit')
     await expect(rows(page)).toHaveCount(7)
-    await expect(page.getByText('Showing 7 of 214 events')).toBeVisible()
+    await expect(page.getByText('Showing 1–7 of 214 events')).toBeVisible()
     await page.getByLabel('Search person, action or record').fill('ruwan')
     await expect(rows(page)).toHaveCount(1)
     await page.getByLabel('Search person, action or record').fill('')
@@ -266,6 +278,7 @@ test.describe('administration', () => {
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByText('Step 2 of 2 · Contact and assignment')).toBeVisible()
     await page.getByLabel('Mobile number').fill('+94 77 555 0202')
+    await page.getByLabel('Email').fill('chamod@example.test')
     await vehicleSelect(page).selectOption({ index: 1 })
     await page.getByRole('button', { name: 'Create user' }).click()
     await expect(page.getByRole('heading', { name: 'Chamod’s account is ready.' })).toBeVisible()
@@ -281,7 +294,10 @@ test.describe('administration', () => {
     await page.goto('/administration/outlets')
     await expect(page.getByRole('heading', { name: 'Outlets', level: 1 })).toBeVisible()
     await expect(rows(page).filter({ hasText: 'OUT001' })).toContainText('Nimal Perera')
-    await expect(rows(page).filter({ hasText: 'OUT019' })).toContainText('No manager')
+    await page.getByLabel('Search outlet, name or district').fill('OUT019')
+    await expect(rows(page)).toHaveCount(1)
+    await expect(rows(page)).toContainText('No manager')
+    await page.getByLabel('Search outlet, name or district').fill('')
     await page.getByRole('link', { name: 'Add outlet' }).click()
     await page.getByRole('button', { name: 'Add outlet' }).click()
     await expect(page.getByText('Enter the outlet name.')).toBeVisible()
@@ -299,6 +315,7 @@ test.describe('administration', () => {
     await expect(page.getByText('No store manager yet.')).toBeVisible()
     // The outlet is on the list.
     await page.goto('/administration/outlets')
+    await page.getByLabel('Search outlet, name or district').fill(id)
     await expect(rows(page).filter({ hasText: id })).toContainText('Style')
     // Add a store manager from the outlet's page: the outlet is already chosen.
     await page.getByRole('link', { name: id, exact: true }).click()
@@ -306,6 +323,7 @@ test.describe('administration', () => {
     await expect(outletSelect(page)).toHaveValue(`${id} · Style`)
     await page.getByLabel('Full name').fill('Ayesha Fernando')
     await page.getByLabel('Mobile number').fill('+94 77 555 0111')
+    await page.getByLabel('Email').fill('ayesha@example.test')
     await page.getByRole('button', { name: 'Create user' }).click()
     await expect(page.getByRole('heading', { name: 'Ayesha’s account is ready.' })).toBeVisible()
     // The outlet now shows its manager and is no longer offered to another one.
@@ -335,8 +353,10 @@ test.describe('administration', () => {
   test('an administrator adds a vehicle and then assigns a driver to it', async ({ page }) => {
     await page.goto('/administration/vehicles')
     await expect(page.getByRole('heading', { name: 'Vehicles', level: 1 })).toBeVisible()
-    await expect(page.getByText('Showing 60 of 60 vehicles')).toBeVisible()
-    await expect(rows(page).filter({ hasText: 'VEH055' })).toContainText('Sanjeewa Bandara')
+    await expect(page.getByText('Showing 1–10 of 60 vehicles')).toBeVisible()
+    await page.getByLabel('Search vehicle or registration').fill('VEH055')
+    await expect(rows(page)).toContainText('Sanjeewa Bandara')
+    await page.getByLabel('Search vehicle or registration').fill('')
     await page.getByRole('link', { name: 'Add vehicle' }).click()
     // Only Fresh vehicles can be refrigerated.
     await page.getByRole('radio', { name: /Waypoint Style/ }).click()
@@ -362,7 +382,7 @@ test.describe('administration', () => {
     await expect(page.getByText('No driver yet.')).toBeVisible()
     // It is in the fleet list.
     await page.goto('/administration/vehicles')
-    await expect(page.getByText('Showing 61 of 61 vehicles')).toBeVisible()
+    await expect(page.getByText('Showing 1–10 of 61 vehicles')).toBeVisible()
     await page.getByLabel('Search vehicle or registration').fill('wp-4821')
     await expect(rows(page)).toHaveCount(1)
     // Add a driver from the vehicle's page: the vehicle and its depot are already chosen.
@@ -372,6 +392,7 @@ test.describe('administration', () => {
     await expect(page.getByLabel('Depot')).toHaveValue('Kandy')
     await page.getByLabel('Full name').fill('Ruwan Jayasuriya')
     await page.getByLabel('Mobile number').fill('+94 77 555 0121')
+    await page.getByLabel('Email').fill('ruwan.j@example.test')
     await page.getByRole('button', { name: 'Create user' }).click()
     await expect(page.getByRole('heading', { name: 'Ruwan’s account is ready.' })).toBeVisible()
     await page.goto(`/administration/vehicles/${id}`)
@@ -380,5 +401,60 @@ test.describe('administration', () => {
     await page.goto('/administration/team/new')
     await page.getByLabel('Depot').selectOption('Kandy')
     await expect(vehicleSelect(page).locator(`option[value="${id}"]`)).toHaveCount(0)
+  })
+
+  test('long lists are shown ten at a time with previous and next', async ({ page }) => {
+    await page.goto('/administration/vehicles')
+    await expect(rows(page)).toHaveCount(10)
+    await expect(page.getByText('Showing 1–10 of 60 vehicles')).toBeVisible()
+    await expect(page.locator('.ad-table-foot').getByText('Page 1 of 6')).toBeVisible()
+    const pager = page.getByRole('navigation', { name: 'Vehicles pages' }).first()
+    await expect(pager.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    await expect(rows(page).first()).toContainText('VEH001')
+    await pager.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByText('Showing 11–20 of 60 vehicles')).toBeVisible()
+    await expect(rows(page).first()).toContainText('VEH011')
+    // A new search starts again from the first page.
+    await page.getByLabel('Search vehicle or registration').fill('veh0')
+    await expect(page.getByText(/Showing 1–10 of \d+ vehicles/)).toBeVisible()
+    await page.getByLabel('Search vehicle or registration').fill('')
+    for (let click = 0; click < 5; click += 1)
+      await pager.getByRole('button', { name: 'Next' }).click()
+    await expect(page.locator('.ad-table-foot').getByText('Page 6 of 6')).toBeVisible()
+    await expect(pager.getByRole('button', { name: 'Next' })).toBeDisabled()
+    await expect(rows(page)).toHaveCount(10)
+    // A filter that leaves a few rows needs no pager.
+    await page.getByRole('button', { name: 'Filter by depots' }).click()
+    await page.getByRole('menuitem', { name: 'Kandy' }).click()
+    await expect(page.locator('.ad-table-foot').getByText('Page 6 of 6')).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Vehicles pages' })).toHaveCount(0)
+  })
+
+  test('outlets and the audit log page too, and phones get the pager under the cards', async ({
+    page,
+  }) => {
+    await page.goto('/administration/outlets')
+    await expect(page.getByText('Showing 1–10 of 22 outlets')).toBeVisible()
+    await page
+      .getByRole('navigation', { name: 'Outlets pages' })
+      .first()
+      .getByRole('button', { name: 'Next' })
+      .click()
+    await page
+      .getByRole('navigation', { name: 'Outlets pages' })
+      .first()
+      .getByRole('button', { name: 'Next' })
+      .click()
+    await expect(page.getByText('Showing 21–22 of 22 outlets')).toBeVisible()
+    await expect(rows(page)).toHaveCount(2)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/administration/vehicles')
+    await expect(page.locator('.ad-cards li')).toHaveCount(10)
+    const pager = page
+      .locator('.ad-cards-pager')
+      .getByRole('navigation', { name: 'Vehicles pages' })
+    await expect(pager).toBeVisible()
+    await pager.getByRole('button', { name: 'Next' }).click()
+    await expect(page.locator('.ad-cards li').first()).toContainText('VEH011')
   })
 })

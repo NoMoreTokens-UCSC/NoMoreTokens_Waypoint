@@ -329,6 +329,7 @@ describe('local API adapters', () => {
       role: 'loader' as const,
       depot: 'Peliyagoda',
       assignment: 'Dock bay 04',
+      email: 'dilani@example.test',
       username: 'dilani.rajapaksa',
       password: 'Kp7mQx2RtWn4',
     }
@@ -341,14 +342,43 @@ describe('local API adapters', () => {
     const snapshot = await repository.getSnapshot()
     expect(JSON.stringify(snapshot)).not.toContain(user.password)
     expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Account created' })
-    await expect(apis.team.createUser({ ...user, mobile: '+94 77 555 0102' })).rejects.toThrow(
-      /username is already taken/,
-    )
     await expect(
-      apis.team.createUser({ ...user, username: 'second.user', password: 'short' }),
+      apis.team.createUser({ ...user, mobile: '+94 77 555 0102', email: 'other@example.test' }),
+    ).rejects.toThrow(/username is already taken/)
+    await expect(
+      apis.team.createUser({ ...user, username: 'dilani.two', mobile: '+94 77 555 0104' }),
+    ).rejects.toThrow(/email address already belongs/)
+    await expect(
+      apis.team.createUser({
+        ...user,
+        username: 'dilani.three',
+        mobile: '+94 77 555 0105',
+        email: 'NIMAL@example.test',
+      }),
+    ).rejects.toThrow(/email address already belongs/)
+    await expect(
+      apis.team.createUser({
+        ...user,
+        username: 'dilani.four',
+        mobile: '+94 77 555 0106',
+        email: 'not-an-email',
+      }),
+    ).rejects.toThrow(/valid email/)
+    await expect(
+      apis.team.createUser({
+        ...user,
+        username: 'second.user',
+        password: 'short',
+        email: 'second@example.test',
+      }),
     ).rejects.toThrow(/at least 8 characters/)
     await expect(
-      apis.team.createUser({ ...user, username: 'Bad Name!', mobile: '+94 77 555 0103' }),
+      apis.team.createUser({
+        ...user,
+        username: 'Bad Name!',
+        mobile: '+94 77 555 0103',
+        email: 'bad@example.test',
+      }),
     ).rejects.toThrow(/Usernames are/)
   })
   it('resets access with a valid temporary password and records it without the password', async () => {
@@ -412,6 +442,7 @@ describe('local API adapters', () => {
       role: 'store-manager' as const,
       depot: 'Peliyagoda',
       assignment: `${outlet.id} · Fresh`,
+      email: 'ayesha@example.test',
       username: 'ayesha.fernando',
       password: 'Kp7mQx2RtWn4',
     }
@@ -426,6 +457,7 @@ describe('local API adapters', () => {
         name: 'Second Manager',
         mobile: '+94 77 555 0112',
         username: 'second.manager',
+        email: 'second.manager@example.test',
       }),
     ).rejects.toThrow(/already has a store manager/)
     await expect(
@@ -433,6 +465,7 @@ describe('local API adapters', () => {
         ...manager,
         mobile: '+94 77 555 0113',
         username: 'third.manager',
+        email: 'third.manager@example.test',
         assignment: 'OUT999 · Fresh',
       }),
     ).rejects.toThrow(/Choose an outlet from the list/)
@@ -484,6 +517,7 @@ describe('local API adapters', () => {
       role: 'driver',
       depot: 'Kandy',
       assignment: vehicle.id,
+      email: 'ruwan.j@example.test',
       username: 'ruwan.jayasuriya',
       password: 'Kp7mQx2RtWn4',
     })

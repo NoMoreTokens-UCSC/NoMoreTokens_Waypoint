@@ -1590,10 +1590,12 @@ export class OperationsService {
     return this.repository.update((s) => {
       const mobile = input.mobile.replace(/[^\d+]/g, '')
       const username = input.username.trim().toLowerCase()
+      const email = input.email.trim().toLowerCase()
       assert(
         input.name.trim().length > 1 && /^\+947\d{8}$/.test(mobile),
         'Enter a full name and valid Sri Lankan mobile number.',
       )
+      assert(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), 'Enter a valid email address.')
       assert(
         /^[a-z0-9][a-z0-9._-]{2,29}$/.test(username),
         'Usernames are 3 to 30 letters, numbers, dots, dashes or underscores.',
@@ -1622,13 +1624,17 @@ export class OperationsService {
         'That username is already taken.',
       )
       assert(
+        !s.members.some((member) => member.email.toLowerCase() === email),
+        'That email address already belongs to a team member.',
+      )
+      assert(
         !s.members.some((member) => member.mobile?.replace(/[^\d+]/g, '') === mobile),
         'This mobile number already belongs to a team member.',
       )
       s.members.push({
         id: id(),
         name: input.name.trim(),
-        email: '',
+        email,
         mobile: input.mobile.trim(),
         username,
         role: input.role,

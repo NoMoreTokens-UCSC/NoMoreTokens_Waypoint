@@ -6,7 +6,8 @@ import { vehicleDepot, vehicleKind } from '../../../../domain/fleet'
 import type { Vehicle } from '../../../../domain/models'
 import type { Brand } from '../../../../domain/outlets'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
-import { AdminIntro, AdminPage, LinkBtn, Pill } from '../components/AdminKit'
+import { AdminIntro, AdminPage, LinkBtn, Pager, Pill } from '../components/AdminKit'
+import { usePaging } from '../lib/paging'
 import { brands } from '../lib/outlets'
 import { useMembers } from '../lib/team'
 import { capacityText, driverOf, useVehicles, vehicleStatusTone } from '../lib/vehicles'
@@ -68,7 +69,6 @@ export default function VehiclesPage() {
   const [kind, setKind] = useState<Kind | 'all'>('all')
   const [depot, setDepot] = useState<string>('all')
   useBreadcrumb([{ label: 'Vehicles' }])
-  if (!loaded) return null
   const text = search.trim().toLowerCase()
   const shown = [...vehicles]
     .sort((a, b) => a.id.localeCompare(b.id))
@@ -79,6 +79,8 @@ export default function VehiclesPage() {
         (kind === 'all' || kindMatches(vehicle, kind)) &&
         (depot === 'all' || vehicleDepot(vehicle) === depot),
     )
+  const paging = usePaging(shown, `${text}|${brand}|${kind}|${depot}`)
+  if (!loaded) return null
   return (
     <AdminPage>
       <AdminIntro
@@ -128,7 +130,7 @@ export default function VehiclesPage() {
             </tr>
           </thead>
           <tbody>
-            {shown.map((vehicle) => {
+            {paging.visible.map((vehicle) => {
               const driver = driverOf(vehicle, members)
               return (
                 <tr key={vehicle.id}>
@@ -164,13 +166,16 @@ export default function VehiclesPage() {
         {shown.length === 0 && <p className="ad-empty">No vehicle matches these filters.</p>}
         <div className="ad-table-foot">
           <span>
-            Showing {shown.length} of {vehicles.length} vehicles
+            Showing {paging.from}–{paging.to} of {shown.length} vehicles
           </span>
-          <span>Sorted by vehicle ID</span>
+          <span className="ad-foot-right">
+            <Pager paging={paging} label="Vehicles" />
+            Sorted by vehicle ID
+          </span>
         </div>
       </div>
       <ul className="ad-cards" aria-label="Vehicles">
-        {shown.map((vehicle) => (
+        {paging.visible.map((vehicle) => (
           <li key={vehicle.id}>
             <Link to={`/administration/vehicles/${vehicle.id}`} className="ad-person">
               <div>
@@ -187,6 +192,9 @@ export default function VehiclesPage() {
           </li>
         ))}
       </ul>
+      <div className="ad-cards-pager">
+        <Pager paging={paging} label="Vehicles" />
+      </div>
     </AdminPage>
   )
 }

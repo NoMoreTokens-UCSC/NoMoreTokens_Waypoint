@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Brand } from '../../../../domain/outlets'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
-import { AdminIntro, AdminPage, LinkBtn, Pill } from '../components/AdminKit'
+import { AdminIntro, AdminPage, LinkBtn, Pager, Pill } from '../components/AdminKit'
+import { usePaging } from '../lib/paging'
 import { brands, managerOf, parkingLabel, useOutlets, windowLabel } from '../lib/outlets'
 import { useMembers } from '../lib/team'
 
@@ -56,7 +57,6 @@ export default function OutletsPage() {
   const [brand, setBrand] = useState<Brand | 'all'>('all')
   const [depot, setDepot] = useState<string>('all')
   useBreadcrumb([{ label: 'Outlets' }])
-  if (!loaded) return null
   const text = search.trim().toLowerCase()
   const shown = outlets.filter(
     (outlet) =>
@@ -64,6 +64,8 @@ export default function OutletsPage() {
       (brand === 'all' || outlet.brand === brand) &&
       (depot === 'all' || outlet.depot === depot),
   )
+  const paging = usePaging(shown, `${text}|${brand}|${depot}`)
+  if (!loaded) return null
   return (
     <AdminPage>
       <AdminIntro
@@ -112,7 +114,7 @@ export default function OutletsPage() {
             </tr>
           </thead>
           <tbody>
-            {shown.map((outlet) => {
+            {paging.visible.map((outlet) => {
               const manager = managerOf(outlet, members)
               return (
                 <tr key={outlet.id}>
@@ -144,13 +146,16 @@ export default function OutletsPage() {
         {shown.length === 0 && <p className="ad-empty">No outlet matches these filters.</p>}
         <div className="ad-table-foot">
           <span>
-            Showing {shown.length} of {outlets.length} outlets
+            Showing {paging.from}–{paging.to} of {shown.length} outlets
           </span>
-          <span>Sorted by outlet ID</span>
+          <span className="ad-foot-right">
+            <Pager paging={paging} label="Outlets" />
+            Sorted by outlet ID
+          </span>
         </div>
       </div>
       <ul className="ad-cards" aria-label="Outlets">
-        {shown.map((outlet) => {
+        {paging.visible.map((outlet) => {
           const manager = managerOf(outlet, members)
           return (
             <li key={outlet.id}>
@@ -168,6 +173,9 @@ export default function OutletsPage() {
           )
         })}
       </ul>
+      <div className="ad-cards-pager">
+        <Pager paging={paging} label="Outlets" />
+      </div>
     </AdminPage>
   )
 }

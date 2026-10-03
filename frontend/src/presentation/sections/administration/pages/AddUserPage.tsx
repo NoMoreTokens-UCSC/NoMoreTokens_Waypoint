@@ -38,15 +38,24 @@ interface Draft {
   role: Workspace
   name: string
   mobile: string
+  email: string
   depot: string
   assignment: string
   username: string
   password: string
 }
-type Errors = Partial<Record<'name' | 'mobile' | 'assignment' | 'username' | 'password', string>>
+type Errors = Partial<
+  Record<'name' | 'mobile' | 'email' | 'assignment' | 'username' | 'password', string>
+>
 
-function check(draft: Draft, taken: Set<string>): Errors {
+const validEmail = (text: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim())
+
+function check(draft: Draft, taken: Set<string>, emails: Set<string>): Errors {
   const errors: Errors = {}
+  if (!draft.email.trim()) errors.email = 'Enter their email address.'
+  else if (!validEmail(draft.email)) errors.email = 'Enter a valid email address.'
+  else if (emails.has(draft.email.trim().toLowerCase()))
+    errors.email = 'That email address already belongs to a team member.'
   errors.username = usernameProblem(draft.username, taken)
   errors.password = passwordProblem(draft.password)
   if (!errors.username) delete errors.username
@@ -80,6 +89,7 @@ function AddUserForm() {
       role: outlet || params.get('role') === 'store-manager' ? 'store-manager' : 'driver',
       name: '',
       mobile: '',
+      email: '',
       depot: outlet?.depot ?? (vehicle ? vehicleDepot(vehicle) : 'Peliyagoda'),
       assignment: outlet ? outletAssignment(outlet) : (vehicle?.id ?? ''),
       username: '',
@@ -93,7 +103,8 @@ function AddUserForm() {
   useBreadcrumb([{ label: 'Team & access', to: '/administration/team' }, { label: 'Add user' }])
 
   const usernames = new Set(members.map((member) => member.username).filter(Boolean) as string[])
-  const errors = attempted ? check(draft, usernames) : {}
+  const emails = new Set(members.map((member) => member.email.toLowerCase()).filter(Boolean))
+  const errors = attempted ? check(draft, usernames, emails) : {}
   // A store manager is assigned to an outlet that exists and has no manager yet.
   const openOutlets = outlets.filter((outlet) => !managerOf(outlet, members))
   const taken = new Set(members.map((member) => member.vehicleId).filter(Boolean))
@@ -109,7 +120,7 @@ function AddUserForm() {
 
   const send = () => {
     setAttempted(true)
-    const problems = check(draft, usernames)
+    const problems = check(draft, usernames, emails)
     if (Object.keys(problems).length) {
       if (compact && problems.name) setStep(1)
       toast.error('Check the highlighted details.')
@@ -119,6 +130,7 @@ function AddUserForm() {
       await apis.team.createUser({
         name: draft.name.trim(),
         mobile: draft.mobile.trim(),
+        email: draft.email.trim().toLowerCase(),
         role: draft.role,
         depot: draft.depot,
         assignment: draft.assignment.trim(),
@@ -199,6 +211,20 @@ function AddUserForm() {
         placeholder="+94 77 123 4567"
         aria-invalid={Boolean(errors.mobile)}
         onChange={(event) => change({ mobile: event.target.value })}
+      />
+    </Field>
+  )
+  const emailField = (
+    <Field label="Email" hint="For account notices. Must be unique." error={errors.email}>
+      <input
+        type="email"
+        value={draft.email}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
+        placeholder="name@example.com"
+        aria-invalid={Boolean(errors.email)}
+        onChange={(event) => change({ email: event.target.value })}
       />
     </Field>
   )
@@ -348,6 +374,7 @@ function AddUserForm() {
             </p>
             <div className="ad-form-grid">
               {mobileField}
+              {emailField}
               {depotField}
               {assignmentField}
               {usernameField}
@@ -390,6 +417,7 @@ function AddUserForm() {
             <div className="ad-form-grid">
               {nameField}
               {mobileField}
+              {emailField}
               {depotField}
               {assignmentField}
             </div>

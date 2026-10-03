@@ -3,7 +3,8 @@ import { DropdownMenu } from 'radix-ui'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import type { AuditEntry } from '../../../../domain/models'
-import { AdminIntro, AdminPage, Btn } from '../components/AdminKit'
+import { AdminIntro, AdminPage, Btn, Pager } from '../components/AdminKit'
+import { usePaging } from '../lib/paging'
 import { useAudit, useSummary } from '../lib/team'
 
 type Range = 'all' | 'today'
@@ -80,7 +81,6 @@ export default function AuditPage() {
   const [search, setSearch] = useState('')
   const [action, setAction] = useState('all')
   const [range, setRange] = useState<Range>('all')
-  if (!loaded || !summary) return null
   const text = search.trim().toLowerCase()
   const actions = [...new Set(audit.map((entry) => entry.action))].sort()
   const shown = audit.filter(
@@ -92,6 +92,8 @@ export default function AuditPage() {
           .toLowerCase()
           .includes(text)),
   )
+  const paging = usePaging(shown, `${text}|${action}|${range}`)
+  if (!loaded || !summary) return null
   return (
     <AdminPage>
       <AdminIntro
@@ -152,7 +154,7 @@ export default function AuditPage() {
             </tr>
           </thead>
           <tbody>
-            {shown.map((entry) => (
+            {paging.visible.map((entry) => (
               <tr key={entry.id}>
                 <td className="ad-audit-when">{when(entry)}</td>
                 <td className="ad-strong">{who(entry)}</td>
@@ -166,13 +168,17 @@ export default function AuditPage() {
         {shown.length === 0 && <p className="ad-empty">No events match these filters.</p>}
         <div className="ad-table-foot">
           <span>
-            Showing {shown.length} of {summary.auditEvents} events
+            Showing {paging.from}–{paging.to} of{' '}
+            {shown.length === audit.length ? summary.auditEvents : shown.length} events
           </span>
-          <span>Newest first · kept for 12 months</span>
+          <span className="ad-foot-right">
+            <Pager paging={paging} label="Audit log" />
+            Newest first · kept for 12 months
+          </span>
         </div>
       </div>
       <ul className="ad-audit-cards" aria-label="Audit events">
-        {shown.map((entry) => (
+        {paging.visible.map((entry) => (
           <li key={entry.id}>
             <strong>
               {entry.action} · {record(entry)}
@@ -184,6 +190,9 @@ export default function AuditPage() {
           </li>
         ))}
       </ul>
+      <div className="ad-cards-pager">
+        <Pager paging={paging} label="Audit log" />
+      </div>
     </AdminPage>
   )
 }

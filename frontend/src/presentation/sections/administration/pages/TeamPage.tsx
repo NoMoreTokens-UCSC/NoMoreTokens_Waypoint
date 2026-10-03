@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { TeamMember, Workspace } from '../../../../domain/models'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
-import { AdminIntro, AdminPage, Avatar, LinkBtn, Pill } from '../components/AdminKit'
+import { AdminIntro, AdminPage, Avatar, LinkBtn, Pager, Pill } from '../components/AdminKit'
+import { usePaging } from '../lib/paging'
 import {
   assignmentText,
   initials,
@@ -76,7 +77,6 @@ export default function TeamPage() {
   const [role, setRole] = useState<Workspace | 'all'>('all')
   const [depot, setDepot] = useState<string>('all')
   useBreadcrumb([{ label: 'Team & access' }])
-  if (!loaded || !summary) return null
   const text = search.trim().toLowerCase()
   const shown = sortMembers(members).filter(
     (member) =>
@@ -87,6 +87,8 @@ export default function TeamPage() {
       (role === 'all' || member.role === role) &&
       (depot === 'all' || member.depot === depot),
   )
+  const paging = usePaging(shown, `${text}|${role}|${depot}`)
+  if (!loaded || !summary) return null
   const stats = [
     { label: 'Total users', value: summary.total, tone: '' },
     { label: 'Active', value: summary.active, tone: 'green' },
@@ -168,7 +170,7 @@ export default function TeamPage() {
             </tr>
           </thead>
           <tbody>
-            {shown.map((member) => (
+            {paging.visible.map((member) => (
               <tr key={member.id}>
                 <td>
                   <div className="ad-user">
@@ -224,13 +226,20 @@ export default function TeamPage() {
         {shown.length === 0 && <p className="ad-empty">No one matches these filters.</p>}
         <div className="ad-table-foot">
           <span>
-            Showing {shown.length} of {summary.total} users
+            Showing{' '}
+            {paging.from === 1 && paging.to === shown.length
+              ? shown.length
+              : `${paging.from}–${paging.to}`}{' '}
+            of {summary.total} users
           </span>
-          <span>Sorted by role · then status</span>
+          <span className="ad-foot-right">
+            <Pager paging={paging} label="Team" />
+            Sorted by role · then status
+          </span>
         </div>
       </div>
       <ul className="ad-cards" aria-label="Team members">
-        {shown.map((member) => (
+        {paging.visible.map((member) => (
           <li key={member.id}>
             <Link to={`/administration/team/${member.id}`} className="ad-person">
               <Avatar text={initials(member.name)} />
@@ -245,6 +254,9 @@ export default function TeamPage() {
           </li>
         ))}
       </ul>
+      <div className="ad-cards-pager">
+        <Pager paging={paging} label="Team" />
+      </div>
       <p className="ad-legend">
         Active can sign in · Invited has not opened the link yet · Suspended cannot sign in.
       </p>
