@@ -1,8 +1,7 @@
-import { AlertTriangle, Camera, Home, MapPin, Truck } from 'lucide-react'
+import { AlertTriangle, Camera, Home, MapPin, Truck, CloudUpload, History } from 'lucide-react'
+import { assignedDriverLoad, isAssignedStop } from '../../../domain/driverWorkflow'
 import { lazyPage } from '../../roles/lazyPage'
 import type { RoleModule } from '../../roles/types'
-
-const pages = () => import('./pages/DriverPages')
 
 export const driverModule: RoleModule = {
   key: 'driver',
@@ -11,35 +10,171 @@ export const driverModule: RoleModule = {
   icon: Truck,
   basePath: '/driver',
   home: '/driver/home',
+  shell: { compactNav: 'menu', recoveryLink: false },
+  search: {
+    placeholder: 'Search assigned outlets or orders',
+    find: (snapshot, query) => {
+      const load = assignedDriverLoad(snapshot),
+        text = query.toLowerCase()
+      return snapshot.stops
+        .filter(
+          (stop) =>
+            isAssignedStop(stop, snapshot.orders, load) &&
+            `${stop.outlet} ${stop.name} ${stop.orderIds.join(' ')}`.toLowerCase().includes(text),
+        )
+        .map((stop) => ({
+          id: stop.id,
+          text: `${stop.outlet} · ${stop.name}`,
+          path: `/driver/navigation?stop=${encodeURIComponent(stop.id)}`,
+        }))
+    },
+  },
   nav: [
     { label: 'Home', path: '/driver/home', icon: Home },
-    { label: 'Current route', path: '/driver/route', icon: MapPin },
-    { label: 'Delivery proof', path: '/driver/delivery', icon: Camera },
-    { label: 'Issues', path: '/driver/issues', icon: AlertTriangle },
+    {
+      label: 'Current route',
+      path: '/driver/route',
+      icon: MapPin,
+      activePaths: ['/driver/route', '/driver/pre-departure', '/driver/navigation'],
+    },
+    {
+      label: 'Delivery proof',
+      path: '/driver/delivery',
+      icon: Camera,
+      activePaths: ['/driver/delivery', '/driver/arrival', '/driver/proof', '/driver/delivered'],
+      availability: (snapshot) => {
+        const load = assignedDriverLoad(snapshot)
+        const stops = snapshot.stops.filter((item) => isAssignedStop(item, snapshot.orders, load))
+        const stop =
+          stops.find((item) => item.status === 'Arrived') ??
+          stops.find((item) => item.status === 'Proof pending')
+        return stop
+          ? { path: `/driver/delivery?stop=${encodeURIComponent(stop.id)}` }
+          : {
+              disabledReason:
+                'Available after arrival at an assigned outlet. Past proof is in Saved records.',
+            }
+      },
+    },
+    { label: 'Delays & issues', path: '/driver/issues', icon: AlertTriangle },
+    { label: 'Saved records', path: '/driver/sync', icon: CloudUpload },
+    { label: 'Route history', path: '/driver/history', icon: History },
   ],
   routes: [
     {
+      path: '/driver/history',
+      title: 'Route history',
+      component: lazyPage(() => import('./pages/DriverRouteHistoryPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
       path: '/driver/home',
       title: 'Home',
-      component: lazyPage(() => pages().then((m) => m.DriverHomePage)),
+      component: lazyPage(() => import('./pages/DriverHomePage').then((m) => m.default)),
       shell: true,
     },
     {
       path: '/driver/route',
       title: 'Current route',
-      component: lazyPage(() => pages().then((m) => m.DriverRoutePage)),
+      component: lazyPage(() => import('./pages/DriverCurrentRoutePage').then((m) => m.default)),
       shell: true,
     },
     {
       path: '/driver/delivery',
       title: 'Delivery proof',
-      component: lazyPage(() => pages().then((m) => m.DriverDeliveryPage)),
+      component: lazyPage(() => import('./pages/DriverDeliveryPage').then((m) => m.default)),
       shell: true,
     },
     {
       path: '/driver/issues',
       title: 'Issues',
-      component: lazyPage(() => pages().then((m) => m.DriverIssuesPage)),
+      component: lazyPage(() => import('./pages/DriverIssuePage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/pre-departure',
+      title: 'Before you leave',
+      component: lazyPage(() => import('./pages/DriverPreDeparturePage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/route/details',
+      title: 'Manifest',
+      component: lazyPage(() => import('./pages/DriverRouteDetailsPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/navigation',
+      title: 'Navigation',
+      component: lazyPage(() => import('./pages/DriverNavigationPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/arrival',
+      title: 'Arrived',
+      component: lazyPage(() => import('./pages/DriverArrivalPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/proof/capture',
+      title: 'Capture proof',
+      component: lazyPage(() => import('./pages/DriverProofCapturePage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/proof/camera-unavailable',
+      title: 'Camera access',
+      component: lazyPage(() =>
+        import('./pages/DriverCameraUnavailablePage').then((m) => m.default),
+      ),
+      shell: true,
+    },
+    {
+      path: '/driver/proof/review',
+      title: 'Photo review',
+      component: lazyPage(() => import('./pages/DriverProofReviewPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/proof/attached',
+      title: 'Photo attached',
+      component: lazyPage(() => import('./pages/DriverProofAttachedPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/proof/submit',
+      title: 'Submit proof',
+      component: lazyPage(() => import('./pages/DriverProofSubmitPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/delivered',
+      title: 'Delivered',
+      component: lazyPage(() => import('./pages/DriverDeliveredPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/offline',
+      title: 'Offline route',
+      component: lazyPage(() => import('./pages/DriverOfflinePage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/sync',
+      title: 'Saved records',
+      component: lazyPage(() => import('./pages/DriverSyncPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/route/revision',
+      title: 'Route revision',
+      component: lazyPage(() => import('./pages/DriverRouteRevisionPage').then((m) => m.default)),
+      shell: true,
+    },
+    {
+      path: '/driver/sync/history',
+      title: 'Sync history',
+      component: lazyPage(() => import('./pages/DriverSyncHistoryPage').then((m) => m.default)),
       shell: true,
     },
   ],

@@ -22,6 +22,27 @@ afterEach(async () => {
 })
 
 describe('local API adapters', () => {
+  it('exposes durable Driver drafts and validates capture through the API', async () => {
+    expect(await apis.delivery.listProofDrafts()).toEqual([])
+    expect(await apis.delivery.getProofDraft('STOP001')).toBeUndefined()
+    await expect(
+      apis.delivery.saveProofDraft({
+        stopId: 'STOP001',
+        photo: new Blob(['photo'], { type: 'image/png' }),
+        fileName: 'photo.png',
+        stage: 'captured',
+        quantity: 18,
+        receiver: '',
+        acknowledged: false,
+        exception: '',
+        revision: 3,
+        createdAt: new Date().toISOString(),
+      }),
+    ).rejects.toThrow('Park')
+    await apis.delivery.deleteProofDraft('STOP001')
+    expect(await apis.delivery.listProofDrafts()).toEqual([])
+    await expect(apis.delivery.reportDelay('STOP001', 'Road blocked')).rejects.toThrow('open stop')
+  })
   it('scopes orders and stops to an outlet', async () => {
     const orders = await apis.orders.listOrders({ outletId: 'OUT001' })
     expect(orders.map((order) => order.id).sort()).toEqual(['ORD1042', 'ORD1043'])
@@ -93,6 +114,21 @@ describe('local API adapters', () => {
     await expect(apis.orders.createOrder('OUT002', 'Chilled', 10, '05:30')).rejects.toThrow(
       /OUT016 and OUT019 only/,
     )
+  })
+  it('applies the 08:00 deadline to Fresh without blocking the Style mall window', async () => {
+    const input = {
+      temperature: 'Ambient' as const,
+      cases: 20,
+      weight: 200,
+      volume: 2,
+      window: '08:00',
+      windowEnd: '09:00',
+    }
+    await apis.orders.placeOrders('OUT016', [input])
+    expect(await apis.orders.listOrders({ outletId: 'OUT016' })).toEqual([
+      expect.objectContaining({ window: '08:00', windowEnd: '09:00', brand: 'Style' }),
+    ])
+    await expect(apis.orders.placeOrders('OUT001', [input])).rejects.toThrow(/before 08:00/)
   })
   it('projects trips from allocations', async () => {
     await apis.planning.autoAllocate()

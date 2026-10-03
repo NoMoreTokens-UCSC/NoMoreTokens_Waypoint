@@ -1,18 +1,24 @@
 import { useEffect } from 'react'
-import { MapContainer, CircleMarker, Polyline, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import {
+  MapContainer,
+  CircleMarker,
+  Polyline,
+  Popup,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from 'react-leaflet'
 import { useConnectivity } from '../../hooks/useOperations'
 import type { Stop, Vehicle } from '../../../domain/models'
+import { RouteMapViewport } from './RouteMapViewport'
 import 'leaflet/dist/leaflet.css'
 
-function FitMapToPoints({ vehicles, stops }: { vehicles: Vehicle[]; stops: Stop[] }) {
+function FitMapToPoints({ coordinates }: { coordinates: string }) {
   const map = useMap()
   useEffect(() => {
-    const points = [
-      ...vehicles.map((vehicle) => [vehicle.lat, vehicle.lng] as [number, number]),
-      ...stops.map((stop) => [stop.lat, stop.lng] as [number, number]),
-    ]
+    const points = JSON.parse(coordinates) as [number, number][]
     if (points.length > 1) map.fitBounds(points, { padding: [64, 64], maxZoom: 11 })
-  }, [map, vehicles, stops])
+  }, [map, coordinates])
   return null
 }
 
@@ -22,12 +28,20 @@ export default function OperationsMap({
   offline = false,
   onVehicleSelect,
   delayedVehicleIds = [],
+  fitRoute = false,
+  recenterKey = 0,
+  selectedStopId,
+  showCaption = true,
 }: {
   vehicles?: Vehicle[]
   stops?: Stop[]
   offline?: boolean
   onVehicleSelect?: (vehicle: Vehicle) => void
   delayedVehicleIds?: string[]
+  fitRoute?: boolean
+  recenterKey?: number
+  selectedStopId?: string
+  showCaption?: boolean
 }) {
   const connected = useConnectivity()
   const points: [number, number][] = [
@@ -48,7 +62,19 @@ export default function OperationsMap({
         className="operations-map"
         aria-label="Operations map"
       >
-        <FitMapToPoints vehicles={vehicles} stops={stops} />
+        {fitRoute ? (
+          <RouteMapViewport
+            coordinates={JSON.stringify([...points, ...vehicles.map((v) => [v.lat, v.lng])])}
+            recenterKey={recenterKey}
+          />
+        ) : (
+          <FitMapToPoints
+            coordinates={JSON.stringify([
+              ...vehicles.map((vehicle) => [vehicle.lat, vehicle.lng]),
+              ...stops.map((stop) => [stop.lat, stop.lng]),
+            ])}
+          />
+        )}
         {connected && !offline && (
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -67,7 +93,12 @@ export default function OperationsMap({
             pathOptions={{
               color: '#fff',
               weight: 2,
-              fillColor: v.status === 'Offline' ? '#6e737b' : delayedVehicleIds.includes(v.id) ? '#c63a2f' : '#f26a2e',
+              fillColor:
+                v.status === 'Offline'
+                  ? '#6e737b'
+                  : delayedVehicleIds.includes(v.id)
+                    ? '#c63a2f'
+                    : '#f26a2e',
               fillOpacity: 1,
             }}
           >
@@ -94,11 +125,16 @@ export default function OperationsMap({
           <CircleMarker
             key={s.id}
             center={[s.lat, s.lng]}
-            radius={10}
+            radius={s.id === selectedStopId ? 13 : 10}
             pathOptions={{
               color: '#fff',
               weight: 3,
-              fillColor: s.status === 'Delivered' ? '#1e8a57' : '#22252a',
+              fillColor:
+                s.status === 'Delivered'
+                  ? '#1e8a57'
+                  : s.id === selectedStopId
+                    ? '#f26a2e'
+                    : '#22252a',
               fillOpacity: 1,
             }}
           >
@@ -111,6 +147,11 @@ export default function OperationsMap({
               <br />
               {s.status}
             </Popup>
+            {s.id === selectedStopId && (
+              <Tooltip permanent direction="top">
+                {s.outlet}
+              </Tooltip>
+            )}
           </CircleMarker>
         ))}
       </MapContainer>
@@ -119,7 +160,13 @@ export default function OperationsMap({
           Offline · saved route and stop locations. Basemap unavailable.
         </div>
       )}
-      <div className="map-caption">Demo locations · not live vehicle telemetry</div>
+      {showCaption && (
+        <div className="map-caption">
+          {vehicles.some((vehicle) => vehicle.positionSource === 'device')
+            ? 'Last saved device GPS · remote sharing awaits backend'
+            : 'Demo locations · not live vehicle telemetry'}
+        </div>
+      )}
     </div>
   )
 }

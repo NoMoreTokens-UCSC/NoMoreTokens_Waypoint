@@ -83,7 +83,7 @@ export const storeManagerModule: RoleModule = {
       subtitle: 'Waypoint Group · NoMoreTokens',
     }),
     compactSubtitle: (session) => `Store · ${session.outletId ?? ''}`,
-    // The header bell counts deferrals this outlet has not acknowledged yet.
+    // Count this outlet's unread delivery updates, deferrals and late arrivals.
     alertCount: (snapshot, session) =>
       snapshot.orders.filter(
         (order) =>
@@ -94,6 +94,9 @@ export const storeManagerModule: RoleModule = {
       lateOrders(
         snapshot.orders.filter((order) => order.outlet === session.outletId),
         snapshot.stops,
+      ).length +
+      (snapshot.deliveryNotices ?? []).filter(
+        (notice) => notice.outletId === session.outletId && !notice.readAt,
       ).length,
   },
   routes: [
@@ -108,6 +111,11 @@ export const storeManagerModule: RoleModule = {
       () => import('./pages/DraftSavedPage'),
     ),
     route(delivery, 'Tracking', () => import('./pages/TrackingPage')),
+    route(
+      `${delivery}/confirm`,
+      'Confirm delivery handoff',
+      () => import('./pages/StoreHandoffPage'),
+    ),
     route(`${delivery}/:orderId/receipt`, 'Confirm receipt', () => import('./pages/ReceiptPage')),
     route(
       `${delivery}/:orderId/receipt/confirmed`,
