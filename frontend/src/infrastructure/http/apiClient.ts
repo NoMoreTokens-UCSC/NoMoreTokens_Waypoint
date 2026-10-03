@@ -126,6 +126,9 @@ export async function getMe(): Promise<ApiUserProfile> {
 export function logout(): void {
   clearToken()
   clearUser()
+  try {
+    localStorage.removeItem('waypoint.lastRole')
+  } catch {}
 }
 
 // ── Reference ─────────────────────────────────────────────────────────────
