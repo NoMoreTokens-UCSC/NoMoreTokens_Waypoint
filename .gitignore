@@ -3,3 +3,10 @@
 
 # Local Figma exports; application assets are included under frontend/public.
 figma-exports/
+
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+dist/
+.env
