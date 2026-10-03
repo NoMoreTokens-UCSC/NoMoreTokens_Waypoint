@@ -50,8 +50,23 @@ export default function DriverNavigationPage() {
       />
       {!state.data?.route.started && (
         <Notice title="Start your route first">
-          <p>Complete the load check before departure.</p>
-          <DriverLink to="/driver/pre-departure">Before-you-leave check</DriverLink>
+          <p>Complete the load check or start the route to record arrival.</p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <Button
+              disabled={action.isPending}
+              onClick={() => {
+                action.run(
+                  () => apis.delivery.startRoute(),
+                  'Route started',
+                )
+              }}
+            >
+              {action.isPending ? 'Starting route…' : 'Start Route Now'}
+            </Button>
+            <DriverLink to="/driver/pre-departure" variant="secondary">
+              Vehicle checklist
+            </DriverLink>
+          </div>
         </Notice>
       )}
       <DriverActions>
