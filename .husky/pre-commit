@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+
+echo "============================="
+echo " Running pre-commit checks..."
+echo "============================="
+
+# Frontend Build Check
+echo "[1/2] Verifying Frontend Build..."
+(cd frontend && npx vite build) || {
+  echo "✘ Frontend build failed! Commit aborted."
+  exit 1
+}
+
+# Python Syntax Check
+echo "[2/2] Verifying Python Syntax (api/)..."
+if command -v python3 >/dev/null 2>&1; then
+  PY_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PY_BIN="python"
+else
+  echo "✘ Python binary not found. Skipping python syntax check."
+  PY_BIN=""
+fi
+
+if [ -n "$PY_BIN" ]; then
+  $PY_BIN -m compileall -q api/ || {
+    echo "✘ Python syntax error detected in api/! Commit aborted."
+    exit 1
+  }
+fi
+
+echo "✔  All checks passed"
+echo "======================"
