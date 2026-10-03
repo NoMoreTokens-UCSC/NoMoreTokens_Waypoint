@@ -19,7 +19,7 @@ ORDER_TRANSITIONS: dict[str, set[str]] = {
 }
 
 TRIP_TRANSITIONS: dict[str, set[str]] = {
-    "PLANNED":    {"LOADING", "CANCELLED"},
+    "PLANNED":    {"LOADING", "LOADED", "CANCELLED"},
     "LOADING":    {"LOADED", "CANCELLED"},
     "LOADED":     {"IN_TRANSIT", "CANCELLED"},
     "IN_TRANSIT": {"COMPLETED", "CANCELLED"},

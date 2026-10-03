@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbDep, require_role
 from app.models.loading import LoadCheck
+from app.models.order import Order
 from app.models.plan import Plan, Stop, StopOrder, Trip
 from app.models.reference import Vehicle
 from app.schemas.plan import LoadFlagIn, TripOut
@@ -85,13 +86,36 @@ def flag_load(
     return {"ok": True}
 
 
-@router.post("/trips/{trip_id}/release", status_code=status.HTTP_200_OK)
-def release_trip(trip_id: int, db: DbDep, current_user: CurrentUser, _: None = _LOADER):
+@router.post("/trips/{trip_id}/start", status_code=status.HTTP_200_OK)
+def start_loading_trip(trip_id: int, db: DbDep, current_user: CurrentUser, _: None = _LOADER):
+    """Mark that vehicle loading has physically started at the bay (PLANNED -> LOADING)."""
     trip = db.get(Trip, trip_id)
     if not trip:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Trip not found."})
     before = {"status": trip.status}
+    transition_trip(trip, "LOADING")
+    log_action(db, "START_LOADING_TRIP", "Trip", trip_id, actor_user_id=current_user.id,
+               before=before, after={"status": trip.status})
+    db.commit()
+    return {"ok": True, "status": trip.status}
+
+
+@router.post("/trips/{trip_id}/release", status_code=status.HTTP_200_OK)
+def release_trip(trip_id: int, db: DbDep, current_user: CurrentUser, _: None = _LOADER):
+    """Release vehicle after loading is complete (PLANNED/LOADING -> LOADED)."""
+    trip = db.get(Trip, trip_id, options=[selectinload(Trip.stops)])
+    if not trip:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Trip not found."})
+    before = {"status": trip.status}
     transition_trip(trip, "LOADED")
+
+    # Advance all orders on this trip to LOADED
+    for stop in trip.stops:
+        for so in db.query(StopOrder).filter(StopOrder.stop_id == stop.id).all():
+            order = db.get(Order, so.order_id)
+            if order and order.status == "PLANNED":
+                order.status = "LOADED"
+
     log_action(db, "RELEASE_TRIP", "Trip", trip_id, actor_user_id=current_user.id,
                before=before, after={"status": trip.status})
     db.commit()
