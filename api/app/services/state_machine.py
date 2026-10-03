@@ -9,7 +9,7 @@ ORDER_TRANSITIONS: dict[str, set[str]] = {
     "CONFIRMED": {"QUEUED", "CANCELLED"},
     "QUEUED":    {"PLANNED", "CANCELLED"},
     "PLANNED":   {"LOADED", "DEFERRED", "CANCELLED"},
-    "LOADED":    {"IN_TRANSIT", "CANCELLED"},
+    "LOADED":    {"IN_TRANSIT", "DELIVERED", "PARTIAL", "FAILED", "CANCELLED"},
     "IN_TRANSIT":{"DELIVERED", "PARTIAL", "FAILED", "DEFERRED"},
     "DELIVERED": {"PARTIAL"},          # receipt dispute
     "PARTIAL":   set(),
@@ -21,7 +21,7 @@ ORDER_TRANSITIONS: dict[str, set[str]] = {
 TRIP_TRANSITIONS: dict[str, set[str]] = {
     "PLANNED":    {"LOADING", "LOADED", "CANCELLED"},
     "LOADING":    {"LOADED", "CANCELLED"},
-    "LOADED":     {"IN_TRANSIT", "CANCELLED"},
+    "LOADED":     {"IN_TRANSIT", "COMPLETED", "CANCELLED"},
     "IN_TRANSIT": {"COMPLETED", "CANCELLED"},
     "COMPLETED":  set(),
     "CANCELLED":  set(),
