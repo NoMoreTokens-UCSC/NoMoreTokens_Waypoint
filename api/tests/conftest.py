@@ -11,9 +11,10 @@ import os
 import pytest
 
 # ── Environment must be set BEFORE any app import ───────────────────────────
+default_host = "db" if "db:5432" in os.getenv("DATABASE_URL", "") else "localhost"
 TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql+psycopg://waypoint:waypoint@localhost:5432/waypoint_test",
+    f"postgresql+psycopg://waypoint:waypoint@{default_host}:5432/waypoint_test",
 )
 os.environ.setdefault("DATABASE_URL", TEST_DB_URL)
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
