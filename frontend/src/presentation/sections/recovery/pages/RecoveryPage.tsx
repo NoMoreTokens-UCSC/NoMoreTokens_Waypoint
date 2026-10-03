@@ -15,16 +15,22 @@ import {
 } from '../../../shared/molecules/Common'
 import { EvidenceDetails } from '../../../shared/organisms/EvidenceDetails'
 import { formatTime } from '../../../shared/lib/utils'
+import { roleModules } from '../../../roles/registry'
+import { useActiveRole } from '../../../session/useSession'
 
 export default function RecoveryPage() {
   const { data } = useOperations(),
     service = useServices(),
     action = useAction(),
-    online = useConnectivity()
+    online = useConnectivity(),
+    role = useActiveRole()
   const [evidenceId, setEvidenceId] = useState<string | null>(null),
     [reviewId, setReviewId] = useState<string | null>(null)
   if (!data) return null
-  const offline = !online || data.settings.simulatedOffline,
+  // This page is shared, so "back to work" goes to the active role's own workspace.
+  const isDriver = role === 'driver',
+    workspace = roleModules.find((module) => module.key === role),
+    offline = !online || data.settings.simulatedOffline,
     pending = data.queue.filter((q) => !['accepted', 'superseded'].includes(q.status)),
     review = data.queue.find((q) => q.id === reviewId)
   return (
@@ -130,11 +136,15 @@ export default function RecoveryPage() {
         ) : (
           <EmptyState
             title="All records synced"
-            description="No evidence has been queued yet. Record a delivery after arriving at a stop."
+            description={
+              isDriver
+                ? 'No evidence has been queued yet. Record a delivery after arriving at a stop.'
+                : 'No evidence has been queued yet. Anything saved on this device while offline appears here.'
+            }
             action={
-              <Link to="/driver/route">
+              <Link to={isDriver ? '/driver/route' : (workspace?.home ?? '/workspaces')}>
                 <Button variant="outline">
-                  Open current route
+                  {isDriver ? 'Open current route' : `Open ${workspace?.label ?? 'workspace'}`}
                   <ArrowRight size={16} />
                 </Button>
               </Link>

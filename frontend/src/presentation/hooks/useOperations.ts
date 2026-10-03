@@ -5,13 +5,15 @@ import { toast } from 'sonner'
 import { useServices } from '../providers/ServicesContext'
 import { useApis } from '../providers/ApisContext'
 
-import { getToken } from '../../infrastructure/http/apiClient'
+import { getToken, getUser } from '../../infrastructure/http/apiClient'
 import type { Snapshot, Stop } from '../../domain/models'
 import type { Apis } from '../../domain/api'
 import type { OperationsService } from '../../application/OperationsService'
 
 async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise<Snapshot> {
   const base = await services.repository.getSnapshot()
+  // Planning, loading and route data belong to other roles: a store manager's request for them is refused.
+  if (getUser()?.role === 'STORE_MANAGER') return base
   try {
     const [planState, vehicles, loads] = await Promise.all([
       apis.planning.getPlan(),

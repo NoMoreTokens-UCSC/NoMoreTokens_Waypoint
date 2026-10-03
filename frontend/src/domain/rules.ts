@@ -16,7 +16,7 @@ export function allocationErrors(
   if (trip < 1 || trip > 2) errors.push('A vehicle can make at most two trips per day.')
   if (order.temperature === 'Chilled' && !vehicle.reefer)
     errors.push('Chilled cargo requires a refrigerated vehicle.')
-  if (order.brand !== vehicle.brand)
+  if (vehicle.brandRestricted !== false && order.brand !== vehicle.brand)
     errors.push('Choose a vehicle assigned to the same demand type.')
   if (order.weight + peers.reduce((n, o) => n + o.weight, 0) > vehicle.weightCapacity)
     errors.push('This trip exceeds the weight limit.')

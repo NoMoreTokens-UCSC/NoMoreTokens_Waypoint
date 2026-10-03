@@ -44,6 +44,17 @@ def current_trip(db: DbDep, current_user: CurrentUser, _: None = _DRIVER):
     return trip
 
 
+def _orders_in_transit(db: DbDep, trip: Trip) -> None:
+    """Orders on a trip that has left the depot are in transit, so stores can see them en route."""
+    stop_ids = [stop.id for stop in trip.stops]
+    if not stop_ids:
+        return
+    for link in db.query(StopOrder).filter(StopOrder.stop_id.in_(stop_ids)).all():
+        order = db.get(Order, link.order_id)
+        if order and order.status == "LOADED":
+            transition_order(order, "IN_TRANSIT")
+
+
 @router.post("/trips/start", status_code=status.HTTP_200_OK)
 def start_driver_trip(db: DbDep, current_user: CurrentUser, _: None = _DRIVER):
     """Mark the driver's current trip as IN_TRANSIT (LOADED -> IN_TRANSIT)."""
@@ -67,6 +78,7 @@ def start_driver_trip(db: DbDep, current_user: CurrentUser, _: None = _DRIVER):
         )
 
     transition_trip(trip, "IN_TRANSIT")
+    _orders_in_transit(db, trip)
     log_action(db, "START_TRIP", "Trip", trip.id, actor_user_id=current_user.id,
                before={"status": "LOADED"}, after={"status": "IN_TRANSIT"})
     db.commit()
@@ -101,6 +113,7 @@ def _process_delivery_event(db: DbDep, stop: Stop, event_in: DeliveryEventIn, us
         if trip and trip.status == "LOADED":
             try:
                 transition_trip(trip, "IN_TRANSIT")
+                _orders_in_transit(db, trip)
             except HTTPException:
                 pass
 

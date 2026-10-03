@@ -63,14 +63,18 @@ export async function request<T>(
   }
   const resp = await fetch(`${BASE_URL}${path}`, { ...options, headers })
   if (!resp.ok) {
-    let errorBody: { error?: { code?: string; message?: string } } = {}
+    type Problem = { code?: string; message?: string }
+    let errorBody: { error?: Problem; detail?: Problem | string } = {}
     try {
       errorBody = await resp.json()
     } catch {}
+    // The API reports problems as { detail: { code, message } }; plain strings come from validation.
+    const detail = typeof errorBody.detail === 'string' ? { message: errorBody.detail } : errorBody.detail
+    const problem = errorBody.error ?? detail
     throw new ApiError(
       resp.status,
-      errorBody?.error?.code ?? 'API_ERROR',
-      errorBody?.error?.message ?? `HTTP ${resp.status}`,
+      problem?.code ?? 'API_ERROR',
+      problem?.message ?? `HTTP ${resp.status}`,
     )
   }
   if (resp.status === 204) return undefined as T
