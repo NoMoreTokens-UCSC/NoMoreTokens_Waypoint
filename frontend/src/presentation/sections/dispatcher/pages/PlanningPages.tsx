@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowRight, CheckCircle2, Circle, WandSparkles, Truck, ShieldCheck } from 'lucide-react'
 import { useOperations, useAction, useEvidence } from '../../../hooks/useOperations'
 import { useServices } from '../../../providers/ServicesContext'
@@ -12,6 +12,7 @@ import {
   StatusBadge,
   CapacityBar,
   EmptyState,
+  Field,
 } from '../../../shared/molecules/Common'
 import { PlanningSteps } from '../organisms/PlanningSteps'
 import { publicationErrors, departureErrors } from '../../../../domain/rules'
@@ -820,7 +821,7 @@ export function ReviewPage() {
               disabled={action.isPending}
               onClick={() =>
                 action.run(async () => {
-                  await service.publish()
+                  await apis.planning.publish()
                   navigate('/dispatcher/release')
                 }, 'Plan published. Proceed to departure readiness.')
               }
@@ -911,6 +912,7 @@ export function ReviewPage() {
           >
             <ShieldCheck size={16} />
             Confirm allocation review
+          </Button>
         ) : deferred.length > 0 ? (
           <Button
             disabled={!!errors.length || action.isPending}
@@ -1093,9 +1095,7 @@ function ReleaseLoad({ loadId }: { loadId: string }) {
             </Button>
           </div>
         </Panel>
-        <Panel
-          title={deferred.length === 0 ? 'All outlets served' : `${deferred.length} deferred orders`}
-        >
+        <Panel title="Loader handoff">
           <div className="panel-body">
             {url ? (
               <img src={url} alt="Loading proof attached by the Loader" className="proof-image" />
@@ -1116,21 +1116,22 @@ function ReleaseLoad({ loadId }: { loadId: string }) {
                   Open Driver workspace
                   <ArrowRight size={16} />
                 </Button>
-              </>
-            ) : (
-              <>
+              </Link>
+            )}
+            {deferred.length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  {deferred.length} deferred orders
+                </p>
                 {deferred.map((o) => (
                   <p key={o.id} style={{ fontSize: 13, color: '#6e737b', marginBottom: 4 }}>
                     {o.outlet} · {o.deferralReason}
                   </p>
                 ))}
-                <p style={{ fontSize: 12, color: '#6e737b', marginTop: 8, marginBottom: 16 }}>
-                  Both receive priority on the next run.
+                <p style={{ fontSize: 12, color: '#6e737b', marginTop: 8 }}>
+                  They receive priority on the next run.
                 </p>
-                <Button variant="outline" className="w-full">
-                  View recorded reasons
-                </Button>
-              </>
+              </div>
             )}
           </div>
         </Panel>
