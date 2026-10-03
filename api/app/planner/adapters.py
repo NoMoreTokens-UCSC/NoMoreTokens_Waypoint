@@ -23,6 +23,8 @@ from app.planner.types import (
 
 def build_context(db: Session, delivery_date: dt.date) -> PlannerContext:
     """Convert DB rows into a PlannerContext for the given delivery date."""
+    from sqlalchemy import func as sqlfunc
+
     cal = db.get(CalendarDay, delivery_date)
 
     outlets_db = db.query(Outlet).all()
@@ -46,6 +48,25 @@ def build_context(db: Session, delivery_date: dt.date) -> PlannerContext:
         fuel_by_vehicle = {r.vehicle_id: r.litres_used for r in fuel_rows}
     else:
         fuel_by_vehicle = {}
+
+    # Consecutive deferrals: latest count per order (used for priority scoring)
+    from app.models.deferral import Deferral as DeferralModel
+    consec_rows = (
+        db.query(DeferralModel.order_id, sqlfunc.max(DeferralModel.consecutive_count).label("cnt"))
+        .filter(DeferralModel.order_id.in_([o.id for o in orders_db]))
+        .group_by(DeferralModel.order_id)
+        .all()
+    )
+    consec_by_order: dict[int, int] = {row.order_id: row.cnt for row in consec_rows}
+
+    # Depot coordinates (from seed/geo.py DEPOT_COORDS)
+    from seed.geo import depot_coords as _depot_coords
+
+    def _safe_depot_coords(depot_code: str) -> tuple[float, float]:
+        try:
+            return _depot_coords(depot_code)
+        except ValueError:
+            return (7.0, 80.0)
 
     outlets = {
         o.outlet_id: PlannerOutlet(
@@ -77,8 +98,8 @@ def build_context(db: Session, delivery_date: dt.date) -> PlannerContext:
             weekly_fuel_quota_l=v.weekly_fuel_quota_l,
             fuel_used_this_week=fuel_by_vehicle.get(v.vehicle_id, 0.0),
             depot_code=v.depot_code,
-            lat=0.0,  # depot coords — set from geo.py in full implementation
-            lng=0.0,
+            lat=_safe_depot_coords(v.depot_code)[0],
+            lng=_safe_depot_coords(v.depot_code)[1],
         )
         for v in vehicles_db
     }
@@ -92,6 +113,7 @@ def build_context(db: Session, delivery_date: dt.date) -> PlannerContext:
             total_weight=o.total_weight,
             total_volume=o.total_volume,
             priority=o.priority,
+            consecutive_deferrals=consec_by_order.get(o.id, 0),
         )
         for o in orders_db
     ]
