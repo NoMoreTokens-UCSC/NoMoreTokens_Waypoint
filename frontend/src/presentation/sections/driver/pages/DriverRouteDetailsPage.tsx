@@ -42,10 +42,12 @@ export default function DriverRouteDetailsPage() {
                   </ul>
                   <DeliveryWindowNotice stop={stop} orders={state.data.orders} />
                   <DriverLink
-                    to={`/driver/delivery?stop=${encodeURIComponent(stop.id)}`}
+                    to={`${stop.status === 'Upcoming' ? '/driver/navigation' : '/driver/delivery'}?stop=${encodeURIComponent(stop.id)}`}
                     variant="outline"
                   >
-                    Open {stop.outlet} handoff
+                    {stop.status === 'Upcoming'
+                      ? `Navigate to ${stop.outlet}`
+                      : `View ${stop.outlet} handoff`}
                   </DriverLink>
                 </div>
                 <StatusBadge tone={stop.deliveryState === 'delivered' ? 'success' : 'neutral'}>

@@ -1,12 +1,11 @@
+import { nextDriverStop } from '../../../../domain/driverWorkflow'
 import type { DriverDataState } from '../hooks/useDriverData'
 import { DriverLink } from '../molecules/DriverLink'
 import { DriverActions } from '../molecules/DriverActions'
 import { Metric, Panel, StatusBadge, EmptyState } from '../../../shared/molecules/Common'
 
 export function DriverHomeOverview({ state }: { state: DriverDataState }) {
-  const next = state.data?.stops.find(
-    (stop) => !['delivered', 'issueReported'].includes(stop.deliveryState),
-  )
+  const next = nextDriverStop(state.data?.stops ?? [])
   const delivered =
     state.data?.stops.filter((stop) => stop.deliveryState === 'delivered').length ?? 0
   const load = state.data?.load

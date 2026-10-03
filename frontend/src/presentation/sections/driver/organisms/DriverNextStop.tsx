@@ -60,7 +60,9 @@ export function DriverNextStop({ state }: { state: DriverStopState }) {
         </h2>
         <p>{stop.address}</p>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          ETA {stop.eta} · Window {stop.window} · {stop.cases} cases
+          Estimated arrival {stop.eta}
+          {stop.etaUpdatedAt ? ' · Driver estimate' : ' · Planned'} · Window {stop.window} ·{' '}
+          {stop.cases} cases
         </p>
         <DeliveryWindowNotice stop={stop} orders={state.data?.orders ?? []} />
         <DriverLink to={target}>{label}</DriverLink>

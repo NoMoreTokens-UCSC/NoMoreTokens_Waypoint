@@ -30,9 +30,9 @@ export default function RecoveryPage() {
   return (
     <>
       <PageHeading
-        eyebrow="Driver · data recovery"
+        eyebrow="Offline uploads"
         title="Saved records & sync"
-        description="A local save, an upload, and an accepted delivery are separate states."
+        description="Resume interrupted uploads or review changed route instructions. This screen handles saved data; delivery incidents belong in Delays & issues."
         action={
           <Button
             disabled={

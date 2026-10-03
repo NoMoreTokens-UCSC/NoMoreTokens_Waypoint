@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
-import type { SignaturePoint, SignatureStroke } from '../../../../domain/deliveryVerification'
+import type { SignaturePoint, SignatureStroke } from '../../../domain/deliveryVerification'
 
 const WIDTH = 640,
   HEIGHT = 200

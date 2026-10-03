@@ -1,3 +1,4 @@
+import { DriverRouteSequence } from '../organisms/DriverRouteSequence'
 import { DriverActions } from '../molecules/DriverActions'
 import { useDriverStop } from '../hooks/useDriverData'
 import { DriverScreen } from '../templates/DriverScreen'
@@ -24,7 +25,7 @@ export default function DriverCurrentRoutePage() {
       )}
       {state.data && (
         <>
-          <div className="max-[900px]:[&>section]:-order-1 grid grid-cols-1 items-start gap-4 min-[901px]:grid-cols-[minmax(280px,1fr)_minmax(0,2fr)]">
+          <div className="grid grid-cols-1 items-start gap-4 min-[901px]:grid-cols-[minmax(280px,1fr)_minmax(0,2fr)]">
             <div className="flex min-w-0 flex-col gap-4">
               <DriverNextStop state={state} />
               <Panel title="Daily shift progress">
@@ -46,6 +47,7 @@ export default function DriverCurrentRoutePage() {
               offline={!state.online}
             />
           </div>
+          <DriverRouteSequence state={state} />
           <DriverActions>
             <DriverLink to="/driver/route/details" variant="secondary">
               Route details & manifest

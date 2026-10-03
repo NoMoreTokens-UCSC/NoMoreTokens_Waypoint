@@ -102,6 +102,8 @@ export interface Stop {
   address: string
   window: string
   eta: string
+  originalEta?: string
+  etaUpdatedAt?: string
   lat: number
   lng: number
   orderIds: string[]
@@ -176,6 +178,7 @@ export interface Settings {
   cutoffClosed: boolean
   published: boolean
   routeStarted: boolean
+  routeStartedAt?: string
   routeRevision: number
   simulatedOffline: boolean
   syncOutcome: 'accepted' | 'review' | 'retry'
@@ -189,6 +192,7 @@ export interface Settings {
   compactRows: boolean
 }
 export interface Snapshot {
+  routeEvents?: import('./routeHistory').RouteEvent[]
   pendingPushSubscriptions?: WebPushRegistration[]
   pendingPositions?: DevicePosition[]
   deliveryNotices?: DeliveryNotice[]

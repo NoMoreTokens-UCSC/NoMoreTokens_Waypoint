@@ -149,7 +149,7 @@ example for the other roles: copy its structure, not its content.
   The backend should provide the outlet receiving window and authoritative delivery date.
 - Deferral notice needs the acknowledgment gate (Figma: "Acknowledgment required" → "selected" →
   "acknowledged").
-- Offline: orders and receipts made without a connection are not queued yet. Agree the approach with
+- Offline: signed manager handoffs use the delivery evidence outbox. Other order/legacy-receipt writes are local snapshot changes and still need remote transport. Agree that transport with
   the backend developers (same pattern as driver proof).
 - Note: the local adapter accepts outlet `OUT001` only, because the seed data models one store.
 
@@ -277,7 +277,7 @@ held loads, revisions 03/04, photo capture and review, loading complete).
 
 ## Driver
 
-Driver is implemented as 18 separate routed pages in `sections/driver/pages/`, with atoms, molecules,
+Driver is implemented as 19 separate routed pages in `sections/driver/pages/`, with atoms, molecules,
 organisms, templates and hooks in the same feature. Layout uses Tailwind and existing tokens. See [DRIVER_IMPLEMENTATION.md](DRIVER_IMPLEMENTATION.md) for
 the route map, state model, complete file inventory, validation and mock integration limits.
 
@@ -349,3 +349,21 @@ Owned by the team; change in small commits and announce.
   `docs/ARCHITECTURE.md`, Backend integration seams).
 - Replace `useApiQuery`'s refresh-everything invalidation with per-area query keys once data comes from
   the network.
+
+## Driver workflow clarification
+
+- Start route appears only after the assigned truck has reconciled counts, Loader safety checks and
+  photo, Loader completion, and Dispatcher release. Complete the Driver vehicle check before departure.
+- Follow Current route’s ordered outlets and saved arrival estimates. Delivery proof opens after
+  arrival and parking at an assigned outlet; related proof screens share the navigation highlight.
+- The Store Manager normally checks quantities, adds remarks and signs from Deliveries. Driver
+  captures the photo and has no separate order drop-off/receipt action. Use Manager signs on this
+  device for an offline or unavailable manager screen. One signed receipt completes the handoff
+  after upload acknowledgement. The local demo shares data only within this browser.
+- Contact outlet manager opens call and SMS controls when coordination is needed; nothing is sent
+  automatically. The manager’s confirmation does not remove the need for contact before arrival.
+- Delays & issues records delays, breakdowns and unsuccessful attempts. Add a revised arrival
+  estimate when known. If Fresh delivery will miss 08:00, contact dispatch and the manager; dispatch
+  must resolve replacement transport or rescheduling. Reporting cannot cancel or complete delivery.
+- Route history shows daily timestamps and retained incident details. Saved records & sync handles
+  interrupted uploads and route revisions; the former Recovery label referred to data recovery.

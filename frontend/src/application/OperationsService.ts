@@ -18,9 +18,12 @@ import {
   signedManifestMatches,
   type ManagerSignOff,
 } from '../domain/deliveryVerification'
-import { freshWindowErrors, receivingWindowEnd } from '../domain/deliveryWindow'
+import { clockMinutes, freshWindowErrors, receivingWindowEnd } from '../domain/deliveryWindow'
 import { photoDigest } from '../domain/photoDigest'
 import { addDeliveryNotice } from './DriverSignalsService'
+import { assignedDriverLoad, driverDepartureErrors, isAssignedStop } from '../domain/driverWorkflow'
+import { recordRouteEvent } from '../domain/routeHistory'
+import type { DeliveryProof } from '../domain/api/delivery'
 
 const id = () => crypto.randomUUID()
 function assert(condition: unknown, message: string): asserts condition {
@@ -299,6 +302,12 @@ export class OperationsService {
         errors = loadErrors(load)
       assert(!errors.length, errors[0] ?? 'Loading is incomplete.')
       load.completed = true
+      if (load.id === assignedDriverLoad(s)?.id)
+        recordRouteEvent(
+          s,
+          'loaderConfirmed',
+          'Loader confirmed quantities, safety checks and loading photograph.',
+        )
       log(
         s,
         'Loading complete',
@@ -319,23 +328,24 @@ export class OperationsService {
         .forEach((o) => {
           Object.assign(o, { status: 'En route', departedAt: new Date().toISOString() })
         })
+      if (load.id === assignedDriverLoad(s)?.id)
+        recordRouteEvent(s, 'released', 'Dispatcher released the confirmed truck.')
       log(s, 'Demo departure released', `${load.vehicleId} · Trip ${load.trip}`)
     })
   }
   startRoute() {
     return this.repository.update((s) => {
-      assert(
-        s.loads[0]?.released,
-        'The Dispatcher must release the vehicle after loading proof is complete.',
-      )
+      assert(!s.settings.routeStarted, 'This route has already started.')
+      const errors = driverDepartureErrors(s)
+      assert(!errors.length, errors.join(' '))
+      const load = assignedDriverLoad(s)!
       s.settings.routeStarted = true
-      const driver = s.members.find((m) => m.id === (s.activeDriverId ?? 'USR001'))
-      assert(
-        driver?.status === 'Active' && driver.role === 'driver',
-        'An active assigned driver is required before departure.',
-      )
-      if (driver) driver.onRoute = true
-      for (const stop of s.stops.filter((item) => item.status === 'Upcoming'))
+      s.settings.routeStartedAt = new Date().toISOString()
+      const driver = s.members.find((m) => m.id === (s.activeDriverId ?? 'USR001'))!
+      driver.onRoute = true
+      for (const stop of s.stops.filter(
+        (item) => isAssignedStop(item, s.orders, load) && item.status === 'Upcoming',
+      ))
         addDeliveryNotice(
           s,
           stop,
@@ -343,14 +353,23 @@ export class OperationsService {
           'Your delivery is on the way',
           `${stop.outlet} · planned ETA ${stop.eta} · receiving window ${stop.window}.`,
         )
-      log(s, 'Demo route started', 'Sanjeewa · VEH055 · Trip 1')
+      recordRouteEvent(s, 'started', `${driver.name} · ${load.vehicleId} · Trip ${load.trip}`)
+      log(s, 'Demo route started', `${driver.name} · ${load.vehicleId} · Trip ${load.trip}`)
     })
   }
   arrive(stopId: string) {
     return this.repository.update((s) => {
       assert(s.settings.routeStarted, 'Check and start your route first.')
       const stop = s.stops.find((v) => v.id === stopId)
-      assert(stop && stop.status === 'Upcoming', 'This stop is already in progress or complete.')
+      assert(
+        stop && isAssignedStop(stop, s.orders, assignedDriverLoad(s)),
+        'This outlet is not assigned to your truck.',
+      )
+      assert(stop.status === 'Upcoming', 'This stop is already in progress or complete.')
+      assert(
+        !s.stops.some((item) => item.id !== stopId && item.status === 'Arrived'),
+        'Complete the handoff at your current outlet before recording another arrival.',
+      )
       stop.status = 'Arrived'
       stop.arrivedAt = new Date().toISOString()
       addDeliveryNotice(
@@ -358,8 +377,9 @@ export class OperationsService {
         stop,
         'arrival',
         'Driver has arrived',
-        'Please check unloaded quantities, add your remarks, and sign on the driver’s device.',
+        'Please check unloaded quantities, add remarks and confirm in Deliveries. If data is unavailable, sign on the driver’s device.',
       )
+      recordRouteEvent(s, 'arrived', 'Driver confirmed arrival and safe parking.', stop)
       log(s, 'Arrived at outlet', stop.outlet)
     })
   }
@@ -368,7 +388,9 @@ export class OperationsService {
     const current = await this.repository.getSnapshot()
     const stop = current.stops.find((item) => item.id === draft.stopId)
     assert(
-      current.settings.routeStarted && stop?.status === 'Arrived',
+      current.settings.routeStarted &&
+        stop?.status === 'Arrived' &&
+        isAssignedStop(stop, current.orders, assignedDriverLoad(current)),
       'Park at the stop before capturing proof.',
     )
     assert(
@@ -379,6 +401,30 @@ export class OperationsService {
       'Proof is already waiting for this stop.',
     )
     await this.repository.saveProofDraft(draft)
+  }
+  async confirmManagerHandoff(outletId: string, stopId: string, proof: DeliveryProof) {
+    const snapshot = await this.repository.getSnapshot()
+    const stop = snapshot.stops.find((item) => item.id === stopId)
+    assert(
+      stop?.outlet === outletId &&
+        snapshot.members.some(
+          (member) =>
+            member.role === 'store-manager' &&
+            member.status === 'Active' &&
+            member.outletId === outletId,
+        ),
+      'This handoff is not assigned to your outlet.',
+    )
+    await this.saveDeliveryProof(
+      stopId,
+      proof.photo,
+      proof.quantity,
+      proof.receiver,
+      proof.exception,
+      proof.signature,
+      proof.capturedRevision,
+      proof.managerSignOff,
+    )
   }
   async saveDeliveryProof(
     stopId: string,
@@ -395,12 +441,15 @@ export class OperationsService {
     const s = await this.repository.getSnapshot(),
       stop = s.stops.find((v) => v.id === stopId)
     assert(
-      stop && ['Arrived', 'Proof pending'].includes(stop.status),
+      s.settings.routeStarted &&
+        stop &&
+        isAssignedStop(stop, s.orders, assignedDriverLoad(s)) &&
+        ['Arrived', 'Proof pending'].includes(stop.status),
       'Arrive at this stop before recording proof.',
     )
     assert(
       !s.queue.some((q) => q.stopId === stopId && !['accepted', 'superseded'].includes(q.status)),
-      'A proof record is already waiting for this stop. Use Recovery to sync it.',
+      'A proof record is already waiting for this stop. Open Saved records to sync it.',
     )
     assert(
       Number.isInteger(quantity) && quantity >= 0 && quantity <= stop.cases,
@@ -465,7 +514,10 @@ export class OperationsService {
     await this.repository.saveEvidence(evidence, action, (current) => {
       const target = current.stops.find((v) => v.id === stopId)
       assert(
-        target && ['Arrived', 'Proof pending'].includes(target.status),
+        current.settings.routeStarted &&
+          target &&
+          isAssignedStop(target, current.orders, assignedDriverLoad(current)) &&
+          ['Arrived', 'Proof pending'].includes(target.status),
         'The stop changed while proof was being saved.',
       )
       assert(
@@ -480,6 +532,12 @@ export class OperationsService {
       assert(
         signedManifestMatches(target, current.orders, managerSignOff),
         'The signed manifest changed while proof was being saved. Review and sign again.',
+      )
+      recordRouteEvent(
+        current,
+        'proofSaved',
+        'Signed proof saved locally; awaiting upload acceptance.',
+        target,
       )
       target.status = 'Proof pending'
       target.proofId = evidence.id
@@ -627,6 +685,12 @@ export class OperationsService {
                 const stop = current.stops.find((v) => v.id === action.stopId)
                 if (stop && evidence.kind !== 'attempt') {
                   stop.status = 'Delivered'
+                  recordRouteEvent(
+                    current,
+                    'accepted',
+                    'Signed delivery proof accepted by the demo adapter.',
+                    stop,
+                  )
                   addDeliveryNotice(
                     current,
                     stop,
@@ -657,6 +721,7 @@ export class OperationsService {
                     })
                 }
                 if (current.stops.every((v) => v.status === 'Delivered')) {
+                  recordRouteEvent(current, 'completed', 'All assigned outlets completed.')
                   current.settings.routeStarted = false
                   const driver = current.members.find(
                     (m) => m.id === (current.activeDriverId ?? 'USR001'),
@@ -1015,23 +1080,43 @@ export class OperationsService {
       log(s, 'Store deferral acknowledged', order.id)
     })
   }
-  reportDelay(stopId: string, note: string) {
+  reportDelay(
+    stopId: string,
+    note: string,
+    revisedEta?: string,
+    kind: 'delay' | 'breakdown' = 'delay',
+  ) {
     return this.repository.update((current) => {
       const stop = current.stops.find((item) => item.id === stopId)
       assert(
-        current.settings.routeStarted && stop && ['Upcoming', 'Arrived'].includes(stop.status),
+        current.settings.routeStarted &&
+          stop &&
+          isAssignedStop(stop, current.orders, assignedDriverLoad(current)) &&
+          ['Upcoming', 'Arrived'].includes(stop.status),
         'Select an open stop on your started route.',
       )
       assert(note.trim().length > 3, 'Describe the delay for dispatch.')
-      stop.issue = `Delay: ${note.trim()}`
+      assert(
+        !revisedEta || clockMinutes(revisedEta) !== undefined,
+        'Enter a valid revised arrival time.',
+      )
+      const label = kind === 'breakdown' ? 'Vehicle breakdown' : 'Delay'
+      stop.issue = `${label}: ${note.trim()}`
+      if (revisedEta && stop.status === 'Upcoming') {
+        stop.originalEta ??= stop.eta
+        stop.eta = revisedEta
+        stop.etaUpdatedAt = new Date().toISOString()
+      }
+      const detail = `${note.trim()} · ${revisedEta ? 'Driver estimate' : 'Planned ETA'} ${stop.eta}. Delivery remains open; dispatch must decide any reschedule or cancellation.`
       addDeliveryNotice(
         current,
         stop,
         'delay',
-        'Delivery delayed',
-        `${note.trim()} · planned ETA ${stop.eta}. Contact the driver for an updated arrival time.`,
-        note.trim(),
+        kind === 'breakdown' ? 'Vehicle breakdown reported' : 'Delivery delayed',
+        detail,
+        `${kind}:${note.trim()}:${revisedEta ?? ''}`,
       )
+      recordRouteEvent(current, kind, detail, stop)
       log(current, 'Driver delay saved locally', `${stop.outlet} · ${note.trim()}`)
     })
   }
@@ -1039,7 +1124,10 @@ export class OperationsService {
     return this.repository.update((s) => {
       const stop = s.stops.find((v) => v.id === stopId)
       assert(
-        stop && s.settings.routeStarted && issue.trim().length > 3,
+        stop &&
+          s.settings.routeStarted &&
+          isAssignedStop(stop, s.orders, assignedDriverLoad(s)) &&
+          issue.trim().length > 3,
         'Start the route and describe the delivery issue.',
       )
       assert(
@@ -1056,6 +1144,7 @@ export class OperationsService {
         issue.trim(),
         issue.trim(),
       )
+      recordRouteEvent(s, 'attempt', issue, stop)
       log(s, 'Delivery attempt reported', `${stop.outlet} · ${issue}`)
     })
   }
@@ -1064,7 +1153,10 @@ export class OperationsService {
     const s = await this.repository.getSnapshot(),
       stop = s.stops.find((v) => v.id === stopId)
     assert(
-      stop && s.settings.routeStarted && issue.trim().length > 3,
+      stop &&
+        s.settings.routeStarted &&
+        isAssignedStop(stop, s.orders, assignedDriverLoad(s)) &&
+        issue.trim().length > 3,
       'Start the route and describe the unsuccessful attempt.',
     )
     assert(
@@ -1120,6 +1212,7 @@ export class OperationsService {
         issue.trim(),
         issue.trim(),
       )
+      recordRouteEvent(current, 'attempt', issue, target)
       target.issue = issue
       target.proofId = evidence.id
       log(
@@ -1132,7 +1225,12 @@ export class OperationsService {
   retryStop(stopId: string) {
     return this.repository.update((s) => {
       const stop = s.stops.find((v) => v.id === stopId)
-      assert(stop && stop.status === 'Cannot deliver', 'This stop does not require a retry.')
+      assert(
+        stop &&
+          isAssignedStop(stop, s.orders, assignedDriverLoad(s)) &&
+          stop.status === 'Cannot deliver',
+        'This stop does not require a retry.',
+      )
       assert(
         !s.queue.some((q) => q.stopId === stopId && !['accepted', 'superseded'].includes(q.status)),
         'Sync the saved attempt evidence before retrying.',
@@ -1141,6 +1239,7 @@ export class OperationsService {
       stop.arrivedAt = undefined
       stop.issue = undefined
       stop.proofId = undefined
+      recordRouteEvent(s, 'reopened', 'Delivery reopened; previous attempt retained.', stop)
       log(s, 'Delivery stop reopened', `${stop.outlet} · previous attempt evidence retained`)
     })
   }

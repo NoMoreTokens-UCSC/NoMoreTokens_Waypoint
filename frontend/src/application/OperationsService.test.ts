@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WaypointDatabase } from '../infrastructure/persistence/database'
 import { DexieOperationsRepository } from '../infrastructure/persistence/DexieOperationsRepository'
 import { OperationsService } from './OperationsService'
@@ -20,6 +20,7 @@ beforeEach(async () => {
   await repo.getSnapshot()
 })
 afterEach(async () => {
+  vi.useRealTimers()
   db.close()
   await db.delete()
 })
@@ -75,6 +76,115 @@ async function saveSignedProof(
   )
 }
 describe('shared demo workflows and persistence', () => {
+  it('checks Loader confirmation and the assigned truck even when a release flag is stale', async () => {
+    await service.autoAllocate()
+    await service.updateSettings({ cutoffClosed: true })
+    await service.reviewAllocation()
+    await service.publish()
+    await repo.update((snapshot) => {
+      snapshot.loads[0].released = true
+    })
+    await expect(service.startRoute()).rejects.toThrow('safety checks')
+    await repo.update((snapshot) => {
+      const load = snapshot.loads[0]
+      load.completed = true
+      load.photoId = 'loader-photo'
+      load.checks = { refrigeration: true, condition: true, restraints: true }
+      load.items.forEach((item) => {
+        item.loaded = item.expected
+      })
+      snapshot.members.find((member) => member.id === 'USR001')!.vehicleId = 'VEH056'
+    })
+    await expect(service.startRoute()).rejects.toThrow('assigned truck')
+    expect((await repo.getSnapshot()).settings.routeStarted).toBe(false)
+  })
+  it('rejects an outlet from another truck and prevents a second arrival during an open handoff', async () => {
+    await prepareTrip()
+    await expect(service.arrive('STOP008')).rejects.toThrow('current outlet')
+    await repo.update((snapshot) => {
+      const stop = snapshot.stops.find((item) => item.id === 'STOP001')!
+      snapshot.orders.find((order) => stop.orderIds.includes(order.id))!.vehicleId = 'VEH056'
+    })
+    await expect(saveSignedProof('STOP001', photo(), 18, 'Nimal', '')).rejects.toThrow('Arrive')
+    expect((await repo.getSnapshot()).queue).toHaveLength(0)
+  })
+  it('stores route timestamps and a revised breakdown ETA without cancelling or extending the window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T06:00:00+05:30'))
+    await prepareTrip()
+    vi.setSystemTime(new Date('2026-10-03T06:15:00+05:30'))
+    await service.reportDelay(
+      'STOP008',
+      'Engine failure, awaiting replacement truck',
+      '08:20',
+      'breakdown',
+    )
+    const snapshot = await new DexieOperationsRepository(db).getSnapshot()
+    const stop = snapshot.stops.find((item) => item.id === 'STOP008')!
+    expect(stop).toMatchObject({
+      status: 'Upcoming',
+      eta: '08:20',
+      originalEta: '07:10',
+      window: '07:00–08:00',
+    })
+    expect(snapshot.routeEvents?.map((event) => event.kind)).toEqual([
+      'loaderConfirmed',
+      'released',
+      'started',
+      'arrived',
+      'breakdown',
+    ])
+    expect(
+      snapshot.routeEvents?.every(
+        (event) => event.vehicleId === 'VEH055' && event.day === '2026-10-03',
+      ),
+    ).toBe(true)
+    expect(snapshot.routeEvents?.at(-1)?.at).toBe('2026-10-03T00:45:00.000Z')
+    expect(
+      snapshot.deliveryNotices?.some(
+        (notice) => notice.outletId === stop.outlet && notice.message.includes('08:20'),
+      ),
+    ).toBe(true)
+    await expect(service.reportDelay(stop.id, 'Invalid time', '25:00')).rejects.toThrow(
+      'valid revised',
+    )
+  })
+  it('confirms a manager handoff only for the assigned outlet and records receipt once after acceptance', async () => {
+    await prepareTrip()
+    const snapshot = await repo.getSnapshot()
+    const file = photo()
+    const handoff = {
+      stopId: 'STOP001',
+      quantity: 18,
+      receiver: 'Nimal',
+      exception: '',
+      fileName: file.name,
+      revision: snapshot.settings.routeRevision,
+    }
+    const signed = signOffFixture(handoff, await photoDigest(file), [
+      { orderId: 'ORD1042', expected: 18, received: 18 },
+    ])
+    const proof = {
+      photo: file,
+      quantity: 18,
+      receiver: 'Nimal',
+      exception: '',
+      capturedRevision: snapshot.settings.routeRevision,
+      ...signed,
+    }
+    await expect(service.confirmManagerHandoff('OUT008', 'STOP001', proof)).rejects.toThrow(
+      'your outlet',
+    )
+    await service.confirmManagerHandoff('OUT001', 'STOP001', proof)
+    await service.sync(true)
+    const current = await repo.getSnapshot()
+    expect(current.orders.find((order) => order.id === 'ORD1042')?.receipt).toBe('Confirmed')
+    expect(current.routeEvents?.map((event) => event.kind)).toContain('accepted')
+    await expect(service.confirmManagerHandoff('OUT001', 'STOP001', proof)).rejects.toThrow(
+      'Arrive',
+    )
+    expect(current.queue).toHaveLength(1)
+  })
   it('persists a captured Driver draft across repository reload without completing a stop', async () => {
     await prepareTrip()
     await service.saveProofDraft({

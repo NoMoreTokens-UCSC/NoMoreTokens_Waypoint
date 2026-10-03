@@ -110,6 +110,7 @@ test('camera recovery and retake require manager sign-off for partial acceptance
     .getByLabel('Choose delivery photograph')
     .setInputFiles({ ...deliveryPhoto, name: 'retaken.png' })
   await page.getByRole('button', { name: 'Use this photo' }).click()
+  await page.getByRole('button', { name: 'Manager signs on this device' }).click()
   await page.getByLabel('Cases delivered').fill('16')
   await page.getByRole('button', { name: 'Continue to submission review' }).click()
   await expect(page.getByRole('alert')).toContainText('Explain the quantity difference')
@@ -255,9 +256,10 @@ test('Driver guards departure, unknown stops and proof steps, and resumes a save
 }) => {
   await page.goto('/driver/pre-departure')
   await page.getByRole('checkbox').check()
-  await expect(page.getByRole('button', { name: 'Confirm and start route' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Confirm and start route' })).toHaveCount(0)
   await page.goto('/driver/proof/submit?stop=unknown')
   await expect(page.getByRole('heading', { name: 'No assigned stop' })).toBeVisible()
+  await clearedDriverLoad(page)
   await page.goto('/driver/proof/capture?stop=STOP001')
   await expect(page.getByText('Confirm you are safely parked before recording proof')).toBeVisible()
   await expect(page.getByLabel('Choose delivery photograph')).toHaveCount(0)
@@ -479,7 +481,9 @@ test('store manager sees persistent outlet alerts, acknowledges them and views r
   await expect(
     page.getByText('Fresh food must reach the outlet by 08:00.', { exact: false }),
   ).toBeVisible()
+  await page.getByRole('button', { name: 'Contact outlet manager' }).click()
   await expect(page.getByRole('link', { name: /^Call / })).toHaveAttribute('href', /^tel:/)
+  await page.keyboard.press('Escape')
   await captureAndReview(page)
   await confirmProof(page)
   await expect(page.getByRole('heading', { name: 'All records synced' })).toBeVisible()
@@ -565,6 +569,7 @@ test('a revised order quantity requires replacement manager sign-off and preserv
   await expect(
     page.getByRole('heading', { name: 'Photo attached · ready to review' }),
   ).toBeVisible()
+  await page.getByRole('button', { name: 'Manager signs on this device' }).click()
   await page.getByLabel('Cases delivered').fill('20')
   await signManagerHandoff(page, 'Revised manifest: all 20 cases unloaded and checked.')
   await page.getByRole('button', { name: 'Continue to submission review' }).click()
