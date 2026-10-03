@@ -4,10 +4,19 @@ import { CircleAlert } from 'lucide-react'
 import { Modal } from '../../../shared/molecules/Common'
 import { Button } from '../../../shared/atoms/button'
 import { Wordmark } from '../components/EntryChrome'
+import { login as apiLogin } from '../../../../infrastructure/http/apiClient'
+
+const IS_REAL_BACKEND =
+  !!import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL !== ''
 
 /**
- * Demo sign-in: any filled-in credentials open the workspace chooser. Nothing is stored or
- * sent. Real authentication replaces signIn() and feeds useSession().
+ * Sign-in page.
+ *
+ * When VITE_API_URL is configured: calls the real /auth/login endpoint and stores
+ * the JWT in localStorage. On success navigates to /workspaces.
+ *
+ * When VITE_API_URL is not set: any filled-in credentials open the workspace chooser
+ * without an API call (demo behaviour unchanged).
  */
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -15,17 +24,40 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [loading, setLoading] = useState(false)
   const [recovery, setRecovery] = useState<'closed' | 'request' | 'sent'>('closed')
   const [recoveryId, setRecoveryId] = useState('')
 
-  function signIn(event: FormEvent) {
+  async function signIn(event: FormEvent) {
     event.preventDefault()
     if (!identifier.trim() || !password.trim()) {
       setFailed(true)
+      setErrorMsg('Please enter your username and password.')
       return
     }
     setFailed(false)
-    navigate('/workspaces')
+    setErrorMsg('')
+
+    if (IS_REAL_BACKEND) {
+      setLoading(true)
+      try {
+        await apiLogin(identifier.trim(), password)
+        navigate('/workspaces')
+      } catch (err) {
+        setFailed(true)
+        setErrorMsg(
+          err instanceof Error && err.message.includes('401')
+            ? 'Incorrect username or password.'
+            : 'Sign-in failed. Check your connection and try again.',
+        )
+      } finally {
+        setLoading(false)
+      }
+    } else {
+      // Demo mode: any credentials work
+      navigate('/workspaces')
+    }
   }
   return (
     <div className="entry-login">
@@ -43,7 +75,7 @@ export default function LoginPage() {
           {failed && (
             <p className="entry-login-error" role="alert">
               <CircleAlert size={16} />
-              Incorrect email or password. 2 attempts left before a 5-minute lock.
+              {errorMsg || 'Incorrect credentials.'}
             </p>
           )}
           <label className="entry-field">
@@ -88,8 +120,8 @@ export default function LoginPage() {
               <span className="entry-show-mobile">Forgot?</span>
             </button>
           </div>
-          <button type="submit" className="entry-button entry-button-primary entry-button-block">
-            Sign in
+          <button type="submit" className="entry-button entry-button-primary entry-button-block" disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
           <div className="entry-divider">or</div>
           <button
