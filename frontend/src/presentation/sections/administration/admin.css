@@ -941,3 +941,11 @@
   color: #c2501d;
   text-decoration: underline;
 }
+
+.ad-muted {
+  color: #8a8c90;
+}
+.ad-role-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
