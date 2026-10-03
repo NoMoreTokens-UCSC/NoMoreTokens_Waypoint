@@ -202,6 +202,9 @@ export interface TeamSummary {
  * stores credentials; the demo keeps only the username.
  */
 export interface NewUser extends MobileInvitation {
+  /** Required, and unique across the team. */
+  email: string
+  /** Required, and unique across the team. */
   username: string
   password: string
 }

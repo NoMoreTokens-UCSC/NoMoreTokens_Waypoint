@@ -2,6 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Link, type LinkProps } from 'react-router-dom'
 import { copyText } from '../lib/credentials'
+import type { Paging } from '../lib/paging'
 import '../admin.css'
 
 /** Page wrapper: the administration theme and vertical rhythm. */
@@ -136,5 +137,39 @@ export function Credential({ label, value }: { label: string; value: string }) {
         Copy
       </Btn>
     </div>
+  )
+}
+
+/** Previous and next buttons with the page number. Renders nothing when everything fits on one page. */
+export function Pager({
+  paging,
+  label,
+}: {
+  paging: Pick<Paging, 'page' | 'pages' | 'setPage'>
+  label: string
+}) {
+  if (paging.pages <= 1) return null
+  return (
+    <nav className="ad-pager" aria-label={`${label} pages`}>
+      <Btn
+        small
+        variant="outline"
+        disabled={paging.page === 1}
+        onClick={() => paging.setPage(paging.page - 1)}
+      >
+        Previous
+      </Btn>
+      <span aria-live="polite">
+        Page {paging.page} of {paging.pages}
+      </span>
+      <Btn
+        small
+        variant="outline"
+        disabled={paging.page === paging.pages}
+        onClick={() => paging.setPage(paging.page + 1)}
+      >
+        Next
+      </Btn>
+    </nav>
   )
 }

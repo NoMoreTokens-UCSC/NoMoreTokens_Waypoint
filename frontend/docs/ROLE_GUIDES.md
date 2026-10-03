@@ -328,10 +328,16 @@ the free vehicles and `apis.delivery` for the driver's stops and unsynced record
 - Totals come from `getSummary` (48 people, 41 active, 5 invited, 2 suspended; 214 audit events): the
   list shows the people the demo holds, the totals include the rest. A backend returns real counts and
   pages the list and the log on the server.
+- Lists are paged ten at a time (Team, Assignments, Outlets, Vehicles, Audit log): `lib/paging.ts`
+  (`usePaging`, which returns to page 1 whenever the search or a filter changes) and `Pager` in
+  `AdminKit`. The pager sits in the table footer on desktop and under the cards on a phone, and is hidden when
+  everything fits on one page. Paging is done in the browser over the list the API returns; a backend should
+  page, search and filter on the server (`listMembers`, `listOutlets`, `listVehicles`, `listAudit` would take a
+  page, a size and the filters). Roles & access is a fixed 11-row table and is not paged.
 - Add user: pick the role, the form adapts (vehicle for a driver, dock bay for a loader, outlet for a
   store manager). On a phone it is two steps. The administrator also sets a **username** (suggested from
   the name, unique) and a **temporary password** (generated, or typed: 8+ characters with letters and
-  numbers). `createUser` creates the account as "Invited"; the next screen shows the username and
+  numbers). An **email address** is also required (valid and unique, as the username is). `createUser` creates the account as "Invited"; the next screen shows the username and
   password once, with copy buttons, for the administrator to give to the person **outside this system**.
   Nothing is sent. The password is never stored by the demo (not in the team record, the audit log or
   the browser data) and is wiped from the browser history, so a reload does not bring it back. A backend

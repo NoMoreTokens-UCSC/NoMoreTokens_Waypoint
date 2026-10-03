@@ -7,7 +7,8 @@ import { useApiQuery } from '../../../hooks/useApiQuery'
 import { useAction } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
 import { Modal } from '../../../shared/molecules/Common'
-import { AdminIntro, AdminPage, Avatar, Btn, Field, Pill } from '../components/AdminKit'
+import { AdminIntro, AdminPage, Avatar, Btn, Field, Pager, Pill } from '../components/AdminKit'
+import { usePaging } from '../lib/paging'
 import { managerOf, outletAssignment, useOutlets } from '../lib/outlets'
 import {
   assignmentText,
@@ -127,8 +128,9 @@ export default function AssignmentsPage() {
   const navigate = useNavigate()
   const { members, loaded } = useMembers()
   const [editing, setEditing] = useState<TeamMember | null>(null)
-  if (!loaded) return null
   const people = sortMembers(members).filter((member) => member.role !== 'administration')
+  const paging = usePaging(people, 'all')
+  if (!loaded) return null
   return (
     <AdminPage>
       <AdminIntro
@@ -151,7 +153,7 @@ export default function AssignmentsPage() {
             </tr>
           </thead>
           <tbody>
-            {people.map((member) => (
+            {paging.visible.map((member) => (
               <tr key={member.id}>
                 <td>
                   <div className="ad-user">
@@ -198,12 +200,17 @@ export default function AssignmentsPage() {
           </tbody>
         </table>
         <div className="ad-table-foot">
-          <span>{people.length} people with an assignment</span>
-          <span>An on-route driver’s trip is handed over before they move</span>
+          <span>
+            Showing {paging.from}–{paging.to} of {people.length} people
+          </span>
+          <span className="ad-foot-right">
+            <Pager paging={paging} label="Assignments" />
+            An on-route driver’s trip is handed over before they move
+          </span>
         </div>
       </div>
       <ul className="ad-cards" aria-label="Assignments">
-        {people.map((member) => (
+        {paging.visible.map((member) => (
           <li key={member.id}>
             <button
               type="button"
@@ -229,6 +236,9 @@ export default function AssignmentsPage() {
           </li>
         ))}
       </ul>
+      <div className="ad-cards-pager">
+        <Pager paging={paging} label="Assignments" />
+      </div>
       <Modal
         title="Change assignment"
         description={editing?.name}

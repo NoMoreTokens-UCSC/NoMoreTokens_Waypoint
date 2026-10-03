@@ -30,6 +30,7 @@ export const suggestUsername = (name: string) =>
 /** Why a username cannot be used, or nothing when it can. `taken` holds the existing usernames. */
 export function usernameProblem(username: string, taken: Set<string>) {
   const value = username.trim().toLowerCase()
+  if (!value) return 'Enter a username.'
   if (!/^[a-z0-9][a-z0-9._-]{2,29}$/.test(value))
     return 'Use 3 to 30 letters, numbers, dots, dashes or underscores.'
   if (taken.has(value)) return 'That username is already taken.'
