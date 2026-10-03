@@ -4,6 +4,7 @@ import type { DeliveryApi } from './delivery'
 import type { FleetApi } from './fleet'
 import type { LoadingApi } from './loading'
 import type { OrdersApi } from './orders'
+import type { OutletsApi } from './outlets'
 import type { PlanningApi } from './planning'
 import type { TeamApi } from './team'
 
@@ -13,6 +14,7 @@ export type * from './delivery'
 export type * from './fleet'
 export type * from './loading'
 export type * from './orders'
+export type * from './outlets'
 export type * from './planning'
 export type * from './team'
 
@@ -23,6 +25,7 @@ export type * from './team'
 export interface Apis {
   driverSignals: DriverSignalsApi
   orders: OrdersApi
+  outlets: OutletsApi
   planning: PlanningApi
   loading: LoadingApi
   delivery: DeliveryApi

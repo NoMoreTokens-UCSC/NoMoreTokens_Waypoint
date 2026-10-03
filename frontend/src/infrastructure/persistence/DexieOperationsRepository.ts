@@ -91,6 +91,12 @@ export class DexieOperationsRepository implements OperationsRepository {
         record.data.teamDetailVersion = 1
         await this.db.snapshots.put(record)
       }
+      if (record && !record.data.outletsVersion) {
+        // Browsers that stored data before outlets could be added receive the outlet list.
+        record.data.outlets = createSeed().outlets
+        record.data.outletsVersion = 1
+        await this.db.snapshots.put(record)
+      }
       // Interrupted uploads remain recoverable after a tab closes.
       await this.db.queue
         .where('status')

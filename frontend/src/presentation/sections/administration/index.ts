@@ -1,4 +1,4 @@
-import { ClipboardList, Link2, Shield, Users } from 'lucide-react'
+import { ClipboardList, Link2, Shield, Store, Users } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { lazyPage } from '../../roles/lazyPage'
 import type { RoleModule } from '../../roles/types'
@@ -21,13 +21,14 @@ export const administrationModule: RoleModule = {
     { label: 'Users', menuLabel: 'Team & access', path: '/administration/team', icon: Users },
     { label: 'Roles & access', path: '/administration/roles', icon: Shield },
     { label: 'Assignments', path: '/administration/assignments', icon: Link2 },
+    { label: 'Outlets', path: '/administration/outlets', icon: Store },
     { label: 'Audit log', path: '/administration/audit', icon: ClipboardList },
   ],
   search: {
     placeholder: 'Search users, roles or outlets',
     find: (snapshot, query) => {
       const text = query.toLowerCase()
-      return snapshot.members
+      const people = snapshot.members
         .filter((member) =>
           `${member.name} ${member.role} ${member.assignment ?? ''} ${member.mobile ?? ''}`
             .toLowerCase()
@@ -38,6 +39,16 @@ export const administrationModule: RoleModule = {
           text: `${member.name} · ${member.role} · ${member.assignment ?? member.depot ?? ''}`,
           path: `/administration/team/${member.id}`,
         }))
+      const outlets = (snapshot.outlets ?? [])
+        .filter((outlet) =>
+          `${outlet.id} ${outlet.name} ${outlet.district}`.toLowerCase().includes(text),
+        )
+        .map((outlet) => ({
+          id: outlet.id,
+          text: `${outlet.id} · ${outlet.name} · ${outlet.brand}`,
+          path: `/administration/outlets/${outlet.id}`,
+        }))
+      return [...people, ...outlets]
     },
   },
   shell: {
@@ -55,6 +66,9 @@ export const administrationModule: RoleModule = {
     route('/administration/team/:memberId', 'User', () => import('./pages/UserDetailPage')),
     route('/administration/roles', 'Roles & access', () => import('./pages/RolesPage')),
     route('/administration/assignments', 'Assignments', () => import('./pages/AssignmentsPage')),
+    route('/administration/outlets', 'Outlets', () => import('./pages/OutletsPage')),
+    route('/administration/outlets/new', 'Add outlet', () => import('./pages/AddOutletPage')),
+    route('/administration/outlets/:outletId', 'Outlet', () => import('./pages/OutletDetailPage')),
     route('/administration/audit', 'Audit log', () => import('./pages/AuditPage')),
   ],
 }

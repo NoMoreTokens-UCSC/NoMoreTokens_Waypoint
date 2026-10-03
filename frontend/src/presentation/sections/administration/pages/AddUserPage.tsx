@@ -1,6 +1,6 @@
 import { Check, Minus } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { Workspace } from '../../../../domain/models'
 import { useApiQuery } from '../../../hooks/useApiQuery'
@@ -8,6 +8,7 @@ import { useAction } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { AdminIntro, AdminPage, Btn, Card, CardLabel, Field, Pill } from '../components/AdminKit'
+import { managerOf, outletAssignment, useOutlets } from '../lib/outlets'
 import {
   generatePassword,
   passwordProblem,
@@ -54,27 +55,33 @@ function check(draft: Draft, taken: Set<string>): Errors {
   if (draft.role === 'driver' && !/^VEH\d+$/.test(draft.assignment))
     errors.assignment = 'Choose a vehicle.'
   if (draft.role === 'store-manager' && !/^OUT\d+/.test(draft.assignment.trim()))
-    errors.assignment = 'Enter the outlet, for example OUT001.'
+    errors.assignment = 'Choose an outlet.'
   if (draft.role === 'loader' && !draft.assignment) errors.assignment = 'Choose a dock bay.'
   return errors
 }
 
 /** Add user: choose the role first, then the details the role needs. Phones do it in two steps. */
-export default function AddUserPage() {
+function AddUserForm() {
   const navigate = useNavigate()
   const apis = useApis()
   const action = useAction()
   const compact = useCompactLayout()
   const { members } = useMembers()
+  const { outlets } = useOutlets()
+  const [params] = useSearchParams()
   const vehicles = useApiQuery(['vehicles'], (api) => api.fleet.listVehicles())
-  const [draft, setDraft] = useState<Draft>({
-    role: 'driver',
-    name: '',
-    mobile: '',
-    depot: 'Peliyagoda',
-    assignment: '',
-    username: '',
-    password: generatePassword(),
+  // `?role=store-manager&outlet=OUT121` (from an outlet's page) starts the form on that outlet.
+  const [draft, setDraft] = useState<Draft>(() => {
+    const outlet = outlets.find((candidate) => candidate.id === params.get('outlet'))
+    return {
+      role: outlet || params.get('role') === 'store-manager' ? 'store-manager' : 'driver',
+      name: '',
+      mobile: '',
+      depot: outlet?.depot ?? 'Peliyagoda',
+      assignment: outlet ? outletAssignment(outlet) : '',
+      username: '',
+      password: generatePassword(),
+    }
   })
   // The username follows the name until the administrator types their own.
   const [usernameEdited, setUsernameEdited] = useState(false)
@@ -84,6 +91,8 @@ export default function AddUserPage() {
 
   const usernames = new Set(members.map((member) => member.username).filter(Boolean) as string[])
   const errors = attempted ? check(draft, usernames) : {}
+  // A store manager is assigned to an outlet that exists and has no manager yet.
+  const openOutlets = outlets.filter((outlet) => !managerOf(outlet, members))
   const taken = new Set(members.map((member) => member.vehicleId).filter(Boolean))
   const free = (vehicles.data ?? []).filter((vehicle) => !taken.has(vehicle.id))
   const here = free.filter((vehicle) => vehicle.location === draft.depot)
@@ -216,12 +225,19 @@ export default function AddUserPage() {
         draft.role === 'driver'
           ? `Only unassigned ${draft.depot} vehicles are listed.`
           : draft.role === 'store-manager'
-            ? 'The outlet this person manages.'
+            ? openOutlets.length
+              ? 'Outlets that do not have a store manager yet.'
+              : 'Every outlet has a manager. Add an outlet first.'
             : draft.role === 'loader'
               ? 'Shared dock tablet.'
               : 'Plans from the central office.'
       }
     >
+      {draft.role === 'store-manager' && openOutlets.length === 0 && (
+        <Link className="ad-inline-link" to="/administration/outlets/new">
+          Add an outlet
+        </Link>
+      )}
       {draft.role === 'driver' ? (
         <select
           value={draft.assignment}
@@ -248,12 +264,23 @@ export default function AddUserPage() {
           ))}
         </select>
       ) : draft.role === 'store-manager' ? (
-        <input
+        <select
           value={draft.assignment}
-          placeholder="OUT001"
           aria-invalid={Boolean(errors.assignment)}
-          onChange={(event) => change({ assignment: event.target.value.toUpperCase() })}
-        />
+          onChange={(event) => {
+            const outlet = outlets.find(
+              (candidate) => outletAssignment(candidate) === event.target.value,
+            )
+            change({ assignment: event.target.value, ...(outlet ? { depot: outlet.depot } : {}) })
+          }}
+        >
+          <option value="">Choose an outlet</option>
+          {openOutlets.map((outlet) => (
+            <option key={outlet.id} value={outletAssignment(outlet)}>
+              {outlet.id} · {outlet.name} · {outlet.brand}
+            </option>
+          ))}
+        </select>
       ) : (
         <input value={draft.assignment} readOnly />
       )}
@@ -416,4 +443,10 @@ export default function AddUserPage() {
       </div>
     </AdminPage>
   )
+}
+
+export default function AddUserPage() {
+  // The form starts from the outlets, so wait until they are known.
+  const { loaded } = useOutlets()
+  return loaded ? <AddUserForm /> : null
 }

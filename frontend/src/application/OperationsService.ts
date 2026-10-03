@@ -1,4 +1,5 @@
 import type { OperationsRepository, SyncGateway } from '../domain/ports'
+import { profileFromInput, type NewOutlet, type OutletProfile } from '../domain/outlets'
 import type {
   Evidence,
   Load,
@@ -1481,6 +1482,43 @@ export class OperationsService {
       )
     })
   }
+  /** Adds an outlet with the next free id and the receiving hours the administrator chose. */
+  createOutlet(input: NewOutlet) {
+    let created: OutletProfile | undefined
+    return this.repository
+      .update((s) => {
+        const name = input.name.trim()
+        assert(name.length >= 3, 'Enter the outlet name.')
+        assert(input.district.trim().length >= 2, 'Enter the district.')
+        assert(['Fresh', 'Style', 'Tech'].includes(input.brand), 'Choose a brand.')
+        assert(['Peliyagoda', 'Kandy'].includes(input.depot), 'Choose Peliyagoda or Kandy.')
+        const toMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
+        assert(
+          /^\d{2}:\d{2}$/.test(input.earliest) &&
+            /^\d{2}:\d{2}$/.test(input.latest) &&
+            toMinutes(input.latest) - toMinutes(input.earliest) >= 60,
+          'Allow at least an hour between the earliest and latest delivery.',
+        )
+        s.outlets ??= []
+        assert(
+          !s.outlets.some((outlet) => outlet.name.toLowerCase() === name.toLowerCase()),
+          'An outlet with this name already exists.',
+        )
+        const highest = Math.max(
+          0,
+          ...s.outlets.map((outlet) => Number(/^OUT(\d+)$/.exec(outlet.id)?.[1] ?? 0)),
+        )
+        created = profileFromInput(`OUT${String(highest + 1).padStart(3, '0')}`, input)
+        s.outlets.push(created)
+        s.outlets.sort((a, b) => a.id.localeCompare(b.id))
+        log(
+          s,
+          'Outlet added',
+          `${created.id} · ${created.name} · ${created.brand} · ${created.depot}`,
+        )
+      })
+      .then(() => created!)
+  }
   /** An account with a username and a temporary password the administrator hands over. */
   createUser(input: NewUser) {
     return this.repository.update((s) => {
@@ -1500,6 +1538,19 @@ export class OperationsService {
       )
       assert(['Peliyagoda', 'Kandy'].includes(input.depot), 'Choose Peliyagoda or Kandy.')
       assert(input.assignment.trim().length > 1, 'Choose an assignment for this role.')
+      if (input.role === 'store-manager') {
+        const outletId = /OUT\d+/.exec(input.assignment)?.[0]
+        assert(
+          outletId && s.outlets?.some((outlet) => outlet.id === outletId),
+          'Choose an outlet from the list.',
+        )
+        assert(
+          !s.members.some(
+            (member) => member.role === 'store-manager' && member.outletId === outletId,
+          ),
+          'That outlet already has a store manager.',
+        )
+      }
       assert(
         !s.members.some((member) => member.username === username),
         'That username is already taken.',

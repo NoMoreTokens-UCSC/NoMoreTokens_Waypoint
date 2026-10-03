@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
 
 const rows = (page: Page) => page.locator('.ad-table tbody tr')
+const outletSelect = (page: Page) =>
+  page.locator('label.ad-field').filter({ hasText: 'Outlet' }).locator('select')
 const putDriverOnRoute = async (page: Page) => {
   await page.goto('/demo')
   const toggle = page.getByRole('switch', { name: 'Driver on route' })
@@ -269,5 +271,62 @@ test.describe('administration', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
     expect(overflow).toBeLessThanOrEqual(0)
+  })
+
+  test('an administrator adds an outlet and then assigns a store manager to it', async ({
+    page,
+  }) => {
+    await page.goto('/administration/outlets')
+    await expect(page.getByRole('heading', { name: 'Outlets', level: 1 })).toBeVisible()
+    await expect(rows(page).filter({ hasText: 'OUT001' })).toContainText('Nimal Perera')
+    await expect(rows(page).filter({ hasText: 'OUT019' })).toContainText('No manager')
+    await page.getByRole('link', { name: 'Add outlet' }).click()
+    await page.getByRole('button', { name: 'Add outlet' }).click()
+    await expect(page.getByText('Enter the outlet name.')).toBeVisible()
+    await expect(page.getByText('Enter the district.')).toBeVisible()
+    await page.getByRole('radio', { name: /Waypoint Style/ }).click()
+    await page.getByLabel('Outlet name').fill('Style Odel')
+    await page.getByLabel('District').fill('Colombo')
+    await page.getByRole('radio', { name: /Mall delivery window/ }).click()
+    await page.getByLabel('Mall opens deliveries at').selectOption('06:00')
+    await page.getByLabel('Mall stops deliveries at').selectOption('09:30')
+    await page.getByRole('button', { name: 'Add outlet' }).click()
+    await expect(page.getByRole('heading', { name: 'Style Odel', level: 1 })).toBeVisible()
+    const id = (await page.getByText(/^OUT\d+ · Peliyagoda depot$/).textContent())!.slice(0, 6)
+    await expect(page.getByText('6:00 AM – 9:30 AM').first()).toBeVisible()
+    await expect(page.getByText('No store manager yet.')).toBeVisible()
+    // The outlet is on the list.
+    await page.goto('/administration/outlets')
+    await expect(rows(page).filter({ hasText: id })).toContainText('Style')
+    // Add a store manager from the outlet's page: the outlet is already chosen.
+    await page.getByRole('link', { name: id, exact: true }).click()
+    await page.getByRole('link', { name: 'Add store manager' }).click()
+    await expect(outletSelect(page)).toHaveValue(`${id} · Style`)
+    await page.getByLabel('Full name').fill('Ayesha Fernando')
+    await page.getByLabel('Mobile number').fill('+94 77 555 0111')
+    await page.getByRole('button', { name: 'Create user' }).click()
+    await expect(page.getByRole('heading', { name: 'Ayesha’s account is ready.' })).toBeVisible()
+    // The outlet now shows its manager and is no longer offered to another one.
+    await page.goto(`/administration/outlets/${id}`)
+    await expect(page.getByText('Ayesha Fernando').first()).toBeVisible()
+    await page.goto('/administration/team/new')
+    await page.getByRole('radio', { name: /Store manager/ }).click()
+    await expect(outletSelect(page).locator(`option[value^="${id}"]`)).toHaveCount(0)
+    await expect(outletSelect(page).locator('option[value^="OUT019"]')).toHaveCount(1)
+  })
+
+  test('an outlet the administrator added can be opened as a store workspace', async ({ page }) => {
+    await page.goto('/administration/outlets/new')
+    await page.getByLabel('Outlet name').fill('Fresh Ja-Ela')
+    await page.getByLabel('District').fill('Ja-Ela')
+    await page.getByRole('button', { name: 'Add outlet' }).click()
+    await expect(page.getByRole('heading', { name: 'Fresh Ja-Ela', level: 1 })).toBeVisible()
+    await page.goto('/demo')
+    const added = page.getByLabel('Store outlet').locator('option', { hasText: 'Fresh Ja-Ela' })
+    await page.getByLabel('Store outlet').selectOption((await added.getAttribute('value'))!)
+    await expect(page.getByText('Store workspace switched').first()).toBeVisible()
+    await page.goto('/store-manager/orders/new')
+    await expect(page.getByRole('heading', { name: 'Create orders' })).toBeVisible()
+    await expect(page.getByText(/OUT\d+ · Fresh only/)).toBeVisible()
   })
 })

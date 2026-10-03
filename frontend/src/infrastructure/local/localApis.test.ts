@@ -360,6 +360,83 @@ describe('local API adapters', () => {
       /at least 8 characters/,
     )
   })
+  const newOutlet = {
+    name: 'Fresh Ja-Ela',
+    brand: 'Fresh' as const,
+    district: 'Ja-Ela',
+    depot: 'Peliyagoda',
+    parking: 'normal' as const,
+    earliest: '04:00',
+    latest: '08:00',
+  }
+  it('adds an outlet with the next id, and orders can use it', async () => {
+    const before = await apis.outlets.listOutlets()
+    const highest = Math.max(...before.map((outlet) => Number(outlet.id.slice(3))))
+    const created = await apis.outlets.createOutlet(newOutlet)
+    expect(created.id).toBe(`OUT${String(highest + 1).padStart(3, '0')}`)
+    expect(created).toMatchObject({ brand: 'Fresh', mall: false, district: 'Ja-Ela' })
+    expect(created.receiving.reason).toBe(
+      'Fresh goods must arrive before the store opens at 8:00 AM.',
+    )
+    expect((await apis.outlets.listOutlets()).map((outlet) => outlet.id)).toContain(created.id)
+    expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Outlet added' })
+    // The order screens read the outlet's brand and hours from the same list.
+    expect(await apis.orders.getOutletProfile(created.id)).toMatchObject({ name: 'Fresh Ja-Ela' })
+    await expect(apis.outlets.createOutlet(newOutlet)).rejects.toThrow(/already exists/)
+    await expect(
+      apis.outlets.createOutlet({ ...newOutlet, name: 'Fresh Ragama', latest: '04:30' }),
+    ).rejects.toThrow(/at least an hour/)
+    await expect(apis.outlets.createOutlet({ ...newOutlet, name: 'X' })).rejects.toThrow(
+      /outlet name/,
+    )
+  })
+  it('a mall outlet keeps its own delivery window', async () => {
+    const mall = await apis.outlets.createOutlet({
+      ...newOutlet,
+      name: 'Style Odel',
+      brand: 'Style',
+      parking: 'mall_dock',
+      earliest: '06:00',
+      latest: '09:30',
+    })
+    expect(mall).toMatchObject({ mall: true, parking: 'mall_dock' })
+    expect(mall.receiving.reason).toBe(
+      'The mall only accepts deliveries between 6:00 AM and 9:30 AM.',
+    )
+  })
+  it('assigns a store manager only to an existing outlet that has none', async () => {
+    const outlet = await apis.outlets.createOutlet(newOutlet)
+    const manager = {
+      name: 'Ayesha Fernando',
+      mobile: '+94 77 555 0111',
+      role: 'store-manager' as const,
+      depot: 'Peliyagoda',
+      assignment: `${outlet.id} · Fresh`,
+      username: 'ayesha.fernando',
+      password: 'Kp7mQx2RtWn4',
+    }
+    await apis.team.createUser(manager)
+    const created = (await apis.team.listMembers()).find(
+      (member) => member.username === 'ayesha.fernando',
+    )
+    expect(created?.outletId).toBe(outlet.id)
+    await expect(
+      apis.team.createUser({
+        ...manager,
+        name: 'Second Manager',
+        mobile: '+94 77 555 0112',
+        username: 'second.manager',
+      }),
+    ).rejects.toThrow(/already has a store manager/)
+    await expect(
+      apis.team.createUser({
+        ...manager,
+        mobile: '+94 77 555 0113',
+        username: 'third.manager',
+        assignment: 'OUT999 · Fresh',
+      }),
+    ).rejects.toThrow(/Choose an outlet from the list/)
+  })
   it('suspends an on-route driver only after a schedule or with a reason', async () => {
     await repository.update((snapshot) => {
       snapshot.members.find((member) => member.id === 'USR001')!.onRoute = true
@@ -375,10 +452,11 @@ describe('local API adapters', () => {
     const audit = await apis.team.listAudit()
     expect(audit.some((entry) => entry.action === 'Suspended mid-route')).toBe(true)
   })
-  it('refuses outlets the local demo does not model', async () => {
-    await expect(apis.orders.createOrder('OUT002', 'Chilled', 10, '05:30')).rejects.toThrow(
-      /OUT016 and OUT019 only/,
+  it('refuses outlets that are not set up', async () => {
+    await expect(apis.orders.createOrder('OUT999', 'Chilled', 10, '05:30')).rejects.toThrow(
+      /Outlet OUT999 is not set up/,
     )
+    await expect(apis.orders.getOutletProfile('OUT999')).rejects.toThrow(/not set up/)
   })
   it('applies the 08:00 deadline to Fresh without blocking the Style mall window', async () => {
     const input = {
