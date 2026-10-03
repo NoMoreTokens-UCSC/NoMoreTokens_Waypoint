@@ -22,6 +22,27 @@ afterEach(async () => {
 })
 
 describe('local API adapters', () => {
+  it('exposes durable Driver drafts and validates capture through the API', async () => {
+    expect(await apis.delivery.listProofDrafts()).toEqual([])
+    expect(await apis.delivery.getProofDraft('STOP001')).toBeUndefined()
+    await expect(
+      apis.delivery.saveProofDraft({
+        stopId: 'STOP001',
+        photo: new Blob(['photo'], { type: 'image/png' }),
+        fileName: 'photo.png',
+        stage: 'captured',
+        quantity: 18,
+        receiver: '',
+        acknowledged: false,
+        exception: '',
+        revision: 3,
+        createdAt: new Date().toISOString(),
+      }),
+    ).rejects.toThrow('Park')
+    await apis.delivery.deleteProofDraft('STOP001')
+    expect(await apis.delivery.listProofDrafts()).toEqual([])
+    await expect(apis.delivery.reportDelay('STOP001', 'Road blocked')).rejects.toThrow('open stop')
+  })
   it('scopes orders and stops to an outlet', async () => {
     const orders = await apis.orders.listOrders({ outletId: 'OUT001' })
     expect(orders.map((order) => order.id).sort()).toEqual(['ORD1042', 'ORD1043'])

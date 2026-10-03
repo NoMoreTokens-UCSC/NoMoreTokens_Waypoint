@@ -1,3 +1,4 @@
+import { DriverSignalsService } from '../../application/DriverSignalsService'
 import type { Apis } from '../../domain/api'
 import { profileOf } from '../../domain/outlets'
 import { tripsFromOrders } from '../../domain/trips'
@@ -17,7 +18,16 @@ function requireDemoOutlet(outletId: string) {
  */
 export function createLocalApis(service: OperationsService): Apis {
   const snapshot = () => service.repository.getSnapshot()
+  const signals = new DriverSignalsService(service.repository)
   return {
+    driverSignals: {
+      registerPushSubscription: (subscription) => signals.registerPushSubscription(subscription),
+      recordPosition: (position) => signals.recordPosition(position),
+      pendingPositions: () => signals.pendingPositions(),
+      listNotices: (outletId) => signals.listNotices(outletId),
+      acknowledgeNotice: (id) => signals.acknowledgeNotice(id),
+      checkDeliveryWindows: (now) => signals.checkDeliveryWindows(now),
+    },
     orders: {
       listOrders: async (filter = {}) =>
         (await snapshot()).orders.filter(
@@ -113,13 +123,21 @@ export function createLocalApis(service: OperationsService): Apis {
           proof.receiver,
           proof.exception,
           proof.signature,
+          proof.capturedRevision,
+          proof.managerSignOff,
         ),
       reportIssue: (stopId, issue) => service.reportDeliveryIssue(stopId, issue),
+      reportDelay: (stopId, note) => service.reportDelay(stopId, note),
       saveAttemptProof: (stopId, photo, issue) => service.saveAttemptProof(stopId, photo, issue),
       retryStop: (stopId) => service.retryStop(stopId),
+      reopenProofForSignOff: (actionId) => service.reopenProofForSignOff(actionId),
       getEvidence: (evidenceId) => service.repository.getEvidence(evidenceId),
+      getProofDraft: (stopId) => service.repository.getProofDraft(stopId),
+      listProofDrafts: () => service.repository.listProofDrafts(),
+      saveProofDraft: (draft) => service.saveProofDraft(draft),
+      deleteProofDraft: (stopId) => service.repository.deleteProofDraft(stopId),
       listQueue: async () => (await snapshot()).queue,
-      sync: (isOnline) => service.sync(isOnline),
+      sync: (isOnline, options) => service.sync(isOnline, options?.retryFailed ?? true),
       reviewQueuedRecord: (actionId) => service.reviewQueuedRecord(actionId),
     },
     fleet: {

@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test'
+import { mockMapTiles } from './map.helpers'
+
+test.beforeEach(async ({ page }) => mockMapTiles(page))
 
 // Keep in step with the module definitions in src/presentation/sections/*/index.ts.
 const routes = [
@@ -38,6 +41,20 @@ const routes = [
   '/driver/route',
   '/driver/delivery',
   '/driver/issues',
+  '/driver/pre-departure',
+  '/driver/route/details',
+  '/driver/navigation',
+  '/driver/arrival',
+  '/driver/proof/capture',
+  '/driver/proof/camera-unavailable',
+  '/driver/proof/review',
+  '/driver/proof/attached',
+  '/driver/proof/submit',
+  '/driver/delivered',
+  '/driver/offline',
+  '/driver/sync',
+  '/driver/route/revision',
+  '/driver/sync/history',
   '/administration/team',
   '/administration/roles',
   '/administration/assignments',

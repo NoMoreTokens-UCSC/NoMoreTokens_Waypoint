@@ -1,73 +1,55 @@
-import { useRef, useState } from 'react'
+import type { SignatureStroke } from '../../../../domain/deliveryVerification'
+import { useSignaturePad } from '../hooks/useSignaturePad'
+import { DriverButton } from '../atoms/DriverButton'
 
-/** The source optional signature pad; drawn ink is retained with delivery evidence. */
+const EMPTY: SignatureStroke[] = []
 export function ReceiverSignaturePad({
-  initial,
+  initial = EMPTY,
+  resetKey,
+  valid,
   onChange,
+  onClear,
 }: {
-  initial?: string
-  onChange: (blob: Blob) => void
+  initial?: SignatureStroke[]
+  resetKey: number
+  valid: boolean
+  onChange: (strokes: SignatureStroke[], image: Blob) => void
+  onClear: () => void
 }) {
-  const canvas = useRef<HTMLCanvasElement>(null)
-  const point = useRef<{ x: number; y: number } | null>(null)
-  const [drawn, setDrawn] = useState(false)
+  const { canvasRef, onPointerDown, onPointerMove, onPointerUp, onKeyDown } = useSignaturePad(
+    initial,
+    resetKey,
+    onChange,
+  )
   return (
-    <div style={{ position: 'relative', width: 318, height: 160 }}>
-      {!drawn && initial && (
-        <img
-          src={initial}
-          alt=""
-          style={{ position: 'absolute', left: 13, top: 42, width: 200, height: 70 }}
-        />
-      )}
+    <fieldset className="flex min-w-0 flex-col gap-3">
+      <legend className="mb-2 text-sm font-semibold">Store Manager e-signature</legend>
+      <p id="signature-instructions" className="text-xs leading-relaxed text-muted-foreground">
+        The Store Manager signs after reviewing quantities and remarks. Draw with a finger, pen or
+        mouse. Keyboard: Space starts a stroke, arrow keys draw, Enter saves it.
+      </p>
       <canvas
-        ref={canvas}
-        width={318}
-        height={160}
-        aria-label="Optional receiver signature"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          touchAction: 'none',
-          width: '100%',
-          height: '100%',
-        }}
-        onPointerDown={(event) => {
-          setDrawn(true)
-          event.currentTarget.setPointerCapture(event.pointerId)
-          const rect = event.currentTarget.getBoundingClientRect()
-          point.current = {
-            x: ((event.clientX - rect.left) * 318) / rect.width,
-            y: ((event.clientY - rect.top) * 160) / rect.height,
-          }
-        }}
-        onPointerMove={(event) => {
-          const context = canvas.current?.getContext('2d')
-          if (!point.current || !context) return
-          const rect = event.currentTarget.getBoundingClientRect()
-          const next = {
-            x: ((event.clientX - rect.left) * 318) / rect.width,
-            y: ((event.clientY - rect.top) * 160) / rect.height,
-          }
-          context.strokeStyle = '#22252a'
-          context.lineWidth = 2
-          context.lineCap = 'round'
-          context.beginPath()
-          context.moveTo(point.current.x, point.current.y)
-          context.lineTo(next.x, next.y)
-          context.stroke()
-          point.current = next
-        }}
-        onPointerUp={() => {
-          point.current = null
-          canvas.current?.toBlob((blob) => {
-            if (blob) onChange(blob)
-          }, 'image/png')
-        }}
-        onPointerCancel={() => {
-          point.current = null
-        }}
+        ref={canvasRef}
+        width={640}
+        height={200}
+        tabIndex={0}
+        aria-label="Store Manager signature"
+        aria-describedby="signature-instructions"
+        className="h-[160px] w-full touch-none rounded-lg border border-input bg-white focus-visible:ring-2 focus-visible:ring-primary"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onKeyDown={onKeyDown}
       />
-    </div>
+      <p role="status" className="text-xs text-muted-foreground">
+        {valid
+          ? 'Signature captured for these handoff details.'
+          : 'A signature is required. A dot or blank drawing is not accepted.'}
+      </p>
+      <DriverButton variant="outline" type="button" onClick={onClear}>
+        Clear signature
+      </DriverButton>
+    </fieldset>
   )
 }
