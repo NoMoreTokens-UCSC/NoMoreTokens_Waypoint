@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react'
 import { useBlobUrl } from './useBlobUrl'
 import { toast } from 'sonner'
 import { useServices } from '../providers/ServicesContext'
+import { useApis } from '../providers/ApisContext'
 
 export const snapshotKey = ['operations', 'snapshot'] as const
 export function useOperations() {
   const services = useServices()
   return useQuery({
     queryKey: snapshotKey,
+    networkMode: 'always',
     queryFn: () => services.repository.getSnapshot(),
     staleTime: 5000,
   })
@@ -16,6 +18,7 @@ export function useOperations() {
 export function useAction() {
   const client = useQueryClient()
   const mutation = useMutation({
+    networkMode: 'always',
     mutationFn: (action: () => Promise<unknown>) => action(),
     onSuccess: () => client.invalidateQueries({ queryKey: snapshotKey }),
     onError: (error: Error) => {
@@ -47,12 +50,20 @@ export function useConnectivity() {
   return online
 }
 export function useEvidence(id?: string) {
-  const service = useServices()
+  const apis = useApis()
   const query = useQuery({
-    queryKey: ['evidence', id],
-    queryFn: () => service.repository.getEvidence(id!),
+    queryKey: [...snapshotKey, 'api', 'evidence', id],
+    networkMode: 'always',
+    queryFn: () => apis.delivery.getEvidence(id!),
     enabled: Boolean(id),
   })
   const url = useBlobUrl(query.data?.photo)
-  return { evidence: query.data, url }
+  return {
+    evidence: query.data,
+    url,
+    isPending: query.isPending,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  }
 }

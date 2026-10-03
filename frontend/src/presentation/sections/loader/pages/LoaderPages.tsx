@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Truck, ArrowRight, ClipboardCheck, PackageCheck, Camera } from 'lucide-react'
-import { useOperations, useAction } from '../../../hooks/useOperations'
-import { useServices } from '../../../providers/ServicesContext'
+import { Link, Navigate, useParams } from 'react-router-dom'
+import { ArrowLeft, ArrowRight, Camera, ClipboardCheck, PackageCheck, Truck } from 'lucide-react'
+import { useAction, useConnectivity } from '../../../hooks/useOperations'
+import { useApiQuery } from '../../../hooks/useApiQuery'
+import { useApis } from '../../../providers/ApisContext'
+import { useSession } from '../../../session/useSession'
 import { Button } from '../../../shared/atoms/button'
 import { Input } from '../../../shared/atoms/input'
 import { Checkbox } from '../../../shared/atoms/checkbox'
@@ -16,196 +18,324 @@ import {
   CapacityBar,
   Modal,
   Field,
+  EmptyState,
 } from '../../../shared/molecules/Common'
 import { PhotoCapture } from '../../../shared/organisms/PhotoCapture'
 import { loadErrors } from '../../../../domain/rules'
-import type { Load } from '../../../../domain/models'
+import type { Load, LoadIssueInput } from '../../../../domain/models'
+import '../loader.css'
 
-export function LoaderQueuePage() {
-  const { data } = useOperations()
-  if (!data) return null
+function loadStatus(load: Load, published: boolean) {
+  if (load.released) return 'En route'
+  if (!published) return 'Awaiting publication'
+  if (!load.issueResolved) return 'Held'
+  if (load.acknowledgedRevision !== undefined && load.acknowledgedRevision !== load.revision)
+    return 'Review required'
+  if (load.completed) return 'Awaiting Dispatcher release'
+  return load.items.some((item) => item.loaded > 0) ? 'Loading' : 'Not started'
+}
+
+function LocalSaveNotice() {
+  const online = useConnectivity()
   return (
-    <>
-      <PageHeading
-        eyebrow="Loading · Peliyagoda depot"
-        title="Shift dashboard"
-        description="Prepare the assigned load, record shortfalls, and hand off safely."
-      />
-      <div className="metrics">
-        <Metric
-          label="Assigned loads"
-          value={data.loads.length}
-          detail="Current demo shift"
-          icon={<Truck size={17} />}
-        />
-        <Metric
-          label="Ready for departure"
-          value={data.loads.filter((l) => l.completed).length}
-          detail="Safety checks and proof complete"
-          icon={<ClipboardCheck size={17} />}
-        />
-        <Metric
-          label="Cases to prepare"
-          value={data.loads.reduce(
-            (n, l) => n + l.items.reduce((m, i) => m + i.expected - i.loaded, 0),
-            0,
-          )}
-          detail="Follow rear-to-front stop order"
-          icon={<PackageCheck size={17} />}
-        />
-      </div>
-      <Panel
-        title="Your loading queue"
-        description="Shared dock workspace · current manifest revisions"
-      >
-        {data.loads.map((load) => (
-          <div className="list-row" key={load.id}>
-            <div className="p-3 rounded-lg bg-muted">
-              <Truck size={25} />
-            </div>
-            <div className="flex-1">
-              <strong>
-                {load.vehicleId} · Trip {load.trip}
-              </strong>
-              <p className="text-xs text-muted-foreground mt-1">
-                Refrigerated van · Bay {load.bay} · Revision{' '}
-                {load.revision.toString().padStart(2, '0')}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {load.items.reduce((n, i) => n + i.loaded, 0)} /{' '}
-                {load.items.reduce((n, i) => n + i.expected, 0)} cases loaded
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-3">
-              <StatusBadge>
-                {load.released
-                  ? 'En route'
-                  : load.completed
-                    ? 'Ready'
-                    : load.issue && !load.issueResolved
-                      ? 'Held'
-                      : 'Loading'}
-              </StatusBadge>
-              <Link to="/loader/loading">
-                <Button size="sm">
-                  Open load
-                  <ArrowRight size={14} />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        ))}
-      </Panel>
-    </>
+    <Notice
+      tone="neutral"
+      title={online ? 'Saved on this device · Not synced' : 'Offline · saved on this device'}
+    />
   )
 }
 
-export function LoaderWorkspacePage({ proofOnly = false }: { proofOnly?: boolean }) {
-  const { data } = useOperations(),
-    service = useServices(),
-    action = useAction()
-  const [issueOpen, setIssueOpen] = useState(false),
-    [issue, setIssue] = useState('')
-  if (!data) return null
-  const load = data.loads[0],
-    total = load.items.reduce((n, i) => n + i.expected, 0),
-    loaded = load.items.reduce((n, i) => n + i.loaded, 0)
-  const errors = loadErrors(load),
-    checks = [
-      ['refrigeration', 'Refrigeration working for chilled goods'],
-      ['condition', 'Goods condition checked'],
-      ['restraints', 'Restraints secured and stop order checked'],
-    ] as [keyof Load['checks'], string][]
+export function LoaderLegacyPage() {
+  return <Navigate to="/loader/queue" replace />
+}
+
+export function LoaderQueuePage() {
+  const session = useSession()
+  const query = useApiQuery(['loading', 'queue', session.depot], async (apis) => {
+    if (!session.depot) return { loads: [], published: false }
+    const loads = await apis.loading.listLoads({ depot: session.depot })
+    const status = await apis.orders.getIntakeStatus()
+    return { loads, published: status.published }
+  })
+  const loads = query.data?.loads ?? []
   return (
-    <>
+    <div className="loader-page">
       <PageHeading
-        eyebrow={`Active load · Bay ${load.bay}`}
-        title={proofOnly ? 'Loading photograph & handoff' : 'Loading workspace'}
-        description={`VEH055 · Trip 1 · Revision ${load.revision.toString().padStart(2, '0')} · Departure 05:00`}
-        action={
-          <StatusBadge>
-            {load.released ? 'En route' : load.completed ? 'Ready' : 'Loading'}
-          </StatusBadge>
-        }
+        eyebrow={session.depot ? `Loading · ${session.depot} depot` : 'Loading'}
+        title="Shift dashboard"
       />
-      {load.issue && (
-        <Notice
-          title={
-            load.issueResolved
-              ? `Revision ${load.revision} · recheck the manifest`
-              : 'Load held · shortfall reported'
+      <LocalSaveNotice />
+      {query.isPending ? (
+        <Notice title="Loading shift queue…" />
+      ) : query.isError ? (
+        <Notice tone="danger" title="Could not load the shift queue">
+          <p>{query.error.message}</p>
+          <Button variant="outline" onClick={() => void query.refetch()}>
+            Retry
+          </Button>
+        </Notice>
+      ) : !session.depot ? (
+        <EmptyState
+          title="No depot assigned"
+          description="Ask your administrator to assign a depot."
+        />
+      ) : (
+        <>
+          <div className="metrics">
+            <Metric label="Assigned loads" value={loads.length} icon={<Truck size={17} />} />
+            <Metric
+              label="Awaiting release"
+              value={loads.filter((load) => load.completed && !load.released).length}
+              icon={<ClipboardCheck size={17} />}
+            />
+            <Metric
+              label="Cases remaining"
+              value={loads
+                .filter((load) => !load.released)
+                .reduce(
+                  (sum, load) =>
+                    sum +
+                    load.items.reduce((total, item) => total + item.expected - item.loaded, 0),
+                  0,
+                )}
+              icon={<PackageCheck size={17} />}
+            />
+          </div>
+          <Panel title="Your loading queue">
+            {!loads.length && (
+              <EmptyState
+                title="No loads assigned"
+                description="Published loads for your depot will appear here."
+              />
+            )}
+            {loads.map((load) => (
+              <div className="loader-queue-row" key={load.id}>
+                <Truck size={24} aria-hidden="true" />
+                <div className="loader-queue-details">
+                  <strong>
+                    {load.vehicleId} · Trip {load.trip}
+                  </strong>
+                  <p>
+                    Bay {load.bay} · Revision {load.revision} · Departure{' '}
+                    {load.departureTime ?? 'Not scheduled'}
+                  </p>
+                  <p>
+                    {load.items.reduce((total, item) => total + item.loaded, 0)} /{' '}
+                    {load.items.reduce((total, item) => total + item.expected, 0)} cases loaded
+                  </p>
+                </div>
+                <div className="loader-queue-actions">
+                  <StatusBadge>{loadStatus(load, query.data?.published ?? false)}</StatusBadge>
+                  <Link to={`/loader/loading/${load.id}`}>
+                    <Button>
+                      <ArrowRight size={16} />
+                      Open load
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </Panel>
+        </>
+      )}
+    </div>
+  )
+}
+
+const checks: [keyof Load['checks'], string][] = [
+  ['refrigeration', 'Refrigeration working for chilled goods'],
+  ['condition', 'Goods condition checked'],
+  ['restraints', 'Restraints secured and stop order checked'],
+]
+
+export function LoaderWorkspacePage({ proofOnly = false }: { proofOnly?: boolean }) {
+  const { loadId = '' } = useParams()
+  const session = useSession()
+  const apis = useApis()
+  const action = useAction()
+  const query = useApiQuery(['loading', 'workspace', loadId, session.depot], async (apis) =>
+    session.depot ? ((await apis.loading.getWorkspace(loadId, session.depot)) ?? null) : null,
+  )
+  const [issueOpen, setIssueOpen] = useState(false)
+  const [issue, setIssue] = useState<LoadIssueInput>({
+    kind: 'Missing',
+    outlet: '',
+    affectedCases: 1,
+    description: '',
+  })
+  const heading = (
+    <PageHeading title={proofOnly ? 'Loading photograph & handoff' : 'Loading workspace'} />
+  )
+  if (query.isPending)
+    return (
+      <div className="loader-page">
+        {heading}
+        <Notice title="Loading manifest…" />
+      </div>
+    )
+  if (query.isError)
+    return (
+      <div className="loader-page">
+        {heading}
+        <Notice title="Could not load the manifest" tone="danger">
+          {query.error.message}
+          <Button variant="outline" onClick={() => void query.refetch()}>
+            Retry
+          </Button>
+        </Notice>
+      </div>
+    )
+  if (!query.data)
+    return (
+      <div className="loader-page">
+        {heading}
+        <EmptyState
+          title="Load unavailable"
+          description="This load does not exist or is not assigned to your depot."
+          action={
+            <Link to="/loader/queue">
+              <Button>Return to queue</Button>
+            </Link>
           }
-          tone={load.issueResolved ? 'neutral' : 'danger'}
-        >
+        />
+      </div>
+    )
+  const { load, vehicle, published, weight, volume } = query.data
+  const errors = loadErrors(load)
+  const total = load.items.reduce((sum, item) => sum + item.expected, 0)
+  const loaded = load.items.reduce((sum, item) => sum + item.loaded, 0)
+  const needsReview =
+    load.acknowledgedRevision !== undefined && load.acknowledgedRevision !== load.revision
+  const locked = !published || load.released || needsReview || action.isPending
+  const issueItem = load.items.find((item) => item.outlet === issue.outlet)
+  const validIssue =
+    !!issueItem &&
+    Number.isInteger(issue.affectedCases) &&
+    issue.affectedCases > 0 &&
+    issue.affectedCases <= issueItem.expected &&
+    issue.description.trim().length > 3
+  return (
+    <div className="loader-page">
+      <Link to="/loader/queue" className="loader-back">
+        <ArrowLeft size={16} />
+        Shift dashboard
+      </Link>
+      <PageHeading
+        eyebrow={`${load.depot} · Bay ${load.bay}`}
+        title={proofOnly ? 'Loading photograph & handoff' : 'Loading workspace'}
+        description={`${load.vehicleId} · Trip ${load.trip} · Revision ${load.revision} · Departure ${load.departureTime ?? 'Not scheduled'}`}
+        action={<StatusBadge>{loadStatus(load, published)}</StatusBadge>}
+      />
+      <LocalSaveNotice />
+      {!published && (
+        <Notice title="Awaiting published instructions">
+          Dispatcher must review and publish the allocation before loading can begin.
+        </Notice>
+      )}
+      {!load.issueResolved && (
+        <Notice title="Load held · awaiting Dispatcher decision" tone="danger">
           {load.issue}
-          {!load.issueResolved && (
-            <div className="mt-3">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={action.isPending}
-                onClick={() =>
-                  action.run(
-                    () => service.resolveLoadIssue(load.id),
-                    'Demo replacement decision recorded. Recheck quantities and safety.',
-                  )
-                }
-              >
-                Demo dispatcher decision · replacement approved
-              </Button>
-            </div>
-          )}
+          <p>Do not complete loading or depart until the shortfall is resolved.</p>
         </Notice>
       )}
-      {load.released && (
+      {needsReview && (
+        <Notice title={`Review changed instructions · Revision ${load.revision}`}>
+          <ul>
+            {(load.revisionChanges ?? ['Review the current manifest and repeat all checks.']).map(
+              (change) => (
+                <li key={change}>{change}</li>
+              ),
+            )}
+          </ul>
+          <Button
+            disabled={action.isPending || !load.issueResolved || load.released}
+            onClick={() =>
+              action.run(
+                () => apis.loading.acknowledgeRevision(load.id, load.revision),
+                'Revision acknowledged on this device. Reconcile the load again.',
+              )
+            }
+          >
+            Acknowledge revised instructions
+          </Button>
+        </Notice>
+      )}
+      {load.released ? (
         <Notice title="Vehicle has departed" tone="success">
-          The loading record is locked. Evidence remains saved on this device.
+          The loading record is locked. Saved evidence remains available.
         </Notice>
+      ) : (
+        load.completed && (
+          <Notice title="Loading complete · awaiting Dispatcher release" tone="success">
+            Loading proof is saved on this device. Only Dispatcher can authorize departure.
+          </Notice>
+        )
       )}
-      <div className="split-grid">
-        <div className="space-y-5">
-          {!proofOnly && (
+      <div className="loader-workspace-grid">
+        <div className="loader-column">
+          {proofOnly ? (
+            <Link to={`/loader/loading/${load.id}`}>
+              <Button variant="outline">
+                <ArrowLeft size={16} />
+                Return to manifest
+              </Button>
+            </Link>
+          ) : (
             <Panel
               title={`${loaded} / ${total} cases loaded`}
-              description="Rear-to-front sequence · last delivery stop loaded first"
+              description="Rear-to-front sequence · last delivery stop first"
             >
               <div className="panel-body">
-                {load.items.map((item, i) => (
-                  <div
-                    key={item.outlet}
-                    className="flex flex-wrap items-center gap-4 py-5 border-b last:border-0"
-                  >
-                    <span className="avatar avatar-orange">0{i + 1}</span>
-                    <div className="flex-1 min-w-32">
-                      <strong>{item.outlet}</strong>
-                      <p className="text-xs text-muted-foreground mt-1">{item.name}</p>
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        Stop {item.stop} · {i === 0 ? 'Rear section' : 'Door access'}
+                {!load.items.length && <EmptyState title="No manifest items" />}
+                {load.items.map((item, index) => (
+                  <div className="loader-case-row" key={item.outlet}>
+                    <span className="loader-sequence">{index + 1}</span>
+                    <div className="loader-case-details">
+                      <strong>
+                        {item.outlet} · {item.name}
+                      </strong>
+                      <p>
+                        Delivery stop {item.stop} ·{' '}
+                        {index === 0
+                          ? 'Rear section'
+                          : index === load.items.length - 1
+                            ? 'Door access'
+                            : 'Middle section'}
                       </p>
                     </div>
-                    <label className="field w-24">
-                      <span className="text-[11px]">Cases loaded</span>
+                    <Field label={`Cases loaded · expected ${item.expected}`}>
                       <Input
+                        key={`${load.revision}-${item.loaded}`}
                         aria-label={`${item.outlet} cases loaded`}
                         type="number"
                         min={0}
                         max={item.expected}
-                        value={item.loaded}
-                        disabled={load.released || action.isPending}
-                        onChange={(e) => {
-                          const quantity = Number(e.target.value)
-                          action.run(() => service.setLoaded(load.id, item.outlet, quantity))
+                        defaultValue={item.loaded}
+                        disabled={locked}
+                        onBlur={(event) => {
+                          const quantity = Number(event.target.value)
+                          if (quantity !== item.loaded)
+                            action.run(() =>
+                              apis.loading.setLoaded(load.id, item.outlet, quantity, load.revision),
+                            )
                         }}
                       />
-                    </label>
+                    </Field>
                     <Button
-                      size="sm"
                       variant="outline"
-                      disabled={load.released || action.isPending || item.loaded === item.expected}
+                      disabled={locked || item.loaded === item.expected}
                       onClick={() =>
-                        action.run(() => service.setLoaded(load.id, item.outlet, item.expected))
+                        action.run(() =>
+                          apis.loading.setLoaded(
+                            load.id,
+                            item.outlet,
+                            item.expected,
+                            load.revision,
+                          ),
+                        )
                       }
                     >
+                      <PackageCheck size={16} />
                       Confirm {item.expected}
                     </Button>
                   </div>
@@ -213,30 +343,39 @@ export function LoaderWorkspacePage({ proofOnly = false }: { proofOnly?: boolean
               </div>
             </Panel>
           )}
-          <Panel
-            title="Complete three safety checks"
-            description="Photo capture unlocks after the quantities and checks are complete."
-          >
+          <Panel title="Safety checks">
             <div className="panel-body">
-              {checks.map(([key, label]) => (
-                <label className="check-row cursor-pointer" key={key}>
-                  <Checkbox
-                    checked={load.checks[key]}
-                    disabled={load.released || action.isPending}
-                    onCheckedChange={(v) =>
-                      action.run(() => service.setCheck(load.id, key, v === true))
-                    }
-                    aria-label={label}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+              {checks.map(([key, originalLabel]) => {
+                const label =
+                  key === 'refrigeration' && !vehicle.reefer
+                    ? 'Ambient cargo verified · refrigeration not required'
+                    : originalLabel
+                return (
+                  <label className="loader-check-row" key={key}>
+                    <Checkbox
+                      aria-label={label}
+                      checked={load.checks[key]}
+                      disabled={locked}
+                      onCheckedChange={(checked) =>
+                        action.run(() =>
+                          apis.loading.setCheck(load.id, key, checked === true, load.revision),
+                        )
+                      }
+                    />
+                    <span>{label}</span>
+                  </label>
+                )
+              })}
               <Button
                 variant="outline"
-                className="mt-4"
-                disabled={load.released || action.isPending}
+                disabled={locked || !load.issueResolved || !load.items.length}
                 onClick={() => {
-                  setIssue('')
+                  setIssue({
+                    kind: 'Missing',
+                    outlet: load.items[0]?.outlet ?? '',
+                    affectedCases: 1,
+                    description: '',
+                  })
                   setIssueOpen(true)
                 }}
               >
@@ -244,71 +383,59 @@ export function LoaderWorkspacePage({ proofOnly = false }: { proofOnly?: boolean
               </Button>
             </div>
           </Panel>
+          {locked && !action.isPending && (
+            <p className="loader-disabled-reason">
+              {load.released
+                ? 'Loading is locked after departure.'
+                : needsReview
+                  ? 'Acknowledge the revised instructions to continue.'
+                  : 'Loading unlocks after publication.'}
+            </p>
+          )}
         </div>
-        <div className="space-y-5">
-          <Panel title="Vehicle capacity" description={`${load.vehicleId} · refrigerated van`}>
-            <div className="panel-body">
-              <CapacityBar label="Loading progress" used={loaded} total={total} unit="cases" />
-              <CapacityBar
-                label="Volume"
-                used={data.orders
-                  .filter((o) =>
-                    data.settings.published
-                      ? o.vehicleId === load.vehicleId && o.trip === load.trip
-                      : data.stops.some((stop) => stop.orderIds.includes(o.id)),
-                  )
-                  .reduce((n, o) => n + o.volume, 0)}
-                total={4}
-                unit="m³"
-              />
-              <CapacityBar
-                label="Weight"
-                used={data.orders
-                  .filter((o) =>
-                    data.settings.published
-                      ? o.vehicleId === load.vehicleId && o.trip === load.trip
-                      : data.stops.some((stop) => stop.orderIds.includes(o.id)),
-                  )
-                  .reduce((n, o) => n + o.weight, 0)}
-                total={800}
-                unit="kg"
-              />
-            </div>
-          </Panel>
+        <div className="loader-column">
           <Panel
-            title="Photograph the loaded truck"
-            description="A clear view of the reconciled load is required."
+            title="Vehicle capacity"
+            description={`${vehicle.id} · ${vehicle.reefer ? 'Refrigerated' : 'Ambient'} ${vehicle.type.toLowerCase()}`}
           >
             <div className="panel-body">
+              <CapacityBar label="Loading progress" used={loaded} total={total} unit="cases" />
+              <CapacityBar label="Volume" used={volume} total={vehicle.volumeCapacity} unit="m³" />
+              <CapacityBar label="Weight" used={weight} total={vehicle.weightCapacity} unit="kg" />
+            </div>
+          </Panel>
+          <Panel title="Loading photograph">
+            <div className="panel-body">
               <PhotoCapture
+                key={`${load.id}-${load.revision}`}
                 evidenceId={load.photoId}
-                disabled={!!loadErrors(load, false).length || load.released}
+                disabled={locked || !!loadErrors(load, false).length}
                 busy={action.isPending}
                 onSave={(file) =>
-                  action.mutateAsync(() => service.attachLoadingPhoto(load.id, file))
+                  action.mutateAsync(() => apis.loading.attachPhoto(load.id, file, load.revision))
                 }
               />
               {!load.completed && errors.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-4">{errors[0]}</p>
+                <p className="loader-disabled-reason">{errors[0]}</p>
               )}
               <Button
-                className="w-full mt-5"
-                disabled={!!errors.length || load.completed || load.released || action.isPending}
+                className="loader-complete"
+                disabled={locked || !!errors.length || load.completed}
                 onClick={() =>
                   action.run(
-                    () => service.completeLoading(load.id),
-                    'Loading complete. Dispatcher readiness has updated.',
+                    () => apis.loading.complete(load.id, load.revision),
+                    'Loading complete on this device. Await Dispatcher release.',
                   )
                 }
               >
-                <Camera size={16} />
+                <ClipboardCheck size={16} />
                 {load.completed ? 'Loading complete' : 'Confirm loading complete'}
               </Button>
-              {load.completed && (
-                <Link to="/dispatcher/release">
-                  <Button className="w-full mt-3" variant="outline">
-                    Dispatcher handoff
-                    <ArrowRight size={16} />
+              {!proofOnly && (
+                <Link className="loader-proof-link" to={`/loader/proof/${load.id}`}>
+                  <Button variant="outline">
+                    <Camera size={16} />
+                    Review loading proof
                   </Button>
                 </Link>
               )}
@@ -318,29 +445,66 @@ export function LoaderWorkspacePage({ proofOnly = false }: { proofOnly?: boolean
       </div>
       <Modal
         title="Report missing or damaged goods"
-        description="Departure stays held until the revised manifest is checked."
+        description="Dispatcher must resolve the shortfall before loading is completed."
         open={issueOpen}
         onOpenChange={setIssueOpen}
       >
-        <Field label="Stop, item, affected quantity, and issue">
+        <Field label="Delivery stop">
+          <select
+            aria-label="Delivery stop"
+            className="loader-select"
+            value={issue.outlet}
+            onChange={(event) => setIssue({ ...issue, outlet: event.target.value })}
+          >
+            {load.items.map((item) => (
+              <option value={item.outlet} key={item.outlet}>
+                {item.outlet} · {item.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Issue type">
+          <select
+            aria-label="Issue type"
+            className="loader-select"
+            value={issue.kind}
+            onChange={(event) =>
+              setIssue({ ...issue, kind: event.target.value as LoadIssueInput['kind'] })
+            }
+          >
+            <option>Missing</option>
+            <option>Damaged</option>
+          </select>
+        </Field>
+        <Field label="Affected cases">
+          <Input
+            className="min-h-11"
+            type="number"
+            min={1}
+            max={issueItem?.expected}
+            value={issue.affectedCases}
+            onChange={(event) => setIssue({ ...issue, affectedCases: Number(event.target.value) })}
+          />
+        </Field>
+        <Field label="Item and issue description">
           <Textarea
-            value={issue}
-            onChange={(e) => setIssue(e.target.value)}
-            placeholder="OUT001 · 1 milk case damaged"
+            value={issue.description}
+            onChange={(event) => setIssue({ ...issue, description: event.target.value })}
           />
         </Field>
         <Button
-          disabled={issue.trim().length < 4 || action.isPending}
+          className="min-h-11"
+          disabled={!validIssue || locked || !load.issueResolved}
           onClick={() =>
             action.run(async () => {
-              await service.reportLoadIssue(load.id, issue)
+              await apis.loading.reportIssue(load.id, issue, load.revision)
               setIssueOpen(false)
-            }, 'Shortfall recorded. Load held.')
+            }, 'Shortfall saved on this device. Load held.')
           }
         >
           Report and hold load
         </Button>
       </Modal>
-    </>
+    </div>
   )
 }

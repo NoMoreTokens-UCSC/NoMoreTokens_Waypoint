@@ -92,23 +92,63 @@ export function createLocalApis(service: OperationsService): Apis {
       release: (loadId) => service.release(loadId),
     },
     loading: {
-      listLoads: async () => (await snapshot()).loads,
+      listLoads: async (filter = {}) =>
+        (await snapshot()).loads.filter((load) => !filter.depot || load.depot === filter.depot),
       getLoad: async (loadId) => (await snapshot()).loads.find((load) => load.id === loadId),
-      setLoaded: (loadId, outlet, quantity) => service.setLoaded(loadId, outlet, quantity),
-      setCheck: (loadId, check, checked) => service.setCheck(loadId, check, checked),
-      reportIssue: (loadId, issue) => service.reportLoadIssue(loadId, issue),
+      getWorkspace: async (loadId, depot) => {
+        const current = await snapshot()
+        const load = current.loads.find(
+          (entry) => entry.id === loadId && (!depot || entry.depot === depot),
+        )
+        const vehicle = current.vehicles.find((entry) => entry.id === load?.vehicleId)
+        if (!load || !vehicle) return undefined
+        const orders = current.orders.filter(
+          (order) =>
+            order.vehicleId === load.vehicleId &&
+            order.trip === load.trip &&
+            order.status !== 'Deferred',
+        )
+        return {
+          load: { ...load, items: [...load.items].sort((a, b) => b.stop - a.stop) },
+          vehicle,
+          published: current.settings.published,
+          stops: current.stops.filter(
+            (stop) =>
+              stop.loadId === load.id ||
+              (!stop.loadId && stop.orderIds.some((id) => orders.some((order) => order.id === id))),
+          ),
+          weight: orders.reduce((total, order) => total + order.weight, 0),
+          volume: orders.reduce((total, order) => total + order.volume, 0),
+        }
+      },
+      acknowledgeRevision: (loadId, revision) => service.acknowledgeLoadRevision(loadId, revision),
+      setLoaded: (loadId, outlet, quantity, revision) =>
+        service.setLoaded(loadId, outlet, quantity, revision),
+      setCheck: (loadId, check, checked, revision) =>
+        service.setCheck(loadId, check, checked, revision),
+      reportIssue: (loadId, issue, revision) => service.reportLoadIssue(loadId, issue, revision),
       resolveIssue: (loadId) => service.resolveLoadIssue(loadId),
-      attachPhoto: (loadId, file) => service.attachLoadingPhoto(loadId, file),
-      complete: (loadId) => service.completeLoading(loadId),
+      attachPhoto: (loadId, file, revision) => service.attachLoadingPhoto(loadId, file, revision),
+      complete: (loadId, revision) => service.completeLoading(loadId, revision),
     },
     delivery: {
       getRoute: async () => {
         const current = await snapshot()
+        const driver = current.members.find(
+          (member) => member.id === (current.activeDriverId ?? 'USR001'),
+        )
+        const load = current.loads
+          .filter((load) => load.vehicleId === driver?.vehicleId)
+          .sort((a, b) => a.trip - b.trip)[0]
         return {
           started: current.settings.routeStarted,
           revision: current.settings.routeRevision,
-          stops: current.stops.filter((stop) =>
-            isAssignedStop(stop, current.orders, assignedDriverLoad(current)),
+          stops: current.stops.filter(
+            (stop) =>
+              load &&
+              (stop.loadId === load.id ||
+                isAssignedStop(stop, current.orders, load) ||
+                (!stop.loadId && load.items.some((item) => item.outlet === stop.outlet))),
           ),
         }
       },

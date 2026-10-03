@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { CheckCircle2, Circle, Camera, ArrowRight, WandSparkles } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowRight, CheckCircle2, Circle, WandSparkles, Truck, ShieldCheck } from 'lucide-react'
 import { useOperations, useAction, useEvidence } from '../../../hooks/useOperations'
 import { useServices } from '../../../providers/ServicesContext'
+import { useApis } from '../../../providers/ApisContext'
 import { Button } from '../../../shared/atoms/button'
 import {
   PageHeading,
@@ -735,7 +736,7 @@ export function DeferralsPage() {
 
 export function ReviewPage() {
   const { data } = useOperations(),
-    service = useServices(),
+    apis = useApis(),
     action = useAction()
   const navigate = useNavigate()
   const [showConfirm, setShowConfirm] = useState(false)
@@ -898,6 +899,18 @@ export function ReviewPage() {
               <ArrowRight size={16} />
             </Button>
           </Link>
+        ) : !data.settings.allocationReviewed ? (
+          <Button
+            disabled={!!errors.length || action.isPending}
+            onClick={() =>
+              action.run(
+                () => apis.planning.reviewAllocation(),
+                'Allocation review recorded. Final publication is now available.',
+              )
+            }
+          >
+            <ShieldCheck size={16} />
+            Confirm allocation review
         ) : deferred.length > 0 ? (
           <Button
             disabled={!!errors.length || action.isPending}
@@ -909,10 +922,10 @@ export function ReviewPage() {
           <Button
             disabled={!!errors.length || action.isPending}
             onClick={() =>
-              action.run(async () => {
-                await service.publish()
-                navigate('/dispatcher/release')
-              }, 'Plan published. Proceed to departure readiness.')
+              action.run(
+                () => apis.planning.publish(),
+                'Plan published. Loading proof is still required for departure.',
+              )
             }
           >
             Publish plan
@@ -924,160 +937,65 @@ export function ReviewPage() {
 }
 
 export function ReleasePage() {
-  const { data } = useOperations(),
-    service = useServices(),
-    action = useAction()
-  const [showDeparture, setShowDeparture] = useState(false)
-  const load = data?.loads[0]
-  const { url } = useEvidence(load?.photoId)
-  if (!data || !load) return null
-
-  const errors = departureErrors(data, load)
-  const revNum = load.revision.toString().padStart(2, '0')
-  const deferred = data.orders.filter((o) => o.status === 'Deferred')
-  const tripOrders = data.orders.filter(
-    (o) => o.vehicleId === load.vehicleId && o.trip === load.trip,
-  )
-  const usedWeight = tripOrders.reduce((n, o) => n + o.weight, 0)
-  const usedVolume = tripOrders.reduce((n, o) => n + o.volume, 0)
-  const loadedStops = load.items.filter((i) => i.loaded >= i.expected).length
-
-  // Departure readiness detail view
-  if (showDeparture) {
-    const isReady = errors.length === 0 && !load.released
-    const proofAttached = !!url
-
-    return (
-      <>
-        <PageHeading
-          title="Departure readiness"
-          description={`Revision ${revNum} · Saturday, 26 September · Release vehicles after loading evidence is complete`}
-        />
-        <PlanningSteps current={4} />
-        {load.released ? (
-          <Notice tone="success" title="Vehicle released for departure">
-            Driver workspace can now start the assigned route. Fleet is en route.
-          </Notice>
-        ) : isReady ? (
-          <Notice tone="success" title="Trip ready for departure">
-            {load.vehicleId}, Trip {load.trip} has a complete stop sequence, no unresolved shortfalls,
-            and a verified loading photo.
-          </Notice>
-        ) : (
-          <Notice tone="warning" title="Awaiting loading evidence">
-            {load.vehicleId}, Trip {load.trip} remains held. The departure action stays disabled until
-            loading proof is attached.
-          </Notice>
-        )}
-
-        <div className="split-grid" style={{ marginTop: 20 }}>
-          <Panel
-            title={`${load.vehicleId} · Trip ${load.trip} · ${data.vehicles.find((v) => v.id === load.vehicleId)?.reefer ? 'Reefer van' : 'Ambient van'}`}
-            action={
-              <StatusBadge
-                tone={
-                  load.released ? 'success' : proofAttached ? 'success' : 'warning'
-                }
-              >
-                {load.released ? 'Dispatched' : proofAttached ? 'Ready' : 'Held for proof'}
-              </StatusBadge>
-            }
-          >
-            <div className="panel-body">
-              <div className="check-row">
-                <CheckCircle2 size={20} style={{ color: '#22b563', flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <strong>Load sequence</strong>
-                  <small>
-                    {loadedStops} / {load.items.length} stop loaded ·{' '}
-                    {tripOrders[0]?.outlet ?? '—'}
-                  </small>
-                </div>
-              </div>
-              <div className="check-row">
-                <CheckCircle2 size={20} style={{ color: '#22b563', flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <strong>Shortfalls</strong>
-                  <small>
-                    {load.issue && !load.issueResolved ? `Unresolved: ${load.issue}` : 'None unresolved'}
-                  </small>
-                </div>
-              </div>
-              <div className="check-row">
-                <CheckCircle2 size={20} style={{ color: '#22b563', flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <strong>Capacity</strong>
-                  <small>
-                    {usedWeight} / {WEIGHT_CAP} kg · {usedVolume.toFixed(1)} / 4.0 m³
-                  </small>
-                </div>
-              </div>
-              <div className="check-row">
-                {proofAttached ? (
-                  <CheckCircle2 size={20} style={{ color: '#22b563', flexShrink: 0 }} />
-                ) : (
-                  <Camera size={20} style={{ color: '#9ca0a8', flexShrink: 0 }} />
-                )}
-                <div style={{ flex: 1 }}>
-                  <strong>Loading proof</strong>
-                  <small>
-                    {proofAttached ? 'Attached · Loader · Dock 02' : 'Not attached · Departure blocked'}
-                  </small>
-                </div>
-              </div>
-              <Button
-                className="w-full"
-                style={{ marginTop: 20 }}
-                disabled={!!errors.length || load.released || action.isPending}
-                onClick={() =>
-                  action.run(
-                    () => service.release(load.id),
-                    'Vehicle departed. Driver is now tracking.',
-                  )
-                }
-              >
-                {load.released
-                  ? `${load.vehicleId} · Departed`
-                  : `Dispatch ${load.vehicleId} · Trip ${load.trip}`}
-              </Button>
-            </div>
-          </Panel>
-
-          <Panel
-            title={proofAttached ? 'Loading proof attached' : 'Loader handoff'}
-            description={proofAttached ? undefined : undefined}
-          >
-            <div className="panel-body">
-              {url ? (
-                <>
-                  <img src={url} alt="Loading proof" className="proof-image" />
-                  <p style={{ fontSize: 12, color: '#6e737b' }}>
-                    {load.vehicleId} / Trip {load.trip} · Captured 05:54 · Attachment verified
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="photo-placeholder">
-                    <Camera size={28} style={{ opacity: 0.4 }} />
-                    <span>Waiting for loading photo</span>
-                  </div>
-                  <p style={{ fontSize: 13, color: '#6e737b', lineHeight: 1.6, marginBottom: 16 }}>
-                    The loader photographs the loaded truck bed after completing the sequence and
-                    recording any shortfall. This view updates when evidence is received.
-                  </p>
-                  <Button variant="outline" className="w-full">
-                    Refresh readiness
-                  </Button>
-                </>
-              )}
-            </div>
-          </Panel>
+  const { data } = useOperations()
+  const [params, setParams] = useSearchParams()
+  const loadId = params.get('loadId') ?? ''
+  return (
+    <>
+      {!loadId && <PageHeading title="Departure readiness" />}
+      <Panel title="Published loads">
+        <div className="panel-body">
+          <Field label="Vehicle and trip">
+            <select
+              className="w-full border rounded-md p-3"
+              value={loadId}
+              onChange={(event) =>
+                setParams(event.target.value ? { loadId: event.target.value } : {})
+              }
+            >
+              <option value="">Select a load</option>
+              {data?.loads.map((load) => (
+                <option value={load.id} key={load.id}>
+                  {load.vehicleId} · Trip {load.trip} ·{' '}
+                  {load.released
+                    ? 'Released'
+                    : load.completed
+                      ? 'Ready for release'
+                      : !load.issueResolved
+                        ? 'Held'
+                        : 'Awaiting loading'}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
-      </>
-    )
-  }
+      </Panel>
+      {loadId ? (
+        <ReleaseLoad key={loadId} loadId={loadId} />
+      ) : (
+        <EmptyState
+          title="Select a vehicle and trip"
+          description="Review its loading record before authorizing departure."
+        />
+      )}
+    </>
+  )
+}
 
-  // Plan published overview
+function ReleaseLoad({ loadId }: { loadId: string }) {
+  const { data } = useOperations(),
+    apis = useApis(),
+    action = useAction()
+  const load = data?.loads.find((load) => load.id === loadId),
+    { url } = useEvidence(load?.photoId)
+  if (!data) return <Notice title="Loading readiness…" />
+  if (!load) return <EmptyState title="Load not found" />
+  const vehicle = data.vehicles.find((vehicle) => vehicle.id === load.vehicleId)
+  const errors = departureErrors(data, load),
+    cases = load.items.reduce((n, i) => n + i.loaded, 0),
+    total = load.items.reduce((n, i) => n + i.expected, 0),
+    revNum = load.revision.toString().padStart(2, '0'),
+    deferred = data.orders.filter((o) => o.status === 'Deferred')
   return (
     <>
       <PageHeading
@@ -1085,17 +1003,93 @@ export function ReleasePage() {
         description={`Revision ${revNum} · Published Friday at 16:12 · Dispatcher`}
       />
       <PlanningSteps current={4} />
-      <Notice tone="success" title="Published successfully">
-        {deferred.length === 0
-          ? `${data.orders.length} order allocations are available to loading and delivery workspaces. No orders were deferred.`
-          : `${data.orders.filter((o) => o.vehicleId).length} order allocations and ${deferred.length} reason-coded deferrals are now available to their respective workspaces.`}
-      </Notice>
-
-      <div className="split-grid" style={{ marginTop: 20 }}>
-        <Panel title="Loading & departure" description="Review the loading checklist, shortfalls and photographic evidence for each departing trip.">
+      {load.issue && !load.issueResolved && (
+        <Notice title="Shortfall requires Dispatcher decision" tone="danger">
+          {load.issue}
+          <div className="mt-3">
+            <Button
+              disabled={action.isPending || load.released}
+              onClick={() =>
+                action.run(
+                  () => apis.loading.resolveIssue(load.id),
+                  'Replacement approved. Loader must acknowledge the revision and repeat checks.',
+                )
+              }
+            >
+              Approve replacement and revise load
+            </Button>
+          </div>
+        </Notice>
+      )}
+      {errors.length > 0 && !load.released && (
+        <Notice title="Awaiting loading evidence">{errors.join(' ')}</Notice>
+      )}
+      {load.released && (
+        <Notice title="Vehicle released for departure" tone="success">
+          The Driver workspace can now start the assigned route.
+        </Notice>
+      )}
+      <div className="split-grid">
+        <Panel
+          title={`${load.vehicleId} · Trip ${load.trip} · ${vehicle?.type ?? 'Vehicle'}`}
+          action={
+            <StatusBadge>
+              {load.released ? 'En route' : errors.length ? 'Held for proof' : 'Ready'}
+            </StatusBadge>
+          }
+        >
           <div className="panel-body">
-            <Button className="w-full" onClick={() => setShowDeparture(true)}>
-              Open departure readiness
+            <div className="check-row">
+              <Truck size={19} />
+              <div>
+                <strong>Load sequence</strong>
+                <small>
+                  {cases} / {total} cases reconciled ·{' '}
+                  {load.items.map((item) => item.outlet).join(' → ')}
+                </small>
+              </div>
+            </div>
+            <div className="check-row">
+              <ShieldCheck size={19} />
+              <div>
+                <strong>Safety checks</strong>
+                <small>
+                  {Object.values(load.checks).filter(Boolean).length} / 3 confirmed ·{' '}
+                  {load.issue && !load.issueResolved
+                    ? 'Shortfall unresolved'
+                    : 'No unresolved shortfalls'}
+                </small>
+              </div>
+            </div>
+            <CapacityBar
+              label="Weight"
+              used={data.orders
+                .filter((o) => o.vehicleId === load.vehicleId && o.trip === load.trip)
+                .reduce((n, o) => n + o.weight, 0)}
+              total={vehicle?.weightCapacity ?? 1}
+              unit="kg"
+            />
+            <CapacityBar
+              label="Volume"
+              used={data.orders
+                .filter((o) => o.vehicleId === load.vehicleId && o.trip === load.trip)
+                .reduce((n, o) => n + o.volume, 0)}
+              total={vehicle?.volumeCapacity ?? 1}
+              unit="m³"
+            />
+            <Button
+              className="w-full mt-5"
+              disabled={!!errors.length || load.released || action.isPending}
+              onClick={() =>
+                action.run(
+                  () => apis.planning.release(load.id),
+                  'Departure released in the local workspace',
+                )
+              }
+            >
+              {load.released
+                ? 'Departure released'
+                : `Dispatch ${load.vehicleId} · Trip ${load.trip}`}
             </Button>
           </div>
         </Panel>
@@ -1103,11 +1097,24 @@ export function ReleasePage() {
           title={deferred.length === 0 ? 'All outlets served' : `${deferred.length} deferred orders`}
         >
           <div className="panel-body">
-            {deferred.length === 0 ? (
-              <>
-                <p style={{ fontSize: 14, color: '#6e737b', marginBottom: 16 }}>No capacity deferrals</p>
-                <Button variant="outline" className="w-full">
-                  View live fleet
+            {url ? (
+              <img src={url} alt="Loading proof attached by the Loader" className="proof-image" />
+            ) : (
+              <Notice title="Loading photograph not attached">
+                The loader must complete checks and attach a clear photograph of the load.
+              </Notice>
+            )}
+            <Link to={`/loader/loading/${load.id}`}>
+              <Button variant="outline" className="w-full">
+                Open Loader workspace
+                <ArrowRight size={16} />
+              </Button>
+            </Link>
+            {load.released && (
+              <Link to="/driver/home">
+                <Button variant="outline" className="w-full mt-3">
+                  Open Driver workspace
+                  <ArrowRight size={16} />
                 </Button>
               </>
             ) : (

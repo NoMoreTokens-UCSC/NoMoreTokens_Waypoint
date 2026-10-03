@@ -77,6 +77,11 @@ export interface Load {
   trip: number
   revision: number
   bay: string
+  depot?: string
+  departureTime?: string
+  acknowledgedRevision?: number
+  revisionChanges?: string[]
+  issueDetails?: LoadIssueInput
   items: { outlet: string; name: string; expected: number; loaded: number; stop: number }[]
   checks: { refrigeration: boolean; condition: boolean; restraints: boolean }
   issue?: string
@@ -84,6 +89,12 @@ export interface Load {
   photoId?: string
   completed: boolean
   released: boolean
+}
+export interface LoadIssueInput {
+  kind: 'Missing' | 'Damaged'
+  outlet: string
+  affectedCases: number
+  description: string
 }
 export interface Trip {
   id: string
@@ -97,6 +108,7 @@ export interface Trip {
 }
 export interface Stop {
   id: string
+  loadId?: string
   outlet: string
   name: string
   address: string
