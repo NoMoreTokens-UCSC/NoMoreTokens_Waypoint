@@ -14,15 +14,18 @@ from app.models.audit import AuditLog
 from app.models.deferral import Deferral
 from app.models.issue import Issue
 from app.models.order import Order, OrderLine
-from app.models.plan import Plan
+from app.models.plan import Plan, Stop, StopOrder, Trip
 from app.models.receipt import Receipt
+from app.models.reference import Outlet
 from app.schemas.order import (
     DeferralHistoryOut,
     IssueCreate,
     OrderCreate,
     OrderOut,
+    OrderUpdate,
     ReceiptCreate,
 )
+from app.schemas.plan import StopOut
 from app.services.audit import log_action
 from app.services.state_machine import transition_order
 
@@ -58,17 +61,32 @@ def create_order(
             detail={"code": "FORBIDDEN", "message": "You can only place orders for your own outlet."},
         )
 
+    outlet = db.query(Outlet).filter(Outlet.outlet_id == body.outlet_id).first()
+    brand = body.brand or (outlet.brand if outlet else "Fresh")
+    delivery_date = body.delivery_date or clock.delivery_date()
+    total_cases = body.total_cases if body.total_cases > 0 else (body.cases or 0)
+    total_weight = (
+        body.total_weight
+        if (body.total_weight is not None and body.total_weight > 0)
+        else round(total_cases * 12.0, 2)
+    )
+    total_volume = (
+        body.total_volume
+        if (body.total_volume is not None and body.total_volume > 0)
+        else round(total_cases * 0.04, 3)
+    )
+
     past_cutoff = clock.is_past_cutoff()
     order = Order(
-        reference=_generate_reference(db, body.delivery_date),
+        reference=_generate_reference(db, delivery_date),
         outlet_id=body.outlet_id,
-        brand=body.brand,
+        brand=brand,
         temperature_class=body.temperature_class,
-        delivery_date=body.delivery_date,
+        delivery_date=delivery_date,
         status="PLACED",
-        total_weight=body.total_weight,
-        total_volume=body.total_volume,
-        total_cases=body.total_cases,
+        total_weight=total_weight,
+        total_volume=total_volume,
+        total_cases=total_cases,
         priority=body.priority,
         placed_at=clock.now(),
         cutoff_missed=past_cutoff,
@@ -88,62 +106,69 @@ def create_order(
     return order
 
 
-@router.get("", response_model=list[OrderOut])
-def list_orders(
+@router.get("/stops", response_model=list[StopOut])
+def list_order_stops(
     db: DbDep,
     current_user: CurrentUser,
-    date: Optional[dt.date] = Query(None),
-    status_filter: Optional[str] = Query(None, alias="status"),
     outlet_id: Optional[str] = Query(None),
+    date: Optional[dt.date] = Query(None),
 ):
-    q = db.query(Order).options(selectinload(Order.lines))
+    """Returns delivery stops for the store manager's outlet (or scoped by query param for dispatchers)."""
+    target_outlet = current_user.outlet_id if current_user.role == "STORE_MANAGER" else (outlet_id or current_user.outlet_id)
+    target_date = date or clock.delivery_date()
 
-    # RBAC scoping
-    if current_user.role == "STORE_MANAGER":
-        q = q.filter(Order.outlet_id == current_user.outlet_id)
-    elif outlet_id:
-        q = q.filter(Order.outlet_id == outlet_id)
+    q = (
+        db.query(Stop)
+        .join(Trip, Stop.trip_id == Trip.id)
+        .join(Plan, Trip.plan_id == Plan.id)
+        .options(
+            selectinload(Stop.outlet_rel),
+            selectinload(Stop.trip_rel),
+            selectinload(Stop.delivery_events),
+            selectinload(Stop.stop_orders).selectinload(StopOrder.order_rel),
+        )
+    )
 
-    if date:
-        q = q.filter(Order.delivery_date == date)
-    if status_filter:
-        q = q.filter(Order.status == status_filter)
+    if target_outlet:
+        q = q.filter(Stop.outlet_id == target_outlet)
 
-    return q.order_by(Order.placed_at.desc()).all()
+    if target_date:
+        q = q.filter(Plan.delivery_date == target_date)
+
+    stops = q.order_by(Stop.id.desc()).all()
+    if not stops and target_outlet:
+        stops = (
+            db.query(Stop)
+            .options(
+                selectinload(Stop.outlet_rel),
+                selectinload(Stop.trip_rel),
+                selectinload(Stop.delivery_events),
+                selectinload(Stop.stop_orders).selectinload(StopOrder.order_rel),
+            )
+            .filter(Stop.outlet_id == target_outlet)
+            .order_by(Stop.id.desc())
+            .limit(10)
+            .all()
+        )
+    return stops
 
 
-@router.get("/{order_id}", response_model=OrderOut)
-def get_order(order_id: int, db: DbDep, current_user: CurrentUser):
-    order = db.get(Order, order_id, options=[selectinload(Order.lines)])
-    if not order:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
-    # RBAC
-    if current_user.role == "STORE_MANAGER" and order.outlet_id != current_user.outlet_id:
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Not your outlet."})
-    return order
-
-
-# ---------------------------------------------------------------------------
-# Dispatcher: confirm order & close intake (PLACED/CONFIRMED -> QUEUED at cutoff)
-# ---------------------------------------------------------------------------
-
-
-@router.post("/{order_id}/confirm", status_code=status.HTTP_200_OK)
-def confirm_order(
-    order_id: int,
-    db: DbDep,
-    current_user: CurrentUser,
-    _: None = require_role("DISPATCHER"),
-):
-    order = db.get(Order, order_id)
-    if not order:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
-    before = {"status": order.status}
-    transition_order(order, "CONFIRMED")
-    log_action(db, "CONFIRM_ORDER", "Order", order.id, actor_user_id=current_user.id,
-               before=before, after={"status": order.status})
-    db.commit()
-    return {"ok": True, "status": order.status}
+@router.get("/intake-status")
+def get_intake_status(db: DbDep, current_user: CurrentUser):
+    """Return whether cutoff is passed and whether a plan has been published for tomorrow's delivery."""
+    past_cutoff = clock.is_past_cutoff()
+    delivery_date = clock.delivery_date()
+    published_plan = (
+        db.query(Plan)
+        .filter(Plan.delivery_date == delivery_date, Plan.status == "PUBLISHED")
+        .first()
+    )
+    return {
+        "cutoff_closed": past_cutoff,
+        "published": published_plan is not None,
+        "delivery_date": str(delivery_date),
+        "now": clock.now().isoformat(),
+    }
 
 
 @router.post("/close", status_code=status.HTTP_200_OK)
@@ -170,22 +195,183 @@ def close_intake(
     return {"closed": len(orders), "delivery_date": str(target_date)}
 
 
-@router.get("/intake-status")
-def get_intake_status(db: DbDep, current_user: CurrentUser):
-    """Return whether cutoff is passed and whether a plan has been published for tomorrow's delivery."""
-    past_cutoff = clock.is_past_cutoff()
-    delivery_date = clock.delivery_date()
-    published_plan = (
-        db.query(Plan)
-        .filter(Plan.delivery_date == delivery_date, Plan.status == "PUBLISHED")
-        .first()
+@router.get("", response_model=list[OrderOut])
+def list_orders(
+    db: DbDep,
+    current_user: CurrentUser,
+    date: Optional[dt.date] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    outlet_id: Optional[str] = Query(None),
+):
+    q = db.query(Order).options(
+        selectinload(Order.lines),
+        selectinload(Order.outlet_rel),
+        selectinload(Order.receipts),
+        selectinload(Order.issues),
+        selectinload(Order.delivery_events),
+        selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
     )
-    return {
-        "cutoff_closed": past_cutoff,
-        "published": published_plan is not None,
-        "delivery_date": str(delivery_date),
-        "now": clock.now().isoformat(),
-    }
+
+    # RBAC scoping
+    if current_user.role == "STORE_MANAGER":
+        q = q.filter(Order.outlet_id == current_user.outlet_id)
+    elif outlet_id:
+        q = q.filter(Order.outlet_id == outlet_id)
+
+    if date:
+        q = q.filter(Order.delivery_date == date)
+    if status_filter:
+        q = q.filter(Order.status == status_filter)
+
+    return q.order_by(Order.placed_at.desc()).all()
+
+
+@router.get("/{order_id}", response_model=OrderOut)
+def get_order(order_id: int, db: DbDep, current_user: CurrentUser):
+    order = db.get(
+        Order,
+        order_id,
+        options=[
+            selectinload(Order.lines),
+            selectinload(Order.outlet_rel),
+            selectinload(Order.receipts),
+            selectinload(Order.issues),
+            selectinload(Order.delivery_events),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+        ],
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
+    # RBAC
+    if current_user.role == "STORE_MANAGER" and order.outlet_id != current_user.outlet_id:
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Not your outlet."})
+    return order
+
+
+@router.patch("/{order_id}", response_model=OrderOut)
+def update_order(
+    order_id: int,
+    body: OrderUpdate,
+    db: DbDep,
+    current_user: CurrentUser,
+    _: None = require_role("STORE_MANAGER", "DISPATCHER"),
+):
+    order = db.get(
+        Order,
+        order_id,
+        options=[
+            selectinload(Order.lines),
+            selectinload(Order.outlet_rel),
+            selectinload(Order.receipts),
+            selectinload(Order.issues),
+            selectinload(Order.delivery_events),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+        ],
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
+    if current_user.role == "STORE_MANAGER":
+        if order.outlet_id != current_user.outlet_id:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Not your outlet."})
+        if order.status not in ("PLACED", "CONFIRMED", "QUEUED", "PLANNED"):
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_STATE", "message": f"Cannot modify order in {order.status} state."},
+            )
+        published = db.query(Plan).filter(Plan.delivery_date == order.delivery_date, Plan.status == "PUBLISHED").first()
+        if published and order.status in ("PLANNED", "LOADED", "IN_TRANSIT", "DELIVERED"):
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "PLAN_PUBLISHED", "message": "Cannot modify order once plan is published."},
+            )
+
+    before = {"total_cases": order.total_cases, "total_weight": order.total_weight, "total_volume": order.total_volume}
+    new_cases = body.cases if body.cases is not None else body.total_cases
+    if new_cases is not None:
+        order.total_cases = new_cases
+        order.total_weight = (
+            body.total_weight
+            if (body.total_weight is not None and body.total_weight > 0)
+            else round(new_cases * 12.0, 2)
+        )
+        order.total_volume = (
+            body.total_volume
+            if (body.total_volume is not None and body.total_volume > 0)
+            else round(new_cases * 0.04, 3)
+        )
+    if body.notes is not None:
+        order.notes = body.notes
+
+    log_action(db, "UPDATE_ORDER", "Order", order.id, actor_user_id=current_user.id,
+               before=before, after={"total_cases": order.total_cases, "total_weight": order.total_weight})
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@router.post("/{order_id}/cancel", response_model=OrderOut)
+def cancel_order(
+    order_id: int,
+    db: DbDep,
+    current_user: CurrentUser,
+    _: None = require_role("STORE_MANAGER", "DISPATCHER"),
+):
+    order = db.get(
+        Order,
+        order_id,
+        options=[
+            selectinload(Order.lines),
+            selectinload(Order.outlet_rel),
+            selectinload(Order.receipts),
+            selectinload(Order.issues),
+            selectinload(Order.delivery_events),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+        ],
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
+    if current_user.role == "STORE_MANAGER":
+        if order.outlet_id != current_user.outlet_id:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Not your outlet."})
+        if order.status in ("LOADED", "IN_TRANSIT", "DELIVERED", "PARTIAL", "FAILED", "CANCELLED"):
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_STATE", "message": f"Cannot cancel order in {order.status} state."},
+            )
+
+    before = {"status": order.status}
+    transition_order(order, "CANCELLED")
+    # Clean up stop orders
+    db.query(StopOrder).filter(StopOrder.order_id == order.id).delete()
+
+    log_action(db, "CANCEL_ORDER", "Order", order.id, actor_user_id=current_user.id,
+               before=before, after={"status": order.status})
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+# ---------------------------------------------------------------------------
+# Dispatcher: confirm order & close intake (PLACED/CONFIRMED -> QUEUED at cutoff)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{order_id}/confirm", status_code=status.HTTP_200_OK)
+def confirm_order(
+    order_id: int,
+    db: DbDep,
+    current_user: CurrentUser,
+    _: None = require_role("DISPATCHER"),
+):
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
+    before = {"status": order.status}
+    transition_order(order, "CONFIRMED")
+    log_action(db, "CONFIRM_ORDER", "Order", order.id, actor_user_id=current_user.id,
+               before=before, after={"status": order.status})
+    db.commit()
+    return {"ok": True, "status": order.status}
 
 
 # ---------------------------------------------------------------------------
@@ -207,12 +393,47 @@ def confirm_receipt(
     if order.outlet_id != current_user.outlet_id:
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Not your outlet."})
 
-    receipt = Receipt(order_id=order.id, confirmed_by=current_user.id, status=body.status)
+    outcome = (body.outcome or "").upper()
+    receipt_status = body.status
+    if outcome == "FULL":
+        receipt_status = "FULL"
+    elif outcome == "SHORT":
+        receipt_status = "PARTIAL"
+    elif outcome == "DAMAGED":
+        receipt_status = "DISPUTED"
+    elif not receipt_status:
+        receipt_status = "FULL"
+
+    receipt = Receipt(order_id=order.id, confirmed_by=current_user.id, status=receipt_status)
     db.add(receipt)
+
+    if outcome in ("SHORT", "DAMAGED") or receipt_status in ("PARTIAL", "DISPUTED"):
+        import json
+        issue_type = "SHORT" if (outcome == "SHORT" or receipt_status == "PARTIAL") else "DAMAGED"
+        desc_json = json.dumps({
+            "received": body.received_qty if body.received_qty is not None else order.total_cases,
+            "affected": body.affected_qty or 0,
+            "notes": body.notes or "",
+        })
+        issue = Issue(
+            order_id=order.id,
+            reported_by=current_user.id,
+            type=issue_type,
+            description=desc_json,
+        )
+        db.add(issue)
+
+    if receipt_status == "PARTIAL":
+        if order.status in ("LOADED", "IN_TRANSIT", "DELIVERED"):
+            order.status = "PARTIAL"
+    elif receipt_status == "FULL":
+        if order.status in ("LOADED", "IN_TRANSIT"):
+            order.status = "DELIVERED"
+
     log_action(db, "CONFIRM_RECEIPT", "Order", order.id, actor_user_id=current_user.id,
-               after={"receipt_status": body.status})
+               after={"receipt_status": receipt_status, "outcome": outcome})
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "receipt_status": receipt_status}
 
 
 @router.post("/{order_id}/issues", status_code=status.HTTP_201_CREATED)

@@ -16,10 +16,9 @@ export function StorePendingHandoffs() {
     return stops
       .filter(
         (stop) =>
-          route.started &&
-          route.stops.some((assigned) => assigned.id === stop.id) &&
           stop.outlet === session.outletId &&
-          stop.status === 'Arrived',
+          stop.status === 'Arrived' &&
+          (route.stops.length === 0 || (route.started && route.stops.some((assigned) => assigned.id === stop.id))),
       )
       .map((stop) => ({ stop, draft: drafts.find((draft) => draft.stopId === stop.id) }))
   })

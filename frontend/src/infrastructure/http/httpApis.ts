@@ -40,12 +40,18 @@ function mapOrderStatus(s: string): OrderStatus {
   return (map[s] ?? 'Confirmed') as OrderStatus
 }
 
+function mapReceiptStatus(status?: string): Order['receipt'] {
+  if (status === 'FULL') return 'Confirmed'
+  if (status === 'PARTIAL' || status === 'DISPUTED') return 'Issue reported'
+  return 'Pending'
+}
+
 function mapOrder(o: ApiOrder): Order {
   return {
     id: String(o.id),
     outlet: o.outlet_id,
     outletName: o.outlet_id,   // enriched by reference data if needed
-    brand: o.brand as Order['brand'],
+    brand: (o.brand as Order['brand']) ?? 'Fresh',
     window: o.window_open ?? '05:00',
     windowEnd: o.window_close ?? '07:30',
     volume: o.total_volume,
@@ -55,8 +61,20 @@ function mapOrder(o: ApiOrder): Order {
     status: mapOrderStatus(o.status),
     priority: o.priority,
     vehicleId: o.vehicle_id,
-    receipt: 'Pending',
-    placedAt: o.created_at,
+    receipt: mapReceiptStatus(o.receipt_status),
+    receiptReport: o.receipt_report
+      ? {
+          kind: o.receipt_report.kind as 'Missing' | 'Damaged',
+          received: o.receipt_report.received,
+          affected: o.receipt_report.affected,
+          description: o.receipt_report.description,
+          recordedAt: o.receipt_report.recorded_at ?? new Date().toISOString(),
+        }
+      : undefined,
+    placedAt: o.placed_at ?? o.created_at,
+    deliveredAt: o.delivered_at,
+    deliveryDate: o.delivery_date,
+    cancelledAt: o.status === 'CANCELLED' ? (o.updated_at ?? o.created_at) : undefined,
   }
 }
 
@@ -112,6 +130,7 @@ function mapTrip(t: ApiTrip): Trip {
 
 interface ApiOrder {
   id: number
+  reference?: string
   outlet_id: string
   brand: string
   temperature_class: string
@@ -123,7 +142,19 @@ interface ApiOrder {
   vehicle_id?: string
   window_open?: string
   window_close?: string
+  receipt_status?: string
+  receipt_report?: {
+    kind: string
+    received: number
+    affected: number
+    description: string
+    recorded_at?: string
+  }
+  delivered_at?: string
+  delivery_date?: string
+  placed_at?: string
   created_at?: string
+  updated_at?: string
 }
 
 interface ApiStop {
@@ -206,18 +237,33 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
 
     async placeOrders(outlet, inputs) {
       for (const inp of inputs) {
-        await request('/orders', {
-          method: 'POST',
-          body: JSON.stringify({
-            outlet_id: outlet,
-            temperature_class: inp.temperature === 'Chilled' ? 'CHILLED' : 'AMBIENT',
-            cases: inp.cases,
-            total_weight: inp.weight,
-            total_volume: inp.volume,
-            window_open: inp.window,
-            window_close: inp.windowEnd,
-          }),
-        })
+        if (inp.orderId) {
+          await request(`/orders/${inp.orderId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              cases: inp.cases,
+              total_cases: inp.cases,
+              total_weight: inp.weight,
+              total_volume: inp.volume,
+              window_open: inp.window,
+              window_close: inp.windowEnd,
+            }),
+          })
+        } else {
+          await request('/orders', {
+            method: 'POST',
+            body: JSON.stringify({
+              outlet_id: outlet,
+              temperature_class: inp.temperature === 'Chilled' ? 'CHILLED' : 'AMBIENT',
+              cases: inp.cases,
+              total_cases: inp.cases,
+              total_weight: inp.weight,
+              total_volume: inp.volume,
+              window_open: inp.window,
+              window_close: inp.windowEnd,
+            }),
+          })
+        }
       }
     },
 
@@ -610,10 +656,20 @@ function createHttpDeliveryApi(): DeliveryApi {
     },
 
     async listStops(filter = {}) {
+      if (filter.outletId) {
+        const stops = await request<ApiStop[]>(`/orders/stops?outlet_id=${filter.outletId}`).catch(() => null)
+        if (stops) {
+          return stops.map(mapStop)
+        }
+      }
       const resp = await request<ApiTrip>('/driver/trips/current').catch(() => null)
-      return (resp?.stops ?? [])
-        .map(mapStop)
-        .filter((s) => !filter.outletId || s.outlet === filter.outletId)
+      if (resp?.stops) {
+        return resp.stops
+          .map(mapStop)
+          .filter((s) => !filter.outletId || s.outlet === filter.outletId)
+      }
+      const stops = await request<ApiStop[]>('/orders/stops').catch(() => [] as ApiStop[])
+      return stops.map(mapStop)
     },
 
     async startRoute() {
