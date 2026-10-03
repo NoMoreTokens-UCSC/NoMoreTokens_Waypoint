@@ -77,6 +77,9 @@ class OrderOut(OrmModel):
     notes: Optional[str] = None
     lines: list[OrderLineOut] = []
     vehicle_id: Optional[str] = None
+    trip: Optional[int] = None
+    outlet_name: Optional[str] = None
+    deferral_reason: Optional[str] = None
     window_open: Optional[str] = None
     window_close: Optional[str] = None
     receipt_status: Optional[str] = None
@@ -84,6 +87,13 @@ class OrderOut(OrmModel):
     delivered_at: Optional[dt.datetime] = None
     created_at: Optional[dt.datetime] = None
     updated_at: Optional[dt.datetime] = None
+
+
+class DeferralCreate(BaseModel):
+    order_id: int
+    reason_code: str
+    explanation: Optional[str] = None
+    is_override: bool = False
 
 
 class ReceiptCreate(BaseModel):

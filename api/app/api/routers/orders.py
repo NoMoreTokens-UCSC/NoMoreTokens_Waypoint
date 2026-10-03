@@ -163,8 +163,20 @@ def get_intake_status(db: DbDep, current_user: CurrentUser):
         .filter(Plan.delivery_date == delivery_date, Plan.status == "PUBLISHED")
         .first()
     )
+    unclosed_count = (
+        db.query(Order)
+        .filter(Order.delivery_date == delivery_date, Order.status.in_(["PLACED", "CONFIRMED"]))
+        .count()
+    )
+    total_count = db.query(Order).filter(Order.delivery_date == delivery_date).count()
+    intake_closed_log = (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "CLOSE_INTAKE", AuditLog.entity_type == "Intake")
+        .first()
+    )
+    is_closed = past_cutoff or (intake_closed_log is not None) or (total_count > 0 and unclosed_count == 0) or published_plan is not None
     return {
-        "cutoff_closed": past_cutoff,
+        "cutoff_closed": is_closed,
         "published": published_plan is not None,
         "delivery_date": str(delivery_date),
         "now": clock.now().isoformat(),
@@ -191,6 +203,8 @@ def close_intake(
         transition_order(order, "QUEUED")
         log_action(db, "CLOSE_INTAKE", "Order", order.id, actor_user_id=current_user.id,
                    before=before, after={"status": order.status})
+    log_action(db, "CLOSE_INTAKE", "Intake", 0, actor_user_id=current_user.id,
+               after={"closed": len(orders), "delivery_date": str(target_date)})
     db.commit()
     return {"closed": len(orders), "delivery_date": str(target_date)}
 

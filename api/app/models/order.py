@@ -96,6 +96,25 @@ class Order(Base):
         return None
 
     @property
+    def trip(self) -> Optional[int]:
+        for so in self.stop_orders or []:
+            if so.stop_rel and so.stop_rel.trip_rel:
+                return so.stop_rel.trip_rel.trip_number
+        return None
+
+    @property
+    def deferral_reason(self) -> Optional[str]:
+        if self.deferrals:
+            return self.deferrals[-1].reason_code
+        return None
+
+    @property
+    def outlet_name(self) -> Optional[str]:
+        if self.outlet_rel:
+            return f"{self.outlet_rel.brand} {self.outlet_rel.district}"
+        return None
+
+    @property
     def receipt_status(self) -> Optional[str]:
         if self.receipts:
             return self.receipts[-1].status

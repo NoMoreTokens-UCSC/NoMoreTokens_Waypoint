@@ -44,4 +44,5 @@ export interface OrdersApi {
   /** Withdraws an order before the cutoff. Refused once intake is closed or the plan is published. */
   cancelOrder(orderId: string): Promise<void>
   acknowledgeDeferral(orderId: string): Promise<void>
+  closeIntake?(): Promise<void>
 }

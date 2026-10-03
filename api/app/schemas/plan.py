@@ -37,6 +37,8 @@ class TripOut(OrmModel):
     planned_return: Optional[dt.datetime] = None
     planned_distance: Optional[float] = None
     planned_fuel: Optional[float] = None
+    planned_weight: Optional[float] = 0.0
+    planned_volume: Optional[float] = 0.0
     status: str
     stops: list[StopOut] = []
     photo_path: Optional[str] = None
