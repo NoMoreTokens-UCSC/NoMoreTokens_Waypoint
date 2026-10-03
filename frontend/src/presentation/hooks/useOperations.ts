@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { useServices } from '../providers/ServicesContext'
 import { useApis } from '../providers/ApisContext'
 
-import { getToken } from '../../infrastructure/http/apiClient'
+import { getToken, getUser } from '../../infrastructure/http/apiClient'
 import type { Snapshot, Stop } from '../../domain/models'
 import type { Apis } from '../../domain/api'
 import type { OperationsService } from '../../application/OperationsService'
@@ -13,44 +13,54 @@ import type { OperationsService } from '../../application/OperationsService'
 async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise<Snapshot> {
   const base = await services.repository.getSnapshot()
   try {
+    const user = getUser()
+    const roleUpper = (user?.role || '').toUpperCase()
+    const canAccessPlanning = !user || roleUpper === 'DISPATCHER' || roleUpper === 'ADMIN'
+
     const [planState, vehicles, loads] = await Promise.all([
-      apis.planning.getPlan(),
-      apis.fleet.listVehicles(),
-      apis.loading.listLoads(),
+      canAccessPlanning ? apis.planning.getPlan().catch(() => null) : Promise.resolve(null),
+      apis.fleet.listVehicles().catch(() => []),
+      apis.loading.listLoads().catch(() => []),
     ])
 
     const stops: Stop[] = []
-    for (const load of loads) {
-      for (const item of load.items) {
-        stops.push({
-          id: `${load.id}-${item.stop}`,
-          loadId: load.id,
-          outlet: item.outlet,
-          name: item.name,
-          address: 'Colombo',
-          window: '05:00',
-          eta: load.departureTime ?? '05:00',
-          lat: 6.93,
-          lng: 79.86,
-          orderIds: planState.orders.filter((o) => o.outlet === item.outlet).map((o) => o.id),
-          cases: item.expected,
-          status: load.completed ? 'Delivered' : 'Upcoming',
-        })
+    if (loads && loads.length > 0) {
+      for (const load of loads) {
+        for (const item of load.items) {
+          stops.push({
+            id: `${load.id}-${item.stop}`,
+            loadId: load.id,
+            outlet: item.outlet,
+            name: item.name,
+            address: 'Colombo',
+            window: '05:00',
+            eta: load.departureTime ?? '05:00',
+            lat: 6.93,
+            lng: 79.86,
+            orderIds: planState
+              ? planState.orders.filter((o) => o.outlet === item.outlet).map((o) => o.id)
+              : [],
+            cases: item.expected,
+            status: load.completed ? 'Delivered' : 'Upcoming',
+          })
+        }
       }
     }
 
     return {
       ...base,
-      orders: planState.orders,
+      orders: planState ? planState.orders : base.orders,
       vehicles: vehicles.length > 0 ? vehicles : base.vehicles,
       stops: stops.length > 0 ? stops : base.stops,
       loads: loads.length > 0 ? loads : base.loads,
-      settings: {
-        ...base.settings,
-        cutoffClosed: planState.status.cutoffClosed,
-        published: planState.status.published,
-        allocationReviewed: planState.status.allocationReviewed,
-      },
+      settings: planState
+        ? {
+            ...base.settings,
+            cutoffClosed: planState.status.cutoffClosed,
+            published: planState.status.published,
+            allocationReviewed: planState.status.allocationReviewed,
+          }
+        : base.settings,
     }
   } catch {
     return base

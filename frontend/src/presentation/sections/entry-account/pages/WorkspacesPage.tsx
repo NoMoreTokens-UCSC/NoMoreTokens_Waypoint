@@ -3,19 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { roleModules } from '../../../roles/registry'
 import { BackLink, Wordmark, fieldRoles, rolePhotos, roleTitle } from '../components/EntryChrome'
 import { getUser, logout } from '../../../../infrastructure/http/apiClient'
-
-const ROLE_HOME_MAP: Record<string, string> = {
-  DISPATCHER: '/dispatcher/orders',
-  LOADER: '/loader/queue',
-  DRIVER: '/driver/home',
-  STORE_MANAGER: '/store-manager/overview',
-  ADMIN: '/administration/team',
-}
+import { ROLE_HOME_MAP, ROLE_ALLOWED_WORKSPACES } from '../../../shared/guards/RoleRouteGuard'
 
 export default function WorkspacesPage() {
   const navigate = useNavigate()
   const user = getUser()
-  const userHome = user ? (ROLE_HOME_MAP[user.role] ?? '/workspaces') : null
+  const roleUpper = (user?.role || '').toUpperCase()
+  const allowedWorkspaces = user ? ROLE_ALLOWED_WORKSPACES[roleUpper] ?? [] : null
+  const userHome = user ? (ROLE_HOME_MAP[roleUpper] ?? '/workspaces') : null
   const others = roleModules.filter((role) => !fieldRoles.includes(role))
   return (
     <div className="entry-page entry-workspaces">
@@ -95,27 +90,98 @@ export default function WorkspacesPage() {
         <h1>Your workspace.</h1>
         <p className="entry-workspaces-lead">Choose a role to explore the prototype.</p>
         <div className="entry-role-grid">
-          {fieldRoles.map((role) => (
-            <Link key={role.key} to={role.home} className="entry-role-card">
-              <div className="entry-role-text">
-                <h2>{roleTitle(role.label)}</h2>
-                <p>{role.description}</p>
-                <span className="entry-role-open">
-                  Open workspace <ArrowRight size={12} />
-                </span>
-              </div>
-              <img src={rolePhotos[role.key]} alt="" />
-            </Link>
-          ))}
+          {fieldRoles.map((role) => {
+            const isAllowed = !user || allowedWorkspaces?.includes(role.key)
+            const isUserCurrentRole = user && allowedWorkspaces?.includes(role.key)
+
+            if (!isAllowed) {
+              return (
+                <div
+                  key={role.key}
+                  className="entry-role-card"
+                  style={{ opacity: 0.55, cursor: 'not-allowed', filter: 'grayscale(0.3)' }}
+                >
+                  <div className="entry-role-text">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                      <h2>{roleTitle(role.label)}</h2>
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '4px',
+                          background: '#e2e8f0',
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      >
+                        Restricted
+                      </span>
+                    </div>
+                    <p>{role.description}</p>
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                      Requires {role.label} access
+                    </span>
+                  </div>
+                  <img src={rolePhotos[role.key]} alt="" />
+                </div>
+              )
+            }
+
+            return (
+              <Link
+                key={role.key}
+                to={role.home}
+                className="entry-role-card"
+                style={isUserCurrentRole ? { outline: '2px solid #2563eb', outlineOffset: '2px' } : undefined}
+              >
+                <div className="entry-role-text">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <h2>{roleTitle(role.label)}</h2>
+                    {isUserCurrentRole && (
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '4px',
+                          background: '#dbeafe',
+                          color: '#1d4ed8',
+                          border: '1px solid #bfdbfe',
+                        }}
+                      >
+                        Your Role
+                      </span>
+                    )}
+                  </div>
+                  <p>{role.description}</p>
+                  <span className="entry-role-open">
+                    Open workspace <ArrowRight size={12} />
+                  </span>
+                </div>
+                <img src={rolePhotos[role.key]} alt="" />
+              </Link>
+            )
+          })}
         </div>
         {others.length > 0 && (
           <p className="entry-workspaces-more">
             Also available:{' '}
-            {others.map((role) => (
-              <Link key={role.key} to={role.home}>
-                {role.label}
-              </Link>
-            ))}
+            {others.map((role) => {
+              const isAllowed = !user || allowedWorkspaces?.includes(role.key)
+              if (!isAllowed) {
+                return (
+                  <span key={role.key} style={{ color: '#94a3b8' }}>
+                    {role.label} (restricted)
+                  </span>
+                )
+              }
+              return (
+                <Link key={role.key} to={role.home}>
+                  {role.label}
+                </Link>
+              )
+            })}
             {' · '}
             <Link to="/recovery">Saved records</Link>
           </p>

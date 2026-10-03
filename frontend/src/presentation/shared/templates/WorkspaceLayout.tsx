@@ -15,6 +15,7 @@ import { workspaceSearch } from './workspaceSearch'
 import { BreadcrumbContext, Breadcrumbs, type Crumb } from './Breadcrumbs'
 import { BackIcon, BellIcon, BrandMark, ProfileIcon } from './shellIcons'
 import { toast } from 'sonner'
+import { logout as apiLogout } from '../../../infrastructure/http/apiClient'
 
 export function Brand() {
   return (
@@ -60,9 +61,12 @@ export default function WorkspaceLayout() {
   const alertCount = data ? (options.alertCount?.(data, session) ?? 0) : 0
   const logout = () => {
     setConfirmLogout(false)
-    if (session.role === 'driver' && pendingCount)
+    if (session.role === 'driver' && pendingCount) {
       toast.error('Sync your saved records before leaving this workspace.')
-    else window.location.assign('/login')
+      return
+    }
+    apiLogout()
+    window.location.assign('/login')
   }
   const results = search.trim() && data ? headerSearch.find(data, search.trim(), session) : []
   const bell = (
