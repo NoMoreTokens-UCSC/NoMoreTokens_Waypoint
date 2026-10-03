@@ -64,6 +64,30 @@ def create_order(
     outlet = db.query(Outlet).filter(Outlet.outlet_id == body.outlet_id).first()
     brand = body.brand or (outlet.brand if outlet else "Fresh")
     delivery_date = body.delivery_date or clock.delivery_date()
+    # A Fresh outlet orders at most one dry and one chilled order per delivery day;
+    # a second one of the same type must edit the existing order instead.
+    if brand == "Fresh":
+        existing = (
+            db.query(Order)
+            .filter(
+                Order.outlet_id == body.outlet_id,
+                Order.delivery_date == delivery_date,
+                Order.brand == "Fresh",
+                Order.temperature_class == body.temperature_class,
+                Order.status != "CANCELLED",
+            )
+            .first()
+        )
+        if existing:
+            kind = "chilled" if body.temperature_class == "CHILLED" else "dry"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "DUPLICATE_ORDER",
+                    "message": f"A {kind} order already exists for {delivery_date:%d %B}; edit it instead.",
+                    "order_id": existing.id,
+                },
+            )
     total_cases = body.total_cases if body.total_cases > 0 else (body.cases or 0)
     total_weight = (
         body.total_weight

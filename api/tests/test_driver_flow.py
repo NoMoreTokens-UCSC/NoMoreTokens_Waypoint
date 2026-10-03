@@ -109,6 +109,9 @@ def test_driver_operational_endpoints(client, db_session, driver_user, driver_to
     start_resp = client.post("/api/v1/driver/trips/start", headers=headers)
     assert start_resp.status_code == 200, start_resp.text
     assert start_resp.json()["status"] == "IN_TRANSIT"
+    # Orders on the trip are in transit once it leaves, so the store sees them en route.
+    db_session.expire_all()
+    assert db_session.get(Order, order.id).status == "IN_TRANSIT"
 
     # 3. Driver marks arrival at stop
     arr_resp = client.post(

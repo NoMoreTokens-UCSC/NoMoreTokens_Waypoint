@@ -25,9 +25,13 @@ export interface BusinessClock {
 export function useBusinessClock(): BusinessClock {
   const intake = useApiQuery(['intake'], (apis) => apis.orders.getIntakeStatus())
   const closed = intake.data?.cutoffClosed ?? false
-  const now = closed ? DEMO_NOW_AFTER_CUTOFF : DEMO_NOW
+  // With a backend the server decides "now" and the delivery day; the demo uses its fixed Friday.
+  const serverNow = intake.data?.now ? new Date(intake.data.now) : undefined
+  const now = serverNow ?? (closed ? DEMO_NOW_AFTER_CUTOFF : DEMO_NOW)
   const minutes = minutesToCutoff(now)
-  const deliveryDate = nextOperatingDay(now)
+  const deliveryDate = intake.data?.deliveryDate
+    ? new Date(`${intake.data.deliveryDate}T00:00:00+05:30`)
+    : nextOperatingDay(now)
   return {
     now,
     cutoff: CUTOFF,

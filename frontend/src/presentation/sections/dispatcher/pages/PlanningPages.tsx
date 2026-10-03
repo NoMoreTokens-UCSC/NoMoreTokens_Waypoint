@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowRight, CheckCircle2, Circle, WandSparkles, Truck, ShieldCheck } from 'lucide-react'
 import { useOperations, useAction, useEvidence } from '../../../hooks/useOperations'
-import { useServices } from '../../../providers/ServicesContext'
 import { useApis } from '../../../providers/ApisContext'
 import { Button } from '../../../shared/atoms/button'
 import {
@@ -24,7 +23,7 @@ type ConstraintError = { type: ConstraintType; orderId: string; vehicleId: strin
 
 export function AllocationPage() {
   const { data } = useOperations(),
-    service = useServices(),
+    apis = useApis(),
     action = useAction()
   const [vehicleIdx, setVehicleIdx] = useState(0)
   const [constraintError, setConstraintError] = useState<ConstraintError | null>(null)
@@ -68,7 +67,7 @@ export function AllocationPage() {
       setConstraintError({ type: 'VOLUME_CAPACITY', orderId, vehicleId: vehicle.id, trip: tripNum })
       return
     }
-    action.run(() => service.allocate(orderId, vehicle.id, tripNum), 'Order allocated')
+    action.run(() => apis.planning.allocate(orderId, vehicle.id, tripNum), 'Order allocated')
   }
 
   // Constraint review screen
@@ -198,7 +197,7 @@ export function AllocationPage() {
             disabled={action.isPending || data.settings.published}
             onClick={() =>
               action.run(
-                () => service.autoAllocate(),
+                () => apis.planning.autoAllocate(),
                 'Allocation proposed. Review the checks before publishing.',
               )
             }
@@ -481,7 +480,7 @@ const DEFERRAL_REASONS = [
 
 export function DeferralsPage() {
   const { data } = useOperations(),
-    service = useServices(),
+    apis = useApis(),
     action = useAction()
   const [selectingFor, setSelectingFor] = useState<string | null>(null)
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
@@ -557,7 +556,7 @@ export function DeferralsPage() {
               onClick={() => {
                 const reason = selectedReason ?? suggestedReason
                 action.run(async () => {
-                  await service.defer(selectingFor, reason)
+                  await apis.planning.defer(selectingFor, reason)
                   setSelectingFor(null)
                   setSelectedReason(null)
                 }, 'Deferral reason recorded')

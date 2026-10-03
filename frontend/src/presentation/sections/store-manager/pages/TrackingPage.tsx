@@ -50,7 +50,7 @@ export default function TrackingPage() {
   // Before the dispatcher publishes the plan there is no vehicle, arrival time or map to show.
   const dispatched = ['Scheduled', 'En route', 'Delivered'].includes(order.status)
   const stop = proof.stop
-  const arrival = stop?.eta ?? order.window
+  const arrival = stop?.eta || order.window
   const delivered = order.status === 'Delivered'
   const late = runningLate(order, stop)
   const wasLate = deliveredLate(order)
