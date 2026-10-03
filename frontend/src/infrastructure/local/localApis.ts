@@ -236,8 +236,9 @@ export function createLocalApis(service: OperationsService): Apis {
       },
       invite: (name, email, role) => service.invite(name, email, role),
       inviteByMobile: (invitation) => service.inviteByMobile(invitation),
+      createUser: (user) => service.createUser(user),
       completeInvitation: (memberId) => service.completeInvitation(memberId),
-      resetAccess: (memberId) => service.resetAccess(memberId),
+      resetAccess: (memberId, password) => service.resetAccess(memberId, password),
       updateContact: (memberId, contact) => service.updateMemberContact(memberId, contact),
       requestAccountChange: (memberId, detail) => service.requestAccountChange(memberId, detail),
       changeAssignment: (memberId, depot, assignment) =>

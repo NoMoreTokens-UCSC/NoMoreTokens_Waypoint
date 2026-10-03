@@ -83,6 +83,7 @@ export class DexieOperationsRepository implements OperationsRepository {
           const member = record.data.members.find((candidate) => candidate.id === reference.id)
           if (member) {
             member.lastActive ??= reference.lastActive
+            member.username ??= reference.username
             member.joined ??= reference.joined
             member.lastSeen ??= reference.lastSeen
           }

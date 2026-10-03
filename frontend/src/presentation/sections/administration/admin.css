@@ -880,3 +880,51 @@
   background: white;
   border: 1px solid var(--ad-line);
 }
+
+/* Sign-in details: username and password, shown to the administrator to hand over */
+.ad-credential {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: #f5f4f2;
+}
+.ad-credential span {
+  display: block;
+  font-size: 12px;
+  color: #6e737b;
+}
+.ad-credential strong {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 16px;
+  letter-spacing: 0.3px;
+  word-break: break-all;
+}
+.ad-inline {
+  display: flex;
+  gap: 8px;
+}
+.ad-inline input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.ad-inline .ad-btn {
+  min-height: 56px;
+  flex: none;
+}
+.ad-warning {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #fdf3e3;
+  color: #7a5412;
+  font-size: 13px;
+  line-height: 20px;
+}
+.ad-card > .ad-pill {
+  justify-self: start;
+}

@@ -7,7 +7,8 @@ import { useAction } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
 import { Modal } from '../../../shared/molecules/Common'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
-import { Avatar, Btn, Card, CardLabel, Field, Pill } from '../components/AdminKit'
+import { Avatar, Btn, Card, CardLabel, Credential, Field, Pill } from '../components/AdminKit'
+import { generatePassword, passwordProblem } from '../lib/credentials'
 import {
   initials,
   invitableRoles,
@@ -77,20 +78,47 @@ function ChangeRoleDialog({ member, close }: { member: TeamMember; close: () => 
 function ResetDialog({ member, close }: { member: TeamMember; close: () => void }) {
   const apis = useApis()
   const action = useAction()
+  const [password, setPassword] = useState(generatePassword)
+  const [done, setDone] = useState(false)
+  if (done)
+    return (
+      <div className="ad-dialog">
+        <p>
+          {member.name}’s access was reset. Give them the new password yourself; this system does
+          not send it, and it is shown only now.
+        </p>
+        {member.username && <Credential label="Username" value={member.username} />}
+        <Credential label="Temporary password" value={password} />
+        <div className="ad-dialog-actions">
+          <Btn onClick={close}>Done</Btn>
+        </div>
+      </div>
+    )
   return (
     <div className="ad-dialog">
       <p>
-        A new sign-in link is sent to {member.mobile}. Their current sign-in stops working until
-        they use it. The reset is recorded in the audit log.
+        This sets a new temporary password. Their current password stops working. You give the new
+        one to {member.name} yourself; the reset is recorded in the audit log.
       </p>
+      <Field label="New temporary password">
+        <span className="ad-inline">
+          <input
+            value={password}
+            spellCheck={false}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <Btn variant="grey" onClick={() => setPassword(generatePassword())}>
+            Generate
+          </Btn>
+        </span>
+      </Field>
       <div className="ad-dialog-actions">
         <Btn
-          disabled={action.isPending}
+          disabled={action.isPending || Boolean(passwordProblem(password))}
           onClick={() =>
             action.run(async () => {
-              await apis.team.resetAccess(member.id)
-              toast.success('Access reset. A new invite link was recorded.')
-              close()
+              await apis.team.resetAccess(member.id, password)
+              setDone(true)
             })
           }
         >
@@ -329,10 +357,11 @@ export default function UserDetailPage() {
   const accessRows: [string, string][] = [
     ['Role', roleLabels[member.role]],
     ['Workspace', workspaceText[member.role]],
+    ['Username', member.username ?? '—'],
     [
       'Sign-in',
       member.status === 'Invited'
-        ? 'Invite sent · not opened yet'
+        ? 'Account created · not signed in yet'
         : member.status === 'Suspended'
           ? 'Suspended · cannot sign in'
           : `Invite accepted ${member.joined ?? '—'}`,
