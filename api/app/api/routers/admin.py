@@ -144,7 +144,7 @@ def capacity_forecast(
         db.query(Order)
         .filter(
             Order.delivery_date == target_date,
-            Order.status.in_(["QUEUED", "CONFIRMED", "PLANNED"]),
+            Order.status.notin_(["CANCELLED"]),
         )
         .all()
     )

@@ -123,8 +123,26 @@ def get_order(order_id: int, db: DbDep, current_user: CurrentUser):
 
 
 # ---------------------------------------------------------------------------
-# Dispatcher: close intake (CONFIRMED -> QUEUED at cutoff)
+# Dispatcher: confirm order & close intake (PLACED/CONFIRMED -> QUEUED at cutoff)
 # ---------------------------------------------------------------------------
+
+
+@router.post("/{order_id}/confirm", status_code=status.HTTP_200_OK)
+def confirm_order(
+    order_id: int,
+    db: DbDep,
+    current_user: CurrentUser,
+    _: None = require_role("DISPATCHER"),
+):
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
+    before = {"status": order.status}
+    transition_order(order, "CONFIRMED")
+    log_action(db, "CONFIRM_ORDER", "Order", order.id, actor_user_id=current_user.id,
+               before=before, after={"status": order.status})
+    db.commit()
+    return {"ok": True, "status": order.status}
 
 
 @router.post("/close", status_code=status.HTTP_200_OK)
@@ -137,11 +155,13 @@ def close_intake(
     target_date = date or clock.delivery_date()
     orders = (
         db.query(Order)
-        .filter(Order.delivery_date == target_date, Order.status == "CONFIRMED")
+        .filter(Order.delivery_date == target_date, Order.status.in_(["PLACED", "CONFIRMED"]))
         .all()
     )
     for order in orders:
         before = {"status": order.status}
+        if order.status == "PLACED":
+            transition_order(order, "CONFIRMED")
         transition_order(order, "QUEUED")
         log_action(db, "CLOSE_INTAKE", "Order", order.id, actor_user_id=current_user.id,
                    before=before, after={"status": order.status})

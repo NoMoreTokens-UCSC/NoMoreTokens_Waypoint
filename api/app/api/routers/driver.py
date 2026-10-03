@@ -12,10 +12,11 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import CurrentUser, DbDep, require_role
 from app.core.config import get_settings
 from app.models.delivery import DeliveryEvent
+from app.models.order import Order
 from app.models.plan import Stop, Trip, Plan
 from app.schemas.plan import DeliveryEventIn, DeliveryEventResult, StopOut, SyncBatch, TripOut
 from app.services.audit import log_action
-from app.services.state_machine import transition_stop, transition_trip
+from app.services.state_machine import transition_order, transition_stop, transition_trip
 
 router = APIRouter(prefix="/driver", tags=["driver"])
 
@@ -88,6 +89,23 @@ def record_stop_event(
         except HTTPException:
             pass  # Already in that state — idempotent
 
+    outcome_to_order = {
+        "DELIVERED": "DELIVERED",
+        "PARTIAL": "PARTIAL",
+        "REFUSED": "FAILED",
+        "CLOSED": "FAILED",
+        "FAILED": "FAILED",
+    }
+    if body.order_id:
+        order = db.get(Order, body.order_id)
+        if order:
+            new_order_status = outcome_to_order.get(body.outcome)
+            if new_order_status and order.status != new_order_status:
+                try:
+                    transition_order(order, new_order_status)
+                except HTTPException:
+                    pass
+
     log_action(db, "DELIVERY_EVENT", "Stop", stop_id, actor_user_id=current_user.id,
                after={"outcome": body.outcome, "client_op_id": body.client_op_id})
     db.commit()
@@ -101,6 +119,13 @@ def sync_events(body: SyncBatch, db: DbDep, current_user: CurrentUser, _: None =
     Already-seen client_op_ids are silently accepted.
     """
     results: list[DeliveryEventResult] = []
+    outcome_to_order = {
+        "DELIVERED": "DELIVERED",
+        "PARTIAL": "PARTIAL",
+        "REFUSED": "FAILED",
+        "CLOSED": "FAILED",
+        "FAILED": "FAILED",
+    }
     for event_in in body.events:
         existing = (
             db.query(DeliveryEvent)
@@ -127,6 +152,15 @@ def sync_events(body: SyncBatch, db: DbDep, current_user: CurrentUser, _: None =
                 recorded_by=current_user.id,
             )
             db.add(event)
+            if event_in.order_id:
+                order = db.get(Order, event_in.order_id)
+                if order:
+                    new_order_status = outcome_to_order.get(event_in.outcome)
+                    if new_order_status and order.status != new_order_status:
+                        try:
+                            transition_order(order, new_order_status)
+                        except HTTPException:
+                            pass
             db.flush()
             results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=True))
         except IntegrityError:
