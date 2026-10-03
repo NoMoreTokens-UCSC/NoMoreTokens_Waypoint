@@ -3,6 +3,7 @@ import { profileOf } from '../../domain/outlets'
 import type { Snapshot, TeamMember, Workspace } from '../../domain/models'
 import { useOperations } from '../hooks/useOperations'
 import { roleModules } from '../roles/registry'
+import { getUser } from '../../infrastructure/http/apiClient'
 
 export interface Session {
   role: Workspace
@@ -61,20 +62,48 @@ const initialsOf = (name: string) =>
     .map((part) => part[0]!.toUpperCase())
     .join('')
 
+const ROLE_KEY_MAP: Record<string, Workspace> = {
+  DISPATCHER: 'dispatcher',
+  LOADER: 'loader',
+  DRIVER: 'driver',
+  STORE_MANAGER: 'store-manager',
+  ADMIN: 'administration',
+}
+
 /**
- * Who is using the app. Demo builds derive this from the seeded team; real sign-in
- * replaces only this hook, so pages never read identity from anywhere else.
+ * Who is using the app. Reads identity from real sign-in (getUser) when available,
+ * and falls back to the demo seeded team when running offline.
  */
 export function useSession(): Session {
-  const role = useActiveRole()
+  const activeRole = useActiveRole()
+  const user = getUser()
   const { data } = useOperations()
-  const member = memberFor(data, role)
+  const member = memberFor(data, activeRole)
+
+  if (user) {
+    const mappedRole = ROLE_KEY_MAP[user.role] ?? activeRole
+    const name = user.full_name || user.username
+    const depot = user.depot_id ?? member?.depot ?? 'Peliyagoda'
+    const outletId = user.outlet_id ?? member?.outletId
+    const vehicleId = user.vehicle_id ?? member?.vehicleId
+    return {
+      role: mappedRole,
+      memberId: String(user.id),
+      name,
+      initials: initialsOf(name),
+      depot,
+      outletId,
+      vehicleId,
+      assignment: outletId ? `${outletId}` : vehicleId ? `${vehicleId}` : member?.assignment,
+    }
+  }
+
   // Demo: the store workspace can be opened as another outlet (a different brand).
-  const outlet = role === 'store-manager' ? profileOf(data?.activeOutletId ?? '') : undefined
-  const label = roleModules.find((module) => module.key === role)!.label
+  const outlet = activeRole === 'store-manager' ? profileOf(data?.activeOutletId ?? '') : undefined
+  const label = roleModules.find((module) => module.key === activeRole)?.label ?? 'User'
   const name = member?.name ?? label
   return {
-    role,
+    role: activeRole,
     memberId: member?.id,
     name,
     initials: initialsOf(name),

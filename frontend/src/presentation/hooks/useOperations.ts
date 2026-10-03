@@ -51,19 +51,31 @@ export function useConnectivity() {
 }
 export function useEvidence(id?: string) {
   const apis = useApis()
+  const isDirectUrl = Boolean(
+    id &&
+      (id.startsWith('blob:') ||
+        id.startsWith('http://') ||
+        id.startsWith('https://') ||
+        id.startsWith('/uploads')),
+  )
   const query = useQuery({
     queryKey: [...snapshotKey, 'api', 'evidence', id],
     networkMode: 'always',
-    queryFn: () => apis.delivery.getEvidence(id!),
-    enabled: Boolean(id),
+    queryFn: async () => (id ? ((await apis.delivery.getEvidence(id)) ?? null) : null),
+    enabled: Boolean(id && !isDirectUrl),
   })
-  const url = useBlobUrl(query.data?.photo)
+  const blobUrl = useBlobUrl(query.data?.photo)
+  const url = isDirectUrl
+    ? id?.startsWith('/uploads')
+      ? `${(import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1').replace(/\/api\/v1\/?$/, '')}${id}`
+      : id
+    : blobUrl
   return {
-    evidence: query.data,
+    evidence: query.data ?? undefined,
     url,
-    isPending: query.isPending,
-    isError: query.isError,
-    error: query.error,
+    isPending: isDirectUrl ? false : query.isPending,
+    isError: isDirectUrl ? false : query.isError,
+    error: isDirectUrl ? null : query.error,
     refetch: query.refetch,
   }
 }

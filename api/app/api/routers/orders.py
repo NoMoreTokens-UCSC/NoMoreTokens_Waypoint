@@ -14,6 +14,7 @@ from app.models.audit import AuditLog
 from app.models.deferral import Deferral
 from app.models.issue import Issue
 from app.models.order import Order, OrderLine
+from app.models.plan import Plan
 from app.models.receipt import Receipt
 from app.schemas.order import (
     DeferralHistoryOut,
@@ -167,6 +168,24 @@ def close_intake(
                    before=before, after={"status": order.status})
     db.commit()
     return {"closed": len(orders), "delivery_date": str(target_date)}
+
+
+@router.get("/intake-status")
+def get_intake_status(db: DbDep, current_user: CurrentUser):
+    """Return whether cutoff is passed and whether a plan has been published for tomorrow's delivery."""
+    past_cutoff = clock.is_past_cutoff()
+    delivery_date = clock.delivery_date()
+    published_plan = (
+        db.query(Plan)
+        .filter(Plan.delivery_date == delivery_date, Plan.status == "PUBLISHED")
+        .first()
+    )
+    return {
+        "cutoff_closed": past_cutoff,
+        "published": published_plan is not None,
+        "delivery_date": str(delivery_date),
+        "now": clock.now().isoformat(),
+    }
 
 
 # ---------------------------------------------------------------------------

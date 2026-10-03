@@ -74,6 +74,13 @@ class Trip(Base):
     stops: Mapped[list["Stop"]] = relationship("Stop", back_populates="trip_rel", cascade="all, delete-orphan")
     load_checks: Mapped[list["LoadCheck"]] = relationship("LoadCheck", back_populates="trip_rel")  # type: ignore[name-defined]
 
+    @property
+    def photo_path(self) -> Optional[str]:
+        for check in reversed(self.load_checks or []):
+            if check.photo_path:
+                return check.photo_path
+        return None
+
 
 class Stop(Base):
     __tablename__ = "stops"

@@ -15,6 +15,7 @@ import type { LoadingApi } from '../../domain/api/loading'
 import type { DeliveryApi } from '../../domain/api/delivery'
 import type { FleetApi } from '../../domain/api/fleet'
 import type { Order, OrderStatus, Stop, Trip, Vehicle, Load } from '../../domain/models'
+import { outletProfiles, profileOf, type OutletProfile } from '../../domain/outlets'
 import { request } from './apiClient'
 
 // ── Status mappers ─────────────────────────────────────────────────────────
@@ -121,6 +122,7 @@ interface ApiOrder {
 interface ApiStop {
   id: number
   outlet_id: string
+  sequence?: number
   district?: string
   status: string
   planned_eta?: string
@@ -133,13 +135,18 @@ interface ApiStop {
 
 interface ApiTrip {
   id: number
+  plan_id?: number
   vehicle_id: string
   trip_number: number
   status: string
+  planned_depart?: string
+  planned_return?: string
   planned_weight?: number
   planned_volume?: number
   planned_distance?: number
   planned_fuel?: number
+  stops?: ApiStop[]
+  photo_path?: string
 }
 
 interface ApiPlan {
@@ -168,12 +175,12 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
     },
 
     async getIntakeStatus() {
-      const data = await request<{ past_cutoff: boolean; has_published_plan: boolean }>(
-        '/orders/close',
-      ).catch(() => ({ past_cutoff: false, has_published_plan: false }))
+      const data = await request<{ cutoff_closed: boolean; published: boolean }>(
+        '/orders/intake-status',
+      ).catch(() => ({ cutoff_closed: false, published: true }))
       return {
-        cutoffClosed: data.past_cutoff,
-        published: data.has_published_plan,
+        cutoffClosed: data.cutoff_closed,
+        published: data.published,
       }
     },
 
@@ -241,6 +248,22 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
         method: 'POST',
         body: JSON.stringify({ type: 'OTHER', description: 'Deferral acknowledged by store manager.' }),
       }).catch(() => {})
+    },
+
+    async listHistory(filter = {}) {
+      const params = new URLSearchParams()
+      const scope = filter.outletId ?? outletId
+      if (scope) params.set('outlet_id', scope)
+      const orders = await request<ApiOrder[]>(`/orders?${params.toString()}`).catch(() => [] as ApiOrder[])
+      return orders.map(mapOrder).sort((a, b) => (b.placedAt ?? '').localeCompare(a.placedAt ?? ''))
+    },
+
+    async getOutletProfile(id: string): Promise<OutletProfile> {
+      return profileOf(id) ?? outletProfiles[0]!
+    },
+
+    async cancelOrder(orderId) {
+      await request(`/orders/${orderId}/cancel`, { method: 'POST' })
     },
   }
 }
@@ -327,68 +350,229 @@ function createHttpPlanningApi(): PlanningApi {
 
 // ── Loading HTTP adapter ───────────────────────────────────────────────────
 
+function mapTripToLoad(trip: ApiTrip, depot?: string): Load {
+  let localData: {
+    loadedCounts?: Record<string, number>
+    checks?: { refrigeration: boolean; condition: boolean; restraints: boolean }
+    issue?: string
+    photoId?: string
+    acknowledgedRevision?: number
+  } = {}
+  try {
+    const raw = localStorage.getItem(`waypoint.load.${trip.id}`)
+    if (raw) localData = JSON.parse(raw)
+  } catch {}
+
+  const stops = trip.stops ?? []
+  const isLoaded = trip.status === 'LOADED' || trip.status === 'IN_TRANSIT' || trip.status === 'COMPLETED'
+  const isReleased = trip.status === 'LOADED' || trip.status === 'IN_TRANSIT' || trip.status === 'COMPLETED'
+
+  // Items ordered by reverse sequence for rear-to-front loading
+  const items = stops
+    .map((s, idx) => {
+      const expected = s.total_cases && s.total_cases > 0 ? s.total_cases : 15
+      const loadedCount = localData.loadedCounts?.[s.outlet_id] ?? (isLoaded ? expected : 0)
+      return {
+        outlet: s.outlet_id,
+        name: s.outlet_id,
+        expected,
+        loaded: loadedCount,
+        stop: s.sequence ?? idx + 1,
+      }
+    })
+    .sort((a, b) => b.stop - a.stop)
+
+    const serverOrigin = (
+      import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+    ).replace(/\/api\/v1\/?$/, '')
+
+    return {
+      id: String(trip.id),
+      vehicleId: trip.vehicle_id,
+      trip: trip.trip_number,
+      revision: 1,
+      bay: `Bay ${(trip.trip_number % 8) + 1}`,
+      depot: depot ?? 'Peliyagoda',
+      departureTime: trip.planned_depart
+        ? new Date(trip.planned_depart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : undefined,
+      acknowledgedRevision: localData.acknowledgedRevision,
+      items,
+      checks: localData.checks ?? {
+        refrigeration: isLoaded,
+        condition: isLoaded,
+        restraints: isLoaded,
+      },
+      issue: localData.issue,
+      issueResolved: !localData.issue,
+      photoId: localData.photoId ?? (trip.photo_path ? `${serverOrigin}${trip.photo_path}` : undefined),
+      completed: isLoaded,
+      released: isReleased,
+    }
+  }
+
 function createHttpLoadingApi(): LoadingApi {
   return {
-    async listLoads() {
-      const trips = await request<ApiTrip[]>('/loading/trips').catch(() => [] as ApiTrip[])
-      return trips.map(
-        (t): Load => ({
-          id: String(t.id),
-          vehicleId: t.vehicle_id,
-          trip: t.trip_number,
-          revision: 1,
-          bay: '',
-          items: [],
-          checks: { refrigeration: false, condition: false, restraints: false },
-          issueResolved: false,
-          completed: t.status === 'LOADED' || t.status === 'IN_TRANSIT',
-          released: t.status === 'IN_TRANSIT' || t.status === 'COMPLETED',
-        }),
-      )
+    async listLoads(filter = {}) {
+      const params = new URLSearchParams()
+      if (filter.depot) params.set('depot', filter.depot)
+      const query = params.toString() ? `?${params}` : ''
+      const trips = await request<ApiTrip[]>(`/loading/trips${query}`).catch(() => [] as ApiTrip[])
+      return trips.map((t) => mapTripToLoad(t, filter.depot))
     },
 
     async getLoad(loadId) {
       const trip = await request<ApiTrip>(`/loading/trips/${loadId}`).catch(() => null)
       if (!trip) return undefined
+      return mapTripToLoad(trip)
+    },
+
+    async getWorkspace(loadId, depot) {
+      const trip = await request<ApiTrip>(`/loading/trips/${loadId}`).catch(() => null)
+      if (!trip) return undefined
+
+      let vehicle: Vehicle = {
+        id: trip.vehicle_id,
+        brand: 'Fresh',
+        type: 'Truck',
+        reefer: true,
+        weightCapacity: 5000,
+        volumeCapacity: 25,
+        status: 'Loading',
+        location: depot ?? 'Peliyagoda',
+        lat: 6.96,
+        lng: 79.90,
+        updatedMinutes: 0,
+      }
+      try {
+        const v = await request<{
+          vehicle_id: string
+          depot_code: string
+          type: string
+          is_refrigerated: boolean
+          weight_cap_kg: number
+          volume_cap_m3: number
+        }>(`/reference/vehicles/${trip.vehicle_id}`)
+        if (v) {
+          vehicle = {
+            id: v.vehicle_id,
+            brand: 'Fresh',
+            type: v.type?.toLowerCase() === 'van' ? 'Van' : 'Truck',
+            reefer: v.is_refrigerated,
+            weightCapacity: v.weight_cap_kg,
+            volumeCapacity: v.volume_cap_m3,
+            status: 'Loading',
+            location: v.depot_code,
+            lat: 6.96,
+            lng: 79.90,
+            updatedMinutes: 0,
+          }
+        }
+      } catch {}
+
+      const load = mapTripToLoad(trip, depot)
+      const stops: Stop[] = (trip.stops ?? []).map(mapStop)
       return {
-        id: String(trip.id),
-        vehicleId: trip.vehicle_id,
-        trip: trip.trip_number,
-        revision: 1,
-        bay: '',
-        items: [],
-        checks: { refrigeration: false, condition: false, restraints: false },
-        issueResolved: false,
-        completed: trip.status === 'LOADED',
-        released: trip.status === 'IN_TRANSIT',
+        load,
+        vehicle,
+        published: true,
+        stops,
+        weight: trip.planned_weight ?? 1200,
+        volume: trip.planned_volume ?? 8.5,
       }
     },
 
-    async setLoaded(loadId, outlet, quantity) {
-      await request(`/loading/trips/${loadId}/flags`, {
-        method: 'POST',
-        body: JSON.stringify({ outlet_id: outlet, flag: 'OK', quantity }),
-      })
+    async acknowledgeRevision(loadId, expectedRevision) {
+      try {
+        const key = `waypoint.load.${loadId}`
+        const current = JSON.parse(localStorage.getItem(key) || '{}')
+        current.acknowledgedRevision = expectedRevision
+        localStorage.setItem(key, JSON.stringify(current))
+      } catch {}
     },
 
-    async setCheck(_loadId, _check, _checked) {
-      // Checks are stored in load_checks; no dedicated endpoint for boolean checks yet
+    async setLoaded(loadId, outlet, quantity) {
+      try {
+        const key = `waypoint.load.${loadId}`
+        const current = JSON.parse(localStorage.getItem(key) || '{}')
+        current.loadedCounts = { ...(current.loadedCounts || {}), [outlet]: quantity }
+        localStorage.setItem(key, JSON.stringify(current))
+      } catch {}
+
+      await request(`/loading/trips/${loadId}/flags`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'OK', note: `Loaded ${quantity} cases for ${outlet}` }),
+      }).catch(() => {})
+    },
+
+    async setCheck(loadId, check, checked) {
+      try {
+        const key = `waypoint.load.${loadId}`
+        const current = JSON.parse(localStorage.getItem(key) || '{}')
+        current.checks = { ...(current.checks || {}), [check]: checked }
+        localStorage.setItem(key, JSON.stringify(current))
+      } catch {}
     },
 
     async reportIssue(loadId, issue) {
+      const desc =
+        typeof issue === 'string'
+          ? issue
+          : `${issue.kind}: ${issue.description || ''} (${issue.affectedCases} cases at ${issue.outlet})`
+      try {
+        const key = `waypoint.load.${loadId}`
+        const current = JSON.parse(localStorage.getItem(key) || '{}')
+        current.issue = desc
+        localStorage.setItem(key, JSON.stringify(current))
+      } catch {}
+
       await request(`/loading/trips/${loadId}/flags`, {
         method: 'POST',
-        body: JSON.stringify({ flag: 'DAMAGED', notes: issue }),
-      })
+        body: JSON.stringify({ status: 'DAMAGED', note: desc }),
+      }).catch(() => {})
     },
 
-    async resolveIssue(_loadId) {},
+    async resolveIssue(loadId) {
+      try {
+        const key = `waypoint.load.${loadId}`
+        const current = JSON.parse(localStorage.getItem(key) || '{}')
+        delete current.issue
+        localStorage.setItem(key, JSON.stringify(current))
+      } catch {}
+    },
 
     async attachPhoto(loadId, file) {
       const form = new FormData()
       form.append('file', file)
       form.append('stop_id', loadId)
-      await request('/driver/uploads', { method: 'POST', body: form })
+      const res = await request<{ path: string }>('/driver/uploads', {
+        method: 'POST',
+        body: form,
+      }).catch(() => null)
+
+      const serverOrigin = (
+        import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+      ).replace(/\/api\/v1\/?$/, '')
+
+      const photoUrl = res?.path ? `${serverOrigin}${res.path}` : URL.createObjectURL(file)
+
+      try {
+        const key = `waypoint.load.${loadId}`
+        const current = JSON.parse(localStorage.getItem(key) || '{}')
+        current.photoId = photoUrl
+        localStorage.setItem(key, JSON.stringify(current))
+      } catch {}
+
+      if (res?.path) {
+        await request(`/loading/trips/${loadId}/flags`, {
+          method: 'POST',
+          body: JSON.stringify({
+            status: 'OK',
+            note: 'Loading proof photograph uploaded',
+            photo_path: res.path,
+          }),
+        }).catch(() => {})
+      }
     },
 
     async complete(loadId) {
@@ -501,9 +685,48 @@ function createHttpDeliveryApi(): DeliveryApi {
       })
     },
 
+    async confirmManagerHandoff(_outletId, stopId, proof) {
+      await this.saveProof(stopId, proof)
+    },
+
+    async reportDelay(stopId, note, revisedEta, kind) {
+      const id = crypto.randomUUID()
+      await request('/driver/sync', {
+        method: 'POST',
+        body: JSON.stringify({
+          events: [
+            {
+              client_op_id: id,
+              stop_id: Number(stopId),
+              outcome: 'PARTIAL',
+              note: `${kind ?? 'delay'}: ${note} (ETA: ${revisedEta ?? 'TBD'})`,
+            },
+          ],
+        }),
+      }).catch(() => {})
+    },
+
+    async listRouteHistory() {
+      return []
+    },
+
+    async reopenProofForSignOff(_actionId) {},
+    async getProofDraft(_stopId) {
+      return undefined
+    },
+    async listProofDrafts() {
+      return []
+    },
+    async saveProofDraft(_draft) {},
+    async deleteProofDraft(_stopId) {},
+
     // Evidence and queue remain device-local (IndexedDB via Dexie)
-    async getEvidence(_id) { return undefined },
-    async listQueue() { return [] },
+    async getEvidence(_id) {
+      return undefined
+    },
+    async listQueue() {
+      return []
+    },
     async sync(_isOnline) {},
     async reviewQueuedRecord(_id) {},
   }
@@ -580,11 +803,23 @@ function createStubTeamApi() {
     inviteByMobile: async () => {},
     completeInvitation: async () => {},
     resetAccess: async () => {},
+    updateContact: async () => {},
     requestAccountChange: async () => {},
     changeAssignment: async () => {},
     reassignTrip: async () => {},
     updateRole: async () => {},
     suspend: async () => {},
+  }
+}
+
+function createStubDriverSignalsApi() {
+  return {
+    registerPushSubscription: async () => {},
+    recordPosition: async () => {},
+    pendingPositions: async () => [],
+    listNotices: async () => [],
+    acknowledgeNotice: async () => {},
+    checkDeliveryWindows: async () => [],
   }
 }
 
@@ -615,12 +850,13 @@ function createStubAccountApi() {
  */
 export function createHttpApis(outletId?: string): Apis {
   return {
+    driverSignals: createStubDriverSignalsApi() as unknown as Apis['driverSignals'],
     orders: createHttpOrdersApi(outletId),
     planning: createHttpPlanningApi(),
     loading: createHttpLoadingApi(),
     delivery: createHttpDeliveryApi(),
     fleet: createHttpFleetApi(),
-    team: createStubTeamApi() as Apis['team'],
-    account: createStubAccountApi() as Apis['account'],
+    team: createStubTeamApi() as unknown as Apis['team'],
+    account: createStubAccountApi() as unknown as Apis['account'],
   }
 }
