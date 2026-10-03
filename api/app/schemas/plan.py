@@ -18,6 +18,14 @@ class StopOut(OrmModel):
     actual_arrival: Optional[dt.datetime] = None
     actual_departure: Optional[dt.datetime] = None
     status: str
+    district: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    window_open: Optional[str] = None
+    window_close: Optional[str] = None
+    order_ids: list[int] = []
+    total_cases: Optional[int] = 0
+    proof_id: Optional[str] = None
 
 
 class TripOut(OrmModel):
@@ -71,6 +79,8 @@ class DeliveryEventIn(BaseModel):
     order_id: Optional[int] = None
     outcome: str
     note: Optional[str] = None
+    pod_photo_path: Optional[str] = None
+    pod_signature_path: Optional[str] = None
     receiver_name: Optional[str] = None
     receiver_pin_ok: Optional[bool] = None
     recorded_at: Optional[dt.datetime] = None

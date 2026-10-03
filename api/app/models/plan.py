@@ -108,6 +108,45 @@ class Stop(Base):
     delivery_events: Mapped[list["DeliveryEvent"]] = relationship("DeliveryEvent", back_populates="stop_rel")  # type: ignore[name-defined]
     issues: Mapped[list["Issue"]] = relationship("Issue", back_populates="stop_rel")  # type: ignore[name-defined]
 
+    @property
+    def district(self) -> Optional[str]:
+        return self.outlet_rel.district if self.outlet_rel else None
+
+    @property
+    def lat(self) -> Optional[float]:
+        return self.outlet_rel.lat if self.outlet_rel else None
+
+    @property
+    def lng(self) -> Optional[float]:
+        return self.outlet_rel.lng if self.outlet_rel else None
+
+    @property
+    def window_open(self) -> Optional[str]:
+        if self.outlet_rel and self.outlet_rel.window_open_time:
+            return self.outlet_rel.window_open_time.strftime("%H:%M")
+        return None
+
+    @property
+    def window_close(self) -> Optional[str]:
+        if self.outlet_rel and self.outlet_rel.window_close_time:
+            return self.outlet_rel.window_close_time.strftime("%H:%M")
+        return None
+
+    @property
+    def order_ids(self) -> list[int]:
+        return [so.order_id for so in (self.stop_orders or [])]
+
+    @property
+    def total_cases(self) -> int:
+        return sum(so.order_rel.total_cases for so in (self.stop_orders or []) if so.order_rel)
+
+    @property
+    def proof_id(self) -> Optional[str]:
+        for event in reversed(self.delivery_events or []):
+            if event.note:
+                return event.note
+        return None
+
 
 class StopOrder(Base):
     """Links an order to the stop it is delivered on (one stop per order per plan)."""

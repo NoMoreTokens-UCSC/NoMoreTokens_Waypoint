@@ -25,7 +25,7 @@ export function DriverHomeOverview({ state }: { state: DriverDataState }) {
             <Metric
               label="Stops complete"
               value={`${delivered} / ${state.data.stops.length}`}
-              detail="Accepted demo acknowledgements"
+              detail="Completed deliveries"
             />
             <Metric
               label="Cases on board"

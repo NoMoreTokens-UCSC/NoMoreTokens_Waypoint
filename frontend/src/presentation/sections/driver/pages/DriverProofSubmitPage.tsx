@@ -71,18 +71,18 @@ export default function DriverProofSubmitPage() {
       </p>
       <Modal
         title="Confirm delivery proof submission?"
-        description={`${state.draft?.quantity ?? 0} cases · ${state.stop?.outlet}. This demo simulates upload acknowledgement. Manager sign-off is retained with the proof.`}
+        description={`${state.draft?.quantity ?? 0} cases · ${state.stop?.outlet}. Delivery proof will be saved and recorded to the backend.`}
         open={confirm}
         onOpenChange={(open) => {
           if (!busy) setConfirm(open)
         }}
       >
         <Notice
-          title={state.online ? 'Ready for demo upload' : 'Save on this device'}
+          title={state.online ? 'Ready for server upload' : 'Save on this device'}
           tone="neutral"
         >
           {state.online
-            ? 'The record will upload through the demo adapter.'
+            ? 'The record and photo will be uploaded to the server.'
             : 'The photo and handoff will remain pending until connectivity returns.'}
         </Notice>
         <DriverActions>

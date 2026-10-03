@@ -17,6 +17,9 @@ import type { FleetApi } from '../../domain/api/fleet'
 import type { Order, OrderStatus, Stop, Trip, Vehicle, Load } from '../../domain/models'
 import { outletProfiles, profileOf, type OutletProfile } from '../../domain/outlets'
 import { request } from './apiClient'
+import { WaypointDatabase } from '../persistence/database'
+
+const localDb = new WaypointDatabase()
 
 // ── Status mappers ─────────────────────────────────────────────────────────
 
@@ -65,18 +68,22 @@ function mapStop(s: ApiStop): Stop {
     PARTIAL: 'Delivered',
     FAILED: 'Cannot deliver',
   }
+  const etaText = s.planned_eta
+    ? new Date(s.planned_eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : ''
   return {
     id: String(s.id),
     outlet: s.outlet_id,
     name: s.outlet_id,
     address: s.district ?? '',
     window: s.window_open ?? '05:00',
-    eta: s.planned_eta ?? '',
+    eta: etaText,
     lat: s.lat ?? 0,
     lng: s.lng ?? 0,
     orderIds: (s.order_ids ?? []).map(String),
     cases: s.total_cases ?? 0,
     status: (statusMap[s.status] ?? 'Upcoming') as Stop['status'],
+    proofId: s.proof_id,
   }
 }
 
@@ -131,6 +138,7 @@ interface ApiStop {
   lng?: number
   order_ids?: number[]
   total_cases?: number
+  proof_id?: string
 }
 
 interface ApiTrip {
@@ -586,101 +594,150 @@ function createHttpLoadingApi(): LoadingApi {
 function createHttpDeliveryApi(): DeliveryApi {
   return {
     async getRoute() {
-      const resp = await request<{
-        trip: ApiTrip
-        stops: ApiStop[]
-        started: boolean
-        revision: number
-      }>('/driver/trips/current').catch(() => null)
+      const resp = await request<ApiTrip>('/driver/trips/current').catch(() => null)
+      if (!resp) {
+        return {
+          started: false,
+          revision: 0,
+          stops: [],
+        }
+      }
       return {
-        started: resp?.started ?? false,
-        revision: resp?.revision ?? 0,
-        stops: (resp?.stops ?? []).map(mapStop),
+        started: resp.status === 'IN_TRANSIT' || resp.status === 'COMPLETED',
+        revision: 1,
+        stops: (resp.stops ?? []).map(mapStop),
       }
     },
 
     async listStops(filter = {}) {
-      const resp = await request<{ stops: ApiStop[] }>('/driver/trips/current').catch(
-        () => ({ stops: [] }),
-      )
-      return (resp.stops ?? [])
+      const resp = await request<ApiTrip>('/driver/trips/current').catch(() => null)
+      return (resp?.stops ?? [])
         .map(mapStop)
         .filter((s) => !filter.outletId || s.outlet === filter.outletId)
     },
 
     async startRoute() {
-      // Starting the route is implicit when the first delivery event is synced
+      await request('/driver/trips/start', { method: 'POST' }).catch(() => {})
     },
 
     async arrive(stopId) {
       const id = crypto.randomUUID()
-      await request('/driver/sync', {
+      await request(`/driver/stops/${stopId}/events`, {
         method: 'POST',
         body: JSON.stringify({
-          events: [{ client_op_id: id, stop_id: Number(stopId), outcome: 'ARRIVED' }],
+          client_op_id: id,
+          stop_id: Number(stopId),
+          outcome: 'ARRIVED',
         }),
       })
     },
 
     async saveProof(stopId, proof) {
       const id = crypto.randomUUID()
-      const form = new FormData()
-      if (proof.photo) form.append('file', proof.photo)
-      form.append('stop_id', stopId)
-      const uploadResp = await request<{ photo_url: string }>('/driver/uploads', {
-        method: 'POST',
-        body: form,
-      }).catch(() => ({ photo_url: '' }))
+      let photoUrl = ''
+      if (proof.photo) {
+        const form = new FormData()
+        form.append('file', proof.photo)
+        form.append('stop_id', stopId)
+        const uploadResp = await request<{ path: string }>('/driver/uploads', {
+          method: 'POST',
+          body: form,
+        }).catch(() => null)
+        if (uploadResp?.path) {
+          const serverOrigin = (
+            import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+          ).replace(/\/api\/v1\/?$/, '')
+          photoUrl = `${serverOrigin}${uploadResp.path}`
+        }
+      }
 
-      await request('/driver/sync', {
+      await request(`/driver/stops/${stopId}/events`, {
         method: 'POST',
         body: JSON.stringify({
-          events: [
-            {
-              client_op_id: id,
-              stop_id: Number(stopId),
-              outcome: 'DELIVERED',
-              receiver_name: proof.receiver,
-              delivered_qty: proof.quantity,
-              receiver_exception: proof.exception || null,
-              photo_url: uploadResp.photo_url,
-            },
-          ],
+          client_op_id: id,
+          stop_id: Number(stopId),
+          outcome: 'DELIVERED',
+          note: `Delivered ${proof.quantity} cases`,
+          pod_photo_path: photoUrl || null,
+          receiver_name: proof.receiver || null,
+          receiver_pin_ok: true,
         }),
       })
+
+      const evidenceId = photoUrl || id
+      await localDb.evidence
+        .put({
+          id: evidenceId,
+          kind: 'delivery',
+          entityId: stopId,
+          photo: proof.photo,
+          fileName: proof.photo?.name ?? 'delivery-proof.jpg',
+          createdAt: new Date().toISOString(),
+          quantity: proof.quantity,
+          receiver: proof.receiver,
+          signature: proof.signature,
+          managerSignOff: proof.managerSignOff,
+          receiverException: proof.exception,
+          revision: proof.capturedRevision ?? 1,
+          accepted: true,
+        })
+        .catch(() => {})
+
+      await localDb.driverProofDrafts.delete(stopId).catch(() => {})
     },
 
     async reportIssue(stopId, issue) {
       const id = crypto.randomUUID()
-      await request('/driver/sync', {
+      await request(`/driver/stops/${stopId}/events`, {
         method: 'POST',
         body: JSON.stringify({
-          events: [{ client_op_id: id, stop_id: Number(stopId), outcome: 'FAILED', notes: issue }],
+          client_op_id: id,
+          stop_id: Number(stopId),
+          outcome: 'FAILED',
+          note: issue,
         }),
       })
     },
 
     async saveAttemptProof(stopId, photo, issue) {
       const id = crypto.randomUUID()
-      const form = new FormData()
-      form.append('file', photo)
-      form.append('stop_id', stopId)
-      await request('/driver/uploads', { method: 'POST', body: form }).catch(() => {})
+      let photoUrl = ''
+      if (photo) {
+        const form = new FormData()
+        form.append('file', photo)
+        form.append('stop_id', stopId)
+        const uploadResp = await request<{ path: string }>('/driver/uploads', {
+          method: 'POST',
+          body: form,
+        }).catch(() => null)
+        if (uploadResp?.path) {
+          const serverOrigin = (
+            import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+          ).replace(/\/api\/v1\/?$/, '')
+          photoUrl = `${serverOrigin}${uploadResp.path}`
+        }
+      }
 
-      await request('/driver/sync', {
+      await request(`/driver/stops/${stopId}/events`, {
         method: 'POST',
         body: JSON.stringify({
-          events: [{ client_op_id: id, stop_id: Number(stopId), outcome: 'FAILED', notes: issue }],
+          client_op_id: id,
+          stop_id: Number(stopId),
+          outcome: 'FAILED',
+          note: photoUrl ? `${issue} | Proof: ${photoUrl}` : issue,
         }),
       })
     },
 
     async retryStop(stopId) {
       const id = crypto.randomUUID()
-      await request('/driver/sync', {
+      await request(`/driver/stops/${stopId}/events`, {
         method: 'POST',
         body: JSON.stringify({
-          events: [{ client_op_id: id, stop_id: Number(stopId), outcome: 'RETRY' }],
+          client_op_id: id,
+          stop_id: Number(stopId),
+          outcome: 'ARRIVED',
+          note: 'Retry stop',
         }),
       })
     },
@@ -691,17 +748,13 @@ function createHttpDeliveryApi(): DeliveryApi {
 
     async reportDelay(stopId, note, revisedEta, kind) {
       const id = crypto.randomUUID()
-      await request('/driver/sync', {
+      await request(`/driver/stops/${stopId}/events`, {
         method: 'POST',
         body: JSON.stringify({
-          events: [
-            {
-              client_op_id: id,
-              stop_id: Number(stopId),
-              outcome: 'PARTIAL',
-              note: `${kind ?? 'delay'}: ${note} (ETA: ${revisedEta ?? 'TBD'})`,
-            },
-          ],
+          client_op_id: id,
+          stop_id: Number(stopId),
+          outcome: 'PARTIAL',
+          note: `${kind ?? 'delay'}: ${note}${revisedEta ? ` (ETA: ${revisedEta})` : ''}`,
         }),
       }).catch(() => {})
     },
@@ -711,23 +764,60 @@ function createHttpDeliveryApi(): DeliveryApi {
     },
 
     async reopenProofForSignOff(_actionId) {},
-    async getProofDraft(_stopId) {
-      return undefined
-    },
-    async listProofDrafts() {
-      return []
-    },
-    async saveProofDraft(_draft) {},
-    async deleteProofDraft(_stopId) {},
 
-    // Evidence and queue remain device-local (IndexedDB via Dexie)
-    async getEvidence(_id) {
+    async getProofDraft(stopId) {
+      return localDb.driverProofDrafts.get(stopId)
+    },
+
+    async listProofDrafts() {
+      return localDb.driverProofDrafts.toArray()
+    },
+
+    async saveProofDraft(draft) {
+      await localDb.driverProofDrafts.put(draft)
+    },
+
+    async deleteProofDraft(stopId) {
+      await localDb.driverProofDrafts.delete(stopId)
+    },
+
+    async getEvidence(id) {
+      const found = await localDb.evidence.get(id)
+      if (found) return found
+      if (id && (id.startsWith('http') || id.startsWith('/uploads'))) {
+        try {
+          const url = id.startsWith('http')
+            ? id
+            : `${(import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1').replace(/\/api\/v1\/?$/, '')}${id}`
+          const res = await fetch(url)
+          if (res.ok) {
+            const blob = await res.blob()
+            const synthetic = {
+              id,
+              kind: 'delivery' as const,
+              entityId: '',
+              photo: blob,
+              fileName: id.split('/').pop() || 'proof.jpg',
+              createdAt: new Date().toISOString(),
+              revision: 1,
+              accepted: true,
+            }
+            await localDb.evidence.put(synthetic).catch(() => {})
+            return synthetic
+          }
+        } catch {
+          // ignore
+        }
+      }
       return undefined
     },
+
     async listQueue() {
-      return []
+      return localDb.queue.toArray()
     },
+
     async sync(_isOnline) {},
+
     async reviewQueuedRecord(_id) {},
   }
 }
