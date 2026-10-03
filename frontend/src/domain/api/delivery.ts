@@ -1,4 +1,6 @@
 import type { Evidence, QueuedAction, Stop } from '../models'
+import type { DriverProofDraft } from '../driverProof'
+import type { ManagerSignOff } from '../deliveryVerification'
 
 export interface RouteState {
   started: boolean
@@ -11,6 +13,9 @@ export interface DeliveryProof {
   receiver: string
   exception: string
   signature?: Blob
+  managerSignOff?: ManagerSignOff
+  /** Capture revision is retained when submission follows a route change. */
+  capturedRevision?: number
 }
 
 /**
@@ -24,11 +29,17 @@ export interface DeliveryApi {
   arrive(stopId: string): Promise<void>
   saveProof(stopId: string, proof: DeliveryProof): Promise<void>
   reportIssue(stopId: string, issue: string): Promise<void>
+  reportDelay(stopId: string, note: string): Promise<void>
   saveAttemptProof(stopId: string, photo: File, issue: string): Promise<void>
   retryStop(stopId: string): Promise<void>
+  reopenProofForSignOff(actionId: string): Promise<void>
   getEvidence(evidenceId: string): Promise<Evidence | undefined>
+  getProofDraft(stopId: string): Promise<DriverProofDraft | undefined>
+  listProofDrafts(): Promise<DriverProofDraft[]>
+  saveProofDraft(draft: DriverProofDraft): Promise<void>
+  deleteProofDraft(stopId: string): Promise<void>
   /** Records saved on this device that still need, or are under, sync review. */
   listQueue(): Promise<QueuedAction[]>
-  sync(isOnline: boolean): Promise<void>
+  sync(isOnline: boolean, options?: { retryFailed?: boolean }): Promise<void>
   reviewQueuedRecord(actionId: string): Promise<void>
 }

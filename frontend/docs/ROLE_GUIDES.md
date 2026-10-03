@@ -6,15 +6,15 @@ routes and the shared shell work.
 
 ## Where things stand
 
-| Area                                                   | State                                                                                                            |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Routing, module registry, shared shell                 | Done. Every route opens a native page.                                                                           |
-| Entry pages (welcome, how it works, login, workspaces) | Done, rebuilt from the Figma frames. Login is a demo (any filled-in credentials).                                |
-| Data contract `src/domain/api` + local adapter         | Done and unit-tested.                                                                                            |
-| Role pages                                             | Work, but are the first native drafts: they do not match Figma and use the old data access.                      |
-| Pages using `useApis()`                                | **None yet.** Until a page moves over, a backend adapter does not reach it.                                      |
-| Full order-to-receipt flow in the browser              | **Blocked** at dispatcher publish (see Dispatcher, issue 1).                                                     |
-| End-to-end workflow tests                              | Only the route smoke test and the entry walkthrough. The old workflow specs drove Figma screens and are skipped. |
+| Area                                                   | State                                                                                                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Routing, module registry, shared shell                 | Done. Every route opens a native page.                                                                                                   |
+| Entry pages (welcome, how it works, login, workspaces) | Done, rebuilt from the Figma frames. Login is a demo (any filled-in credentials).                                                        |
+| Data contract `src/domain/api` + local adapter         | Done and unit-tested.                                                                                                                    |
+| Role pages                                             | Work, but are the first native drafts: they do not match Figma and use the old data access.                                              |
+| Pages using `useApis()`                                | **Driver pages use the API contract.** Other role pages still need migration.                                                            |
+| Full order-to-receipt flow in the browser              | **Blocked** at dispatcher publish (see Dispatcher, issue 1).                                                                             |
+| End-to-end workflow tests                              | Native Driver journeys, recovery, map and layout checks, route smoke tests and the entry walkthrough. Legacy Figma specs remain skipped. |
 
 ## Definition of done for any page
 
@@ -136,6 +136,22 @@ example for the other roles: copy its structure, not its content.
 | `assets/`     | the route map artwork and the delivery-photo placeholder, copied from the design                                                                                                                                                                           |
 
 **Patterns worth copying**
+- `'OUT001'` appears 8 times and the map filters `'VEH055'`: use `useSession().outletId` and the stop's
+  vehicle.
+- Use `placeOrders` (chilled and dry confirmed together, as Figma "Create separate orders → Review →
+  Orders confirmed"), not one `createOrder` per record.
+- Use `saveDrafts` for "Cutoff passed → Draft saved for next run".
+- Use `reportReceiptIssue({ kind, received, affected, description })` for missing/damaged reports
+  (Figma: "Report missing items", "Report damaged items"). The page currently sends free text through
+  `confirmReceipt`, which loses the counts.
+- ETA "05:40" and window "05:30–07:30" are fixed text: read them from the stop.
+- Fresh window options now stop before 08:00, and intake/allocation validation enforces that deadline.
+  The backend should provide the outlet receiving window and authoritative delivery date.
+- Deferral notice needs the acknowledgment gate (Figma: "Acknowledgment required" → "selected" →
+  "acknowledged").
+- Offline: orders and receipts made without a connection are not queued yet. Agree the approach with
+  the backend developers (same pattern as driver proof).
+- Note: the local adapter accepts outlet `OUT001` only, because the seed data models one store.
 
 - Data only through `useApis()` and outlet-scoped hooks; an empty outlet requests nothing (an empty
   filter would return every outlet's orders).
@@ -261,29 +277,29 @@ held loads, revisions 03/04, photo capture and review, loading complete).
 
 ## Driver
 
-**Pages** (`sections/driver/pages/DriverPages.tsx`): `DriverHomePage`, `DriverRoutePage`,
-`DriverDeliveryPage`, `DriverIssuesPage`. Molecule: `ReceiverSignaturePad`. Sync and review live in
-the shared Recovery page.
+Driver is implemented as 18 separate routed pages in `sections/driver/pages/`, with atoms, molecules,
+organisms, templates and hooks in the same feature. Layout uses Tailwind and existing tokens. See [DRIVER_IMPLEMENTATION.md](DRIVER_IMPLEMENTATION.md) for
+the route map, state model, complete file inventory, validation and mock integration limits.
 
-**API to use:** `apis.delivery` (`getRoute`, `listStops`, `startRoute`, `arrive`, `saveProof`,
-`reportIssue`, `saveAttemptProof`, `retryStop`, `listQueue`, `sync`), `apis.loading.getLoad` (load check).
+Reads and writes use the delivery, loading, orders, fleet and account APIs and the existing session.
+Driver reuses the Dispatcher React Leaflet map with assigned stops, zoom, recentering and offline
+location overlays. Fixed navigation instructions remain explicitly illustrative. Stop
+links retain `?stop=<id>`. Captured and attached photo drafts are durable. Confirmed submission replaces
+the draft with queued proof atomically. Only matching accepted delivery evidence and acknowledgement
+can show Delivered. Manager remarks, per-order quantities, unloading confirmation and a mandatory
+e-signature record the store receipt; edits require re-signing and shortfalls record an issue.
 
-**Change**
+The feature includes load check, manifest, illustrative navigation, parked arrival, camera recovery,
+review/retake, per-order quantities, manager remarks/signature, explicit submission, offline records, interrupted upload,
+revision review, history, issue/attempt retry and unfinished-draft sign-out protection. Pending proof
+resumes online; failed proof requires an explicit retry. Mobile uses the existing header/menu without
+bottom tabs; desktop uses the existing sidebar.
 
-- Uses `loads[0]`, `stops[0]`, `'STOP001'` and "VEH055": use `useSession().vehicleId`, the route's
-  stops, and the stop ID from the URL (e.g. `/driver/delivery/:stopId`).
-- Fixed times "05:12", "05:30", "05:40": read from the stop.
-- Proof is already saved on the phone first and synced later. Keep that: never show "Delivered" until
-  sync accepts it, and keep the "Saved on this phone", "Upload interrupted", "Plan changed while
-  offline" states.
-- `reportIssue` (delivery problem without proof) exists in the API but no page uses it (Figma: "Report
-  delivery issue", "Report delay").
-- Partial acceptance and receiver-cannot-sign states from Figma.
-- Design for use while safely stopped: large targets, one primary action per screen, phone first.
-
-**Figma:** 51 frames (home, load check, route, stop detail, arrival, quantity check, camera, photo
-review, receiver sign-off, can't deliver, partial acceptance, offline and sync states, trip complete,
-profile).
+**Backend integration:** `DeliveryApi` includes durable drafts, signed proof metadata and legacy-proof
+recovery. `DriverSignalsApi` exposes timestamped GPS fixes, the outlet alert inbox and deadline checks.
+GPS is opt-in and offline fixes persist. Calls/SMS are manual phone fallbacks. Provide authenticated
+proof upload, realtime positions, authoritative ETA/date, and remote push/SMS event delivery. The
+current gateway and alert transport remain explicitly local; see the Driver report for payloads.
 
 ## Administration
 

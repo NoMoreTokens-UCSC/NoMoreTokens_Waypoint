@@ -4,10 +4,19 @@ A responsive operations demo for Waypoint. Includes Dispatcher, Store Manager, L
 
 ## Run locally
 
-Use Node.js 22.12+ (or a newer supported LTS) and npm.
+Use Node.js 22.13+ (or a newer supported LTS) and npm. The project's `.nvmrc` pins Node.js 22.23.3.
 
 ```powershell
 cd C:\Users\abdul\Waypoint\frontend
+npm ci
+npm run dev
+```
+
+On macOS or Linux with nvm, run these commands from `frontend`:
+
+```sh
+nvm install
+nvm use
 npm ci
 npm run dev
 ```
@@ -46,9 +55,9 @@ If npm cannot write its default cache, set `$env:npm_config_cache` to the projec
 2. Dispatcher: Start allocation, review allocation, publish the plan.
 3. Loader: reconcile rear/front quantities, complete safety checks, select a real loading photo, review it and confirm completion.
 4. Dispatcher: refresh readiness and dispatch VEH055 Trip 1.
-5. Driver: check the load, start the route, arrive, confirm quantities, select/review a photo, acknowledge the receiver and submit. Optional drawn signatures are saved with the evidence.
-6. Offline proof stays pending after reload. Recovery retries or simulates acceptance. A route change requires review before acceptance.
-7. Store Manager: view accepted driver evidence and separately confirm receipt or report missing/damaged quantities.
+5. Driver: open `/driver/pre-departure`, confirm the cleared load and start. Open navigation, confirm safe parking, capture/review/attach a photo, record per-order quantities, manager remarks, unloading confirmation and the manager’s e-signature, then confirm submission.
+6. Captured drafts and submitted offline proof survive reload. `/driver/sync` shows local save, upload, failure and acceptance; pending records resume online, failed uploads require explicit retry, and a route change requires review without replacing the original proof.
+7. Store Manager: review persistent delivery alerts and accepted signed proof; signed quantities record receipt and shortfalls.
 
 The featured live handoff is VEH055 Trip 1. `/demo/map` exposes the Leaflet adapter on its own.
 
@@ -65,18 +74,23 @@ Dexie stores snapshots, image blobs, and queue entries in IndexedDB. Evidence, i
 - Leaflet uses attributed OpenStreetMap tiles online. Saved stops and route lines remain available offline; an offline basemap is not provided.
 - Camera capture uses the browser's file input with `capture="environment"`. Mobile browsers may open a camera; desktop and unsupported browsers use file selection. Only JPEG, PNG, and WebP images up to 10 MB are accepted; HEIC requires conversion.
 - Browser storage can be cleared or evicted, and private mode/storage restrictions may prevent persistence. This demo does not provide backups or guaranteed retention. Do not treat it as a production evidence store.
-- Receiver acknowledgment records a name or exception and an optional drawn signature. Location/ETA, cutoff time, replacement decisions, notifications, invitations, and sync acceptance are explicitly local demo behavior.
+- Driver proof requires manager remarks, unloading confirmation and an e-signature. GPS is opt-in and saves device coordinates locally. Delivery alerts persist in the store inbox, with optional browser system notifications. Remote location/alerts, real ETA and upload acceptance await the backend. Fresh receiving windows must allow completion by 08:00.
 - Workspace switching is not authentication or authorization. No invitations, operational notifications, dispatch messages, or backend API calls are sent. The development map uses external OpenStreetMap tiles.
 
 ## Project documentation
 
 - `docs/ROLE_MODULES.md`: module ownership, adding screens, the data contract and backend integration.
 - `docs/ROLE_GUIDES.md`: current state, definition of done, and the to-do list for each role.
+- `docs/DRIVER_IMPLEMENTATION.md`: native Driver route/state map, file inventory, verification and mocked integrations.
 - `docs/ARCHITECTURE.md`: layers, transactions, backend integration seams.
 - `docs/FIGMA_DEAD_CODE.md`: the unrouted Figma renderer and how to delete it.
 - `docs/SCREEN_COVERAGE.md`, `docs/figma/`: records from the Figma-rendered build (historical).
 - `docs/REFERENCES.md`: Guide, Personas, and AI Disclosure reference pages.
 - `docs/VERIFICATION.md`: verification scope and limitations.
+
+## Driver design continuity
+
+Driver now uses separate native React pages for the Figma journey and recovery states. The obsolete Driver frame renderer was removed; exported JSON remains reference material for other roles. The shared web shell and design tokens are retained. Driver uses the same React Leaflet map as Dispatcher, with saved-stop overlays and functional zoom/recentering. Navigation instructions and upload acknowledgements remain explicitly simulated. Driver components follow atoms, molecules, organisms, templates, pages and hooks, styled with Tailwind. See [the Driver report](docs/DRIVER_IMPLEMENTATION.md) for implementation details and intentional differences from the prototype.
 
 ## Stack
 

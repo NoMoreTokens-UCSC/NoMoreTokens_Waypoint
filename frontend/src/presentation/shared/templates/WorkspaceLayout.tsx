@@ -7,6 +7,7 @@ import { Button } from '../atoms/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../atoms/dialog'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { useConnectivity, useOperations } from '../../hooks/useOperations'
+import { useApiQuery } from '../../hooks/useApiQuery'
 import { roleModules } from '../../roles/registry'
 import { useSession } from '../../session/useSession'
 import { workspaceSearch } from './workspaceSearch'
@@ -33,11 +34,23 @@ export default function WorkspaceLayout() {
     [search, setSearch] = useState(''),
     [trail, setTrail] = useState<Crumb[]>([])
   const workspace = roleModules.find((module) => module.key === session.role)!
+  const drafts = useApiQuery(['driver', 'drafts'], (apis) => apis.delivery.listProofDrafts())
   const options = workspace.shell ?? {}
   const compactNav = options.compactNav ?? 'tabs'
   const compact = useMediaQuery(`(max-width: ${(options.compactBelow ?? 761) - 1}px)`)
   const headerSearch = workspace.search ?? workspaceSearch
-  const pendingCount = data?.queue.filter((q) => q.status !== 'accepted').length ?? 0
+  const pendingCount =
+    (data?.queue.filter((q) => !['accepted', 'superseded'].includes(q.status)).length ?? 0) +
+    (session.role === 'driver'
+      ? (drafts.data?.filter(
+          (draft) =>
+            !data?.queue.some(
+              (record) =>
+                record.stopId === draft.stopId &&
+                !['accepted', 'superseded'].includes(record.status),
+            ),
+        ).length ?? 0)
+      : 0)
   const offline = !online || data?.settings.simulatedOffline
   const identity = options.identity?.(session) ?? {
     title: session.name,
@@ -322,13 +335,32 @@ export default function WorkspaceLayout() {
         </DialogContent>
       </Dialog>
       <Modal
-        title="Log out of Waypoint?"
-        description="You can sign in again to continue in your workspace."
+        title={
+          session.role === 'driver' && pendingCount
+            ? 'Saved records need attention'
+            : 'Log out of Waypoint?'
+        }
+        description={
+          session.role === 'driver' && pendingCount
+            ? `${pendingCount} local record(s) still need submission or sync. Keep this workspace open until they are accepted.`
+            : 'You can sign in again to continue in your workspace.'
+        }
         open={confirmLogout}
         onOpenChange={setConfirmLogout}
       >
         <div className="flex gap-3">
-          <Button onClick={logout}>Log Out</Button>
+          {session.role === 'driver' && pendingCount ? (
+            <Button
+              onClick={() => {
+                setConfirmLogout(false)
+                navigate('/driver/sync')
+              }}
+            >
+              Open saved records
+            </Button>
+          ) : (
+            <Button onClick={logout}>Log Out</Button>
+          )}
           <Button variant="outline" onClick={() => setConfirmLogout(false)}>
             Cancel
           </Button>

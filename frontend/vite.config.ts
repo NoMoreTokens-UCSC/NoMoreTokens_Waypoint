@@ -11,7 +11,12 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['waypoint.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
+      includeAssets: [
+        'delivery-notifications.js',
+        'waypoint.svg',
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+      ],
       manifest: {
         name: 'Waypoint Operations',
         short_name: 'Waypoint',
@@ -28,6 +33,7 @@ export default defineConfig({
         })),
       },
       workbox: {
+        importScripts: ['/delivery-notifications.js'],
         globPatterns: ['**/*.{js,css,html,json,svg,png,jpg,webp,woff,woff2}'],
         // Exported Figma frames are no longer routed; see docs/FIGMA_DEAD_CODE.md.
         globIgnores: ['figma/**'],
