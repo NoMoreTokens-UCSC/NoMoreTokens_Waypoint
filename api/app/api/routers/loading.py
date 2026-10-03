@@ -19,13 +19,14 @@ from app.services.state_machine import transition_trip
 router = APIRouter(prefix="/loading", tags=["loading"])
 
 _LOADER = require_role("LOADER", "DISPATCHER")
+_READ_ROLES = require_role("LOADER", "DISPATCHER", "DRIVER")
 
 
 @router.get("/trips", response_model=list[TripOut])
 def list_loading_trips(
     db: DbDep,
     current_user: CurrentUser,
-    _: None = _LOADER,
+    _: None = _READ_ROLES,
     date: Optional[dt.date] = Query(None),
     depot: Optional[str] = Query(None),
 ):
@@ -37,8 +38,12 @@ def list_loading_trips(
     if date:
         q = q.filter(Plan.delivery_date == date)
 
-    # Loaders see only their depot's trips
-    if current_user.role == "LOADER" and current_user.depot_id:
+    if current_user.role == "DRIVER":
+        if current_user.vehicle_id:
+            q = q.filter(Trip.vehicle_id == current_user.vehicle_id)
+        else:
+            return []
+    elif current_user.role == "LOADER" and current_user.depot_id:
         q = q.join(Vehicle, Trip.vehicle_id == Vehicle.vehicle_id).filter(
             Vehicle.depot_code == current_user.depot_id
         )
@@ -52,7 +57,7 @@ def list_loading_trips(
 
 
 @router.get("/trips/{trip_id}", response_model=TripOut)
-def get_loading_trip(trip_id: int, db: DbDep, current_user: CurrentUser, _: None = _LOADER):
+def get_loading_trip(trip_id: int, db: DbDep, current_user: CurrentUser, _: None = _READ_ROLES):
     trip = db.get(Trip, trip_id, options=[selectinload(Trip.stops), selectinload(Trip.load_checks)])
     if not trip:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Trip not found."})
