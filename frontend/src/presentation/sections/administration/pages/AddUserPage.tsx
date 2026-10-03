@@ -8,7 +8,9 @@ import { useAction } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
 import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { AdminIntro, AdminPage, Btn, Card, CardLabel, Field, Pill } from '../components/AdminKit'
+import { vehicleDepot } from '../../../../domain/fleet'
 import { managerOf, outletAssignment, useOutlets } from '../lib/outlets'
+import { useVehicles } from '../lib/vehicles'
 import {
   generatePassword,
   passwordProblem,
@@ -73,12 +75,13 @@ function AddUserForm() {
   // `?role=store-manager&outlet=OUT121` (from an outlet's page) starts the form on that outlet.
   const [draft, setDraft] = useState<Draft>(() => {
     const outlet = outlets.find((candidate) => candidate.id === params.get('outlet'))
+    const vehicle = vehicles.data?.find((candidate) => candidate.id === params.get('vehicle'))
     return {
       role: outlet || params.get('role') === 'store-manager' ? 'store-manager' : 'driver',
       name: '',
       mobile: '',
-      depot: outlet?.depot ?? 'Peliyagoda',
-      assignment: outlet ? outletAssignment(outlet) : '',
+      depot: outlet?.depot ?? (vehicle ? vehicleDepot(vehicle) : 'Peliyagoda'),
+      assignment: outlet ? outletAssignment(outlet) : (vehicle?.id ?? ''),
       username: '',
       password: generatePassword(),
     }
@@ -95,8 +98,7 @@ function AddUserForm() {
   const openOutlets = outlets.filter((outlet) => !managerOf(outlet, members))
   const taken = new Set(members.map((member) => member.vehicleId).filter(Boolean))
   const free = (vehicles.data ?? []).filter((vehicle) => !taken.has(vehicle.id))
-  const here = free.filter((vehicle) => vehicle.location === draft.depot)
-  const listed = here.length ? here : free
+  const listed = free.filter((vehicle) => vehicleDepot(vehicle) === draft.depot)
   const change = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }))
   const pickRole = (role: Workspace) =>
     change({
@@ -448,5 +450,6 @@ function AddUserForm() {
 export default function AddUserPage() {
   // The form starts from the outlets, so wait until they are known.
   const { loaded } = useOutlets()
-  return loaded ? <AddUserForm /> : null
+  const fleet = useVehicles()
+  return loaded && fleet.loaded ? <AddUserForm /> : null
 }

@@ -350,6 +350,16 @@ reason?)` enforces this behind the API. The demo panel's "Driver on route" switc
   straight away and can be opened from the demo panel's "Store manager signed in as". The demo seeds the
   outlets the sample orders mention; a backend serves `outlets.csv`. Not built: editing or retiring an
   outlet.
+- Vehicles (`/administration/vehicles`): the fleet with brand, type (dry-box or refrigerated truck, van or
+  refrigerated van), depot, capacity, status and driver; search plus brand, type and depot filters.
+  **Add vehicle** (`FleetApi.createVehicle`) takes the brand, type and refrigeration, depot, weight and volume
+  capacity (defaults: van 800 kg / 4 m³, truck 2,400 kg / 12 m³) and an optional registration; the system
+  assigns the next id after the highest (VEH088 here, as the sample fleet runs to VEH087) and the vehicle is
+  Available at its depot, so the dispatcher can allocate to it at once. Only a Fresh vehicle can be
+  refrigerated. The sample fleet has no depot field, so `vehicleDepot()` (in `domain/fleet.ts`) reads a
+  Kandy location as the Kandy depot and everything else as Peliyagoda; the driver forms list only unassigned
+  vehicles of the chosen depot. A vehicle's page has an **Add driver** shortcut that starts the form on that
+  vehicle. Not built: editing, retiring or taking a vehicle offline.
 - Add user for a **store manager** picks the outlet from this list (only outlets without a manager), and the
   depot follows the outlet. An outlet's page has an **Add store manager** shortcut that starts the form on
   that outlet. `createUser` refuses an unknown outlet or one that already has a manager.

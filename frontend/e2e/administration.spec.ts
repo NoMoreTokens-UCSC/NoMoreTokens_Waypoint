@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
 
 const rows = (page: Page) => page.locator('.ad-table tbody tr')
+const vehicleSelect = (page: Page) =>
+  page.locator('label.ad-field').filter({ hasText: 'Vehicle' }).locator('select')
 const outletSelect = (page: Page) =>
   page.locator('label.ad-field').filter({ hasText: 'Outlet' }).locator('select')
 const putDriverOnRoute = async (page: Page) => {
@@ -103,7 +105,7 @@ test.describe('administration', () => {
     await page.getByLabel('Full name').fill('Another Person')
     await page.getByLabel('Username').fill('nimal.perera')
     await page.getByLabel('Mobile number').fill('+94 77 555 0303')
-    await page.getByLabel('Vehicle').selectOption({ index: 1 })
+    await vehicleSelect(page).selectOption({ index: 1 })
     await page.getByRole('button', { name: 'Create user' }).click()
     await expect(page.getByText('That username is already taken.')).toBeVisible()
     await page.getByLabel('Username').fill('another.person')
@@ -264,7 +266,7 @@ test.describe('administration', () => {
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByText('Step 2 of 2 · Contact and assignment')).toBeVisible()
     await page.getByLabel('Mobile number').fill('+94 77 555 0202')
-    await page.getByLabel('Vehicle').selectOption({ index: 1 })
+    await vehicleSelect(page).selectOption({ index: 1 })
     await page.getByRole('button', { name: 'Create user' }).click()
     await expect(page.getByRole('heading', { name: 'Chamod’s account is ready.' })).toBeVisible()
     const overflow = await page.evaluate(
@@ -328,5 +330,55 @@ test.describe('administration', () => {
     await page.goto('/store-manager/orders/new')
     await expect(page.getByRole('heading', { name: 'Create orders' })).toBeVisible()
     await expect(page.getByText(/OUT\d+ · Fresh only/)).toBeVisible()
+  })
+
+  test('an administrator adds a vehicle and then assigns a driver to it', async ({ page }) => {
+    await page.goto('/administration/vehicles')
+    await expect(page.getByRole('heading', { name: 'Vehicles', level: 1 })).toBeVisible()
+    await expect(page.getByText('Showing 60 of 60 vehicles')).toBeVisible()
+    await expect(rows(page).filter({ hasText: 'VEH055' })).toContainText('Sanjeewa Bandara')
+    await page.getByRole('link', { name: 'Add vehicle' }).click()
+    // Only Fresh vehicles can be refrigerated.
+    await page.getByRole('radio', { name: /Waypoint Style/ }).click()
+    await expect(page.getByRole('radio', { name: /Refrigerated van/ })).toBeDisabled()
+    await page.getByRole('radio', { name: /Waypoint Fresh/ }).click()
+    await page.getByRole('radio', { name: /Refrigerated van/ }).click()
+    // The capacity follows the type until it is changed.
+    await expect(page.getByLabel('Weight capacity (kg)')).toHaveValue('800')
+    await expect(page.getByLabel('Volume capacity (m³)')).toHaveValue('4')
+    await page.getByLabel('Depot').selectOption('Kandy')
+    await page.getByLabel('Weight capacity (kg)').fill('50')
+    await page.getByRole('button', { name: 'Add vehicle' }).click()
+    await expect(page.getByText('Between 100 and 20,000 kg.')).toBeVisible()
+    await page.getByLabel('Weight capacity (kg)').fill('900')
+    await page.getByLabel('Registration').fill('wp-4821')
+    await page.getByRole('button', { name: 'Add vehicle' }).click()
+    // The fleet already runs to VEH087, so the next id follows that, not the count.
+    const heading = page.getByRole('heading', { level: 1 })
+    await expect(heading).toHaveText('VEH088')
+    const id = (await heading.textContent())!
+    await expect(page.getByText('Refrigerated van · Kandy depot')).toBeVisible()
+    await expect(page.getByText('WP-4821')).toBeVisible()
+    await expect(page.getByText('No driver yet.')).toBeVisible()
+    // It is in the fleet list.
+    await page.goto('/administration/vehicles')
+    await expect(page.getByText('Showing 61 of 61 vehicles')).toBeVisible()
+    await page.getByLabel('Search vehicle or registration').fill('wp-4821')
+    await expect(rows(page)).toHaveCount(1)
+    // Add a driver from the vehicle's page: the vehicle and its depot are already chosen.
+    await page.getByRole('link', { name: id, exact: true }).click()
+    await page.getByRole('link', { name: 'Add driver' }).click()
+    await expect(vehicleSelect(page)).toHaveValue(id)
+    await expect(page.getByLabel('Depot')).toHaveValue('Kandy')
+    await page.getByLabel('Full name').fill('Ruwan Jayasuriya')
+    await page.getByLabel('Mobile number').fill('+94 77 555 0121')
+    await page.getByRole('button', { name: 'Create user' }).click()
+    await expect(page.getByRole('heading', { name: 'Ruwan’s account is ready.' })).toBeVisible()
+    await page.goto(`/administration/vehicles/${id}`)
+    await expect(page.getByText('Ruwan Jayasuriya').first()).toBeVisible()
+    // It is no longer offered to the next driver.
+    await page.goto('/administration/team/new')
+    await page.getByLabel('Depot').selectOption('Kandy')
+    await expect(vehicleSelect(page).locator(`option[value="${id}"]`)).toHaveCount(0)
   })
 })

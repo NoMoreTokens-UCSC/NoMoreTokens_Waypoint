@@ -64,6 +64,10 @@ export interface Vehicle {
   weightCapacity: number
   volumeCapacity: number
   status: 'Available' | 'Loading' | 'En route' | 'Offline'
+  /** The depot the vehicle works from. Absent in the sample fleet; see `vehicleDepot`. */
+  depot?: string
+  /** Number plate. */
+  registration?: string
   location: string
   lat: number
   lng: number

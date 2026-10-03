@@ -437,6 +437,61 @@ describe('local API adapters', () => {
       }),
     ).rejects.toThrow(/Choose an outlet from the list/)
   })
+  const newVehicle = {
+    brand: 'Fresh' as const,
+    type: 'Van' as const,
+    reefer: true,
+    depot: 'Kandy',
+    weightCapacity: 800,
+    volumeCapacity: 4,
+    registration: 'WP-1234',
+  }
+  it('adds a vehicle with the next id, available at its depot', async () => {
+    const before = await apis.fleet.listVehicles()
+    const highest = Math.max(...before.map((vehicle) => Number(vehicle.id.slice(3))))
+    const created = await apis.fleet.createVehicle(newVehicle)
+    expect(created).toMatchObject({
+      id: `VEH${String(highest + 1).padStart(3, '0')}`,
+      status: 'Available',
+      depot: 'Kandy',
+      reefer: true,
+      registration: 'WP-1234',
+    })
+    expect((await apis.fleet.listVehicles()).length).toBe(before.length + 1)
+    expect((await apis.fleet.getVehicle(created.id))?.location).toBe('Kandy')
+    expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Vehicle added' })
+    await expect(apis.fleet.createVehicle(newVehicle)).rejects.toThrow(/registration is already/)
+  })
+  it('refuses a refrigerated non-Fresh vehicle and capacities outside the range', async () => {
+    await expect(
+      apis.fleet.createVehicle({ ...newVehicle, brand: 'Tech', registration: undefined }),
+    ).rejects.toThrow(/only a Fresh vehicle can be refrigerated/)
+    await expect(
+      apis.fleet.createVehicle({ ...newVehicle, weightCapacity: 50, registration: undefined }),
+    ).rejects.toThrow(/Weight capacity/)
+    await expect(
+      apis.fleet.createVehicle({ ...newVehicle, volumeCapacity: 100, registration: undefined }),
+    ).rejects.toThrow(/Volume capacity/)
+    await expect(apis.fleet.createVehicle({ ...newVehicle, registration: '!!' })).rejects.toThrow(
+      /registration is 4 to 12/,
+    )
+  })
+  it('lets a driver be assigned to a vehicle that was just added', async () => {
+    const vehicle = await apis.fleet.createVehicle({ ...newVehicle, registration: undefined })
+    await apis.team.createUser({
+      name: 'Ruwan Jayasuriya',
+      mobile: '+94 77 555 0121',
+      role: 'driver',
+      depot: 'Kandy',
+      assignment: vehicle.id,
+      username: 'ruwan.jayasuriya',
+      password: 'Kp7mQx2RtWn4',
+    })
+    const driver = (await apis.team.listMembers()).find(
+      (member) => member.username === 'ruwan.jayasuriya',
+    )
+    expect(driver?.vehicleId).toBe(vehicle.id)
+  })
   it('suspends an on-route driver only after a schedule or with a reason', async () => {
     await repository.update((snapshot) => {
       snapshot.members.find((member) => member.id === 'USR001')!.onRoute = true

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { TeamMember } from '../../../../domain/models'
 import { toast } from 'sonner'
+import { vehicleDepot } from '../../../../domain/fleet'
 import { useApiQuery } from '../../../hooks/useApiQuery'
 import { useAction } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
@@ -32,8 +33,7 @@ function ChangeAssignment({ member, close }: { member: TeamMember; close: () => 
     members.filter((other) => other.id !== member.id).map((other) => other.vehicleId),
   )
   const free = (vehicles.data ?? []).filter((vehicle) => !taken.has(vehicle.id))
-  const here = free.filter((vehicle) => vehicle.location === depot)
-  const listed = here.length ? here : free
+  const listed = free.filter((vehicle) => vehicleDepot(vehicle) === depot)
   const missing = attempted && assignment.trim().length < 2
   const driver = member.role === 'driver'
   const storeManager = member.role === 'store-manager'

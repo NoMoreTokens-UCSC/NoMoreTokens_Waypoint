@@ -1,4 +1,5 @@
 import type { OperationsRepository, SyncGateway } from '../domain/ports'
+import { depotCoordinates, vehicleKind, type NewVehicle } from '../domain/fleet'
 import { profileFromInput, type NewOutlet, type OutletProfile } from '../domain/outlets'
 import type {
   Evidence,
@@ -10,6 +11,7 @@ import type {
   Settings,
   Snapshot,
   TeamMember,
+  Vehicle,
   Order,
   StoreOrderInput,
   Workspace,
@@ -1481,6 +1483,70 @@ export class OperationsService {
         `${invitation.name} · ${invitation.mobile} · no SMS sent`,
       )
     })
+  }
+  /** Adds a vehicle to the fleet: next free id, available at its depot. */
+  createVehicle(input: NewVehicle) {
+    let created: Vehicle | undefined
+    return this.repository
+      .update((s) => {
+        assert(['Fresh', 'Style', 'Tech'].includes(input.brand), 'Choose a brand.')
+        assert(input.type === 'Van' || input.type === 'Truck', 'Choose a van or a truck.')
+        assert(
+          !input.reefer || input.brand === 'Fresh',
+          'Only Fresh carries chilled goods, so only a Fresh vehicle can be refrigerated.',
+        )
+        assert(['Peliyagoda', 'Kandy'].includes(input.depot), 'Choose Peliyagoda or Kandy.')
+        assert(
+          Number.isFinite(input.weightCapacity) &&
+            input.weightCapacity >= 100 &&
+            input.weightCapacity <= 20000,
+          'Weight capacity is between 100 and 20,000 kg.',
+        )
+        assert(
+          Number.isFinite(input.volumeCapacity) &&
+            input.volumeCapacity >= 1 &&
+            input.volumeCapacity <= 60,
+          'Volume capacity is between 1 and 60 m³.',
+        )
+        const registration = input.registration?.trim().toUpperCase()
+        if (registration) {
+          assert(
+            /^[A-Z0-9][A-Z0-9 -]{3,11}$/.test(registration),
+            'A registration is 4 to 12 letters, numbers, spaces or dashes.',
+          )
+          assert(
+            !s.vehicles.some((vehicle) => vehicle.registration === registration),
+            'That registration is already on a vehicle.',
+          )
+        }
+        const highest = Math.max(
+          0,
+          ...s.vehicles.map((vehicle) => Number(/^VEH(\d+)$/.exec(vehicle.id)?.[1] ?? 0)),
+        )
+        const at = depotCoordinates[input.depot]
+        created = {
+          id: `VEH${String(highest + 1).padStart(3, '0')}`,
+          brand: input.brand,
+          type: input.type,
+          reefer: input.reefer,
+          weightCapacity: input.weightCapacity,
+          volumeCapacity: input.volumeCapacity,
+          status: 'Available',
+          depot: input.depot,
+          registration: registration || undefined,
+          location: input.depot,
+          lat: at.lat,
+          lng: at.lng,
+          updatedMinutes: 0,
+        }
+        s.vehicles.push(created)
+        log(
+          s,
+          'Vehicle added',
+          `${created.id} · ${vehicleKind(created)} · ${created.brand} · ${created.depot}`,
+        )
+      })
+      .then(() => created!)
   }
   /** Adds an outlet with the next free id and the receiving hours the administrator chose. */
   createOutlet(input: NewOutlet) {

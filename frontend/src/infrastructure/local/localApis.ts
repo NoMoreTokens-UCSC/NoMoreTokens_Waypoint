@@ -198,6 +198,7 @@ export function createLocalApis(service: OperationsService): Apis {
       listVehicles: async () => (await snapshot()).vehicles,
       getVehicle: async (vehicleId) =>
         (await snapshot()).vehicles.find((vehicle) => vehicle.id === vehicleId),
+      createVehicle: (input) => service.createVehicle(input),
     },
     team: {
       listMembers: async () => (await snapshot()).members,
