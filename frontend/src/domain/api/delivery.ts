@@ -1,6 +1,7 @@
 import type { Evidence, QueuedAction, Stop } from '../models'
 import type { DriverProofDraft } from '../driverProof'
 import type { ManagerSignOff } from '../deliveryVerification'
+import type { RouteEvent } from '../routeHistory'
 
 export interface RouteState {
   started: boolean
@@ -28,8 +29,15 @@ export interface DeliveryApi {
   startRoute(): Promise<void>
   arrive(stopId: string): Promise<void>
   saveProof(stopId: string, proof: DeliveryProof): Promise<void>
+  confirmManagerHandoff(outletId: string, stopId: string, proof: DeliveryProof): Promise<void>
   reportIssue(stopId: string, issue: string): Promise<void>
-  reportDelay(stopId: string, note: string): Promise<void>
+  reportDelay(
+    stopId: string,
+    note: string,
+    revisedEta?: string,
+    kind?: 'delay' | 'breakdown',
+  ): Promise<void>
+  listRouteHistory(): Promise<RouteEvent[]>
   saveAttemptProof(stopId: string, photo: File, issue: string): Promise<void>
   retryStop(stopId: string): Promise<void>
   reopenProofForSignOff(actionId: string): Promise<void>

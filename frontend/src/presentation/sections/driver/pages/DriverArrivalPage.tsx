@@ -9,8 +9,7 @@ export default function DriverArrivalPage() {
   return (
     <DriverStopLayout state={state} title="Arrived and safely parked" proofStep>
       <Notice title="Safe parking confirmed" tone="success">
-        You can now record the handoff. A photograph and receiver acknowledgement or exception are
-        required.
+        You can now record the handoff. A photograph and Store Manager confirmation are required.
       </Notice>
       <Panel title={`You’re at ${state.stop?.outlet}`}>
         <div className="panel-body flex min-w-0 flex-col gap-4">

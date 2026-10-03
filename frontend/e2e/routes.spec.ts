@@ -55,6 +55,8 @@ const routes = [
   '/driver/sync',
   '/driver/route/revision',
   '/driver/sync/history',
+  '/driver/history',
+  '/store-manager/deliveries/confirm',
   '/administration/team',
   '/administration/roles',
   '/administration/assignments',

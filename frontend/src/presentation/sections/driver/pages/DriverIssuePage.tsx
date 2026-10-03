@@ -3,6 +3,8 @@ import type { ChangeEvent } from 'react'
 import { useDriverStop } from '../hooks/useDriverData'
 import { DriverScreen } from '../templates/DriverScreen'
 import { DriverIssueForm } from '../organisms/DriverIssueForm'
+import { DriverStoreContact } from '../organisms/DriverStoreContact'
+import { DeliveryWindowNotice } from '../molecules/DeliveryWindowNotice'
 import { DriverReportedIssue } from '../organisms/DriverReportedIssue'
 import { Field, EmptyState } from '../../../shared/molecules/Common'
 
@@ -14,11 +16,11 @@ export default function DriverIssuePage() {
   }
   return (
     <DriverScreen
-      title="Delivery issues"
+      title="Delays & delivery issues"
       loading={state.isPending}
       error={state.error}
       retry={() => void state.refetch()}
-      description="Record attempts, delay or partial acceptance while safely stopped. Delivery stays incomplete."
+      description="Report delays, vehicle breakdowns or unsuccessful attempts. Reports keep delivery open; dispatch decides rescheduling or cancellation."
     >
       {!state.stop ? (
         <EmptyState title="No assigned deliveries" />
@@ -33,6 +35,8 @@ export default function DriverIssuePage() {
               ))}
             </select>
           </Field>
+          <DeliveryWindowNotice stop={state.stop} orders={state.data?.orders ?? []} />
+          <DriverStoreContact stop={state.stop} />
           <div className="grid grid-cols-1 gap-4 min-[901px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
             <DriverIssueForm key={state.stop.id} state={state} />
             <DriverReportedIssue state={state} />

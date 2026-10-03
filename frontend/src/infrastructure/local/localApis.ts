@@ -1,6 +1,7 @@
 import { DriverSignalsService } from '../../application/DriverSignalsService'
 import type { Apis } from '../../domain/api'
 import { profileOf } from '../../domain/outlets'
+import { assignedDriverLoad, isAssignedStop } from '../../domain/driverWorkflow'
 import { tripsFromOrders } from '../../domain/trips'
 import type { OperationsService } from '../../application/OperationsService'
 
@@ -106,7 +107,9 @@ export function createLocalApis(service: OperationsService): Apis {
         return {
           started: current.settings.routeStarted,
           revision: current.settings.routeRevision,
-          stops: current.stops,
+          stops: current.stops.filter((stop) =>
+            isAssignedStop(stop, current.orders, assignedDriverLoad(current)),
+          ),
         }
       },
       listStops: async (filter = {}) =>
@@ -126,8 +129,16 @@ export function createLocalApis(service: OperationsService): Apis {
           proof.capturedRevision,
           proof.managerSignOff,
         ),
+      confirmManagerHandoff: (outletId, stopId, proof) =>
+        service.confirmManagerHandoff(outletId, stopId, proof),
       reportIssue: (stopId, issue) => service.reportDeliveryIssue(stopId, issue),
-      reportDelay: (stopId, note) => service.reportDelay(stopId, note),
+      reportDelay: (stopId, note, revisedEta, kind) =>
+        service.reportDelay(stopId, note, revisedEta, kind),
+      listRouteHistory: async () => {
+        const current = await snapshot()
+        const load = assignedDriverLoad(current)
+        return (current.routeEvents ?? []).filter((event) => event.vehicleId === load?.vehicleId)
+      },
       saveAttemptProof: (stopId, photo, issue) => service.saveAttemptProof(stopId, photo, issue),
       retryStop: (stopId) => service.retryStop(stopId),
       reopenProofForSignOff: (actionId) => service.reopenProofForSignOff(actionId),

@@ -65,23 +65,30 @@ export default function DriverPreDeparturePage() {
               </label>
             </div>
           </Panel>
-          {!load?.released && (
+          {!!state.departureErrors.length && (
             <Notice title="Waiting for your cleared load">
               Loader must complete checks and attach loading proof, then Dispatcher must release the
               vehicle. Report a problem to the loading team before departure.
+              <ul className="mt-2 list-disc pl-5">
+                {state.departureErrors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
             </Notice>
           )}
           <DriverActions>
             {state.data.route.started ? (
               <DriverLink to="/driver/route">Resume current route</DriverLink>
-            ) : (
+            ) : !state.departureErrors.length ? (
               <Button
-                disabled={!checked || !load?.released || action.isPending}
+                disabled={
+                  !checked || !!state.departureErrors.length || state.isPending || action.isPending
+                }
                 onClick={startRoute}
               >
                 Confirm and start route
               </Button>
-            )}
+            ) : null}
             <DriverLink to="/driver/home" variant="secondary">
               Back to home
             </DriverLink>

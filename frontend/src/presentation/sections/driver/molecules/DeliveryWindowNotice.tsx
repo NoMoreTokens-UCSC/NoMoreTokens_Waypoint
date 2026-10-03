@@ -20,7 +20,9 @@ export function DeliveryWindowNotice({ stop, orders }: { stop: Stop; orders: Ord
             ? 'Arrival recorded after the delivery window'
             : 'Delivery window missed'
           : window.etaLate
-            ? 'Planned ETA misses the delivery window'
+            ? stop.etaUpdatedAt
+              ? 'Driver estimate misses the delivery window'
+              : 'Planned ETA misses the delivery window'
             : window.dueSoon
               ? 'Delivery window closing soon'
               : `Receive by ${window.deadline}`
@@ -29,11 +31,14 @@ export function DeliveryWindowNotice({ stop, orders }: { stop: Stop; orders: Ord
     >
       <p>
         {window.fresh ? 'Fresh food must reach the outlet by 08:00. ' : ''}Outlet deadline{' '}
-        {window.deadline} · planned ETA {stop.eta}.{' '}
+        {window.deadline} · {stop.etaUpdatedAt ? 'Driver estimate' : 'planned ETA'} {stop.eta}.{' '}
         {window.arrived ? 'Deadline checked against recorded arrival.' : 'Clock uses Asia/Colombo.'}
       </p>
       {warning && ['Upcoming', 'Arrived'].includes(stop.status) && (
-        <DriverLink to={`/driver/issues?stop=${encodeURIComponent(stop.id)}`} variant="outline">
+        <DriverLink
+          to={`/driver/issues?stop=${encodeURIComponent(stop.id)}&kind=delay`}
+          variant="outline"
+        >
           Report a delay or delivery issue
         </DriverLink>
       )}

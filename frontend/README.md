@@ -55,9 +55,9 @@ If npm cannot write its default cache, set `$env:npm_config_cache` to the projec
 2. Dispatcher: Start allocation, review allocation, publish the plan.
 3. Loader: reconcile rear/front quantities, complete safety checks, select a real loading photo, review it and confirm completion.
 4. Dispatcher: refresh readiness and dispatch VEH055 Trip 1.
-5. Driver: open `/driver/pre-departure`, confirm the cleared load and start. Open navigation, confirm safe parking, capture/review/attach a photo, record per-order quantities, manager remarks, unloading confirmation and the manager’s e-signature, then confirm submission.
+5. Driver: open `/driver/pre-departure`, confirm the cleared load and start. Open navigation, confirm safe parking, capture/review/attach a photo and wait for the Store Manager’s confirmation. If the manager screen or connection is unavailable, choose Manager signs on this device for the signed offline fallback.
 6. Captured drafts and submitted offline proof survive reload. `/driver/sync` shows local save, upload, failure and acceptance; pending records resume online, failed uploads require explicit retry, and a route change requires review without replacing the original proof.
-7. Store Manager: review persistent delivery alerts and accepted signed proof; signed quantities record receipt and shortfalls.
+7. Store Manager: open Deliveries, review the arrived handoff photo and received quantities, add remarks and sign, then confirm once. The signed handoff records receipt and shortfalls without another order drop-off action.
 
 The featured live handoff is VEH055 Trip 1. `/demo/map` exposes the Leaflet adapter on its own.
 
@@ -65,16 +65,16 @@ The featured live handoff is VEH055 Trip 1. `/demo/map` exposes the Leaflet adap
 
 Open `/demo`, select **Reset demo**, then confirm the reset. Reset clears this browser's demo changes, photographs, queue, drafts, and audit history and restores seed data. It does not reset other devices or origins.
 
-Dexie stores snapshots, image blobs, and queue entries in IndexedDB. Evidence, its queued action, and the business state change are saved in one transaction. Failed/reviewed records keep their original evidence. An interrupted syncing record becomes retryable on startup. Accepted records remain available in Recovery. Changing browser, hostname, port, or profile uses a different local database.
+Dexie stores snapshots, image blobs, and queue entries in IndexedDB. Evidence, its queued action, and the business state change are saved in one transaction. Failed/reviewed records keep their original evidence. An interrupted syncing record becomes retryable on startup. Accepted records remain available in Saved records & sync. Changing browser, hostname, port, or profile uses a different local database.
 
 ## Offline and browser limits
 
 - The production PWA caches its application shell, route modules, fonts, and bundled assets after an online visit. Vite's development server is not the offline test target.
-- Forms and evidence saves use the local repository even when offline. Sync runs through Recovery or once when the browser reconnects; acceptance is simulated locally.
+- Forms and evidence saves use the local repository even when offline. Sync runs through Saved records & sync or once when the browser reconnects; acceptance is simulated locally.
 - Leaflet uses attributed OpenStreetMap tiles online. Saved stops and route lines remain available offline; an offline basemap is not provided.
 - Camera capture uses the browser's file input with `capture="environment"`. Mobile browsers may open a camera; desktop and unsupported browsers use file selection. Only JPEG, PNG, and WebP images up to 10 MB are accepted; HEIC requires conversion.
 - Browser storage can be cleared or evicted, and private mode/storage restrictions may prevent persistence. This demo does not provide backups or guaranteed retention. Do not treat it as a production evidence store.
-- Driver proof requires manager remarks, unloading confirmation and an e-signature. GPS is opt-in and saves device coordinates locally. Delivery alerts persist in the store inbox, with optional browser system notifications. Remote location/alerts, real ETA and upload acceptance await the backend. Fresh receiving windows must allow completion by 08:00.
+- Driver proof requires manager remarks, unloading confirmation and an e-signature. Route start verifies the assigned Loader-confirmed and Dispatcher-released truck; proof navigation unlocks after arrival at an assigned outlet. Route history keeps daily timestamps. Delays & issues handles delays/breakdowns and optional revised ETAs; dispatch decides rescheduling/cancellation. Manager call/SMS links open from a Contact button. GPS is opt-in and saves device coordinates locally. Delivery alerts persist in the store inbox, with optional browser system notifications. Remote location/alerts, real ETA and upload acceptance await the backend. Fresh receiving windows must allow completion by 08:00.
 - Workspace switching is not authentication or authorization. No invitations, operational notifications, dispatch messages, or backend API calls are sent. The development map uses external OpenStreetMap tiles.
 
 ## Project documentation

@@ -1,13 +1,16 @@
-import { Navigate } from 'react-router-dom'
+import { useSearchParams, Navigate } from 'react-router-dom'
 import { useDriverStop } from '../hooks/useDriverData'
 import { DriverStopLayout } from '../templates/DriverStopLayout'
 import { DriverPhotoPreview } from '../molecules/DriverPhotoPreview'
-import { DriverHandoffForm } from '../organisms/DriverHandoffForm'
+import { ManagerHandoffForm } from '../../../shared/organisms/ManagerHandoffForm'
+import { DriverButton } from '../atoms/DriverButton'
 import { DriverLink } from '../molecules/DriverLink'
-import { Panel, StatusBadge } from '../../../shared/molecules/Common'
+import { Panel, StatusBadge, Notice } from '../../../shared/molecules/Common'
 
 export default function DriverProofAttachedPage() {
   const state = useDriverStop()
+  const [params, setParams] = useSearchParams()
+  const signHere = params.get('sign') === '1' || !!state.draft?.managerSignOff
   if (state.draft?.stage === 'captured')
     return <Navigate replace to={state.href('/driver/proof/review')} />
   return (
@@ -21,8 +24,27 @@ export default function DriverProofAttachedPage() {
           </DriverLink>
         </div>
       </Panel>
-      {state.draft && state.stop && (
-        <DriverHandoffForm
+      {!signHere && (
+        <Notice title="Await Store Manager confirmation" tone="neutral">
+          The manager checks received quantities, adds remarks and confirms in their Deliveries
+          screen. You do not need a separate order drop-off action. If the manager’s screen is
+          unavailable or there is no signal, they can sign on this device.
+        </Notice>
+      )}
+      {!signHere && (
+        <DriverButton
+          variant="outline"
+          onClick={() => {
+            const next = new URLSearchParams(params)
+            next.set('sign', '1')
+            setParams(next, { replace: true })
+          }}
+        >
+          Manager signs on this device
+        </DriverButton>
+      )}
+      {signHere && state.draft && state.stop && (
+        <ManagerHandoffForm
           key={`${state.stop.id}-${state.draft.fileName}`}
           draft={state.draft}
           expected={state.stop.cases}

@@ -28,6 +28,12 @@ describe('frontend delivery signals', () => {
     await expect(signals.recordPosition(fix)).rejects.toThrow('active assigned route')
     await repository.update((snapshot) => {
       snapshot.settings.routeStarted = true
+      for (const stop of snapshot.stops)
+        for (const orderId of stop.orderIds) {
+          const order = snapshot.orders.find((item) => item.id === orderId)!
+          order.vehicleId = 'VEH055'
+          order.trip = 1
+        }
       snapshot.settings.simulatedOffline = true
     })
     await signals.recordPosition(fix)
@@ -71,6 +77,12 @@ describe('frontend delivery signals', () => {
   it('persists outlet-scoped alerts and acknowledgement, deduplicating deadline checks', async () => {
     await repository.update((snapshot) => {
       snapshot.settings.routeStarted = true
+      for (const stop of snapshot.stops)
+        for (const orderId of stop.orderIds) {
+          const order = snapshot.orders.find((item) => item.id === orderId)!
+          order.vehicleId = 'VEH055'
+          order.trip = 1
+        }
     })
     const service = new OperationsService(repository, {
       submit: async () => ({ status: 'accepted', message: 'demo' }),

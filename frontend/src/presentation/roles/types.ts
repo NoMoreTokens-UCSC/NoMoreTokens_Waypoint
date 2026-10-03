@@ -16,6 +16,11 @@ export interface NavItem {
   label: string
   path: string
   icon: LucideIcon
+  activePaths?: string[]
+  availability?: (
+    snapshot: Snapshot,
+    session: Session,
+  ) => { path?: string; disabledReason?: string }
   /** Draws a custom icon (e.g. from the design) instead of `icon`; `active` marks the current page. */
   renderIcon?: (active: boolean) => ReactNode
   /** Label in the compact navigation menu when it differs from the sidebar label. */

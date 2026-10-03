@@ -33,6 +33,13 @@ export async function clearedDriverLoad(page: Page) {
       load.photoId = 'upstream-fixture-photo'
       load.checks = { refrigeration: true, condition: true, restraints: true }
       for (const item of load.items) item.loaded = item.expected
+      for (const stop of record.data.stops)
+        for (const orderId of stop.orderIds) {
+          const order = record.data.orders.find((item) => item.id === orderId)!
+          order.vehicleId = load.vehicleId
+          order.trip = load.trip
+          order.status = 'En route'
+        }
       store.put(record)
     }
     await new Promise<void>((resolve, reject) => {
@@ -97,6 +104,7 @@ export async function captureAndReview(page: Page) {
     )
     .toBe(true)
   await page.getByRole('button', { name: 'Use this photo' }).click()
+  await expect(page).toHaveURL(/\/proof\/attached\?stop=/)
   await signManagerHandoff(page)
   await page.getByRole('button', { name: 'Continue to submission review' }).click()
   await expect(page.getByRole('heading', { name: 'Check the handoff.' })).toBeVisible()
@@ -120,6 +128,8 @@ export async function signManagerHandoff(
   page: Page,
   remarks = 'All cases unloaded, checked and received in good condition.',
 ) {
+  const fallback = page.getByRole('button', { name: 'Manager signs on this device' })
+  if (await fallback.isVisible()) await fallback.click()
   await page.getByLabel('Store Manager name', { exact: true }).fill('Nimal Perera')
   await page.getByLabel('Store Manager remarks', { exact: true }).fill(remarks)
   await page.getByRole('checkbox').check()
@@ -159,6 +169,8 @@ export async function storedDriverState(page: Page) {
       vehicle: record.data.vehicles.find((vehicle) => vehicle.id === 'VEH055'),
       positions: record.data.pendingPositions ?? [],
       notices: record.data.deliveryNotices ?? [],
+      routeEvents: record.data.routeEvents ?? [],
+      stops: record.data.stops,
       statuses: record.data.stops.map((stop) => stop.status),
       receipts: record.data.orders.map((order) => order.receipt),
       queue: queue.result.map(

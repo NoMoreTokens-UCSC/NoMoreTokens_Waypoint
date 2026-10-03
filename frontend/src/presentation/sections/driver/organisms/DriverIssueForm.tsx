@@ -5,6 +5,7 @@ import { DriverLink } from '../molecules/DriverLink'
 import { DriverPhotoPicker } from '../molecules/DriverPhotoPicker'
 import { DriverPhotoPreview } from '../molecules/DriverPhotoPreview'
 import { DriverButton as Button } from '../atoms/DriverButton'
+import { Input } from '../../../shared/atoms/input'
 import { Textarea } from '../../../shared/atoms/textarea'
 import { Checkbox } from '../../../shared/atoms/checkbox'
 import { Field, Panel, Notice, Modal } from '../../../shared/molecules/Common'
@@ -13,6 +14,8 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
   const {
     kind,
     setKind,
+    revisedEta,
+    setRevisedEta,
     reason,
     setReason,
     note,
@@ -29,6 +32,7 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
     reportIssue,
     busy,
   } = useDriverIssueForm(state)
+  const isDelay = kind === 'Delay' || kind === 'Vehicle breakdown'
   return (
     <>
       <Panel title="Report an issue">
@@ -44,6 +48,7 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
             >
               <option>Cannot deliver</option>
               <option>Delay</option>
+              <option>Vehicle breakdown</option>
               <option>Partial acceptance</option>
             </select>
           </Field>
@@ -51,8 +56,8 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
             <>
               <Notice title="Record the actual accepted quantity">
                 Confirm parking, capture proof, then enter the received case count and the
-                rejected-goods exception. Receiver sign-off can be unavailable with a recorded
-                reason.
+                rejected-goods exception. The Store Manager must review received quantities, add
+                remarks and sign. If nobody can confirm receipt, record an unsuccessful attempt.
               </Notice>
               <DriverLink to={state.href('/driver/delivery')}>
                 Continue to quantity and proof
@@ -75,13 +80,43 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
                   </select>
                 </Field>
               )}
-              <Field label={kind === 'Delay' ? 'Delay details' : 'Attempt details'}>
+              <Field label={isDelay ? 'Delay details' : 'Attempt details'}>
                 <Textarea
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                   placeholder="Describe what happened and where you are safely stopped."
                 />
               </Field>
+              {isDelay && (
+                <>
+                  <Field
+                    label="Revised estimated arrival"
+                    hint={
+                      state.stop?.status === 'Arrived'
+                        ? 'Arrival is already recorded; explain unloading delays in the note.'
+                        : 'Optional driver estimate. Dispatch must confirm any route or receiving-window change.'
+                    }
+                  >
+                    <Input
+                      type="time"
+                      value={revisedEta}
+                      onChange={(event) => setRevisedEta(event.target.value)}
+                      disabled={state.stop?.status === 'Arrived'}
+                    />
+                  </Field>
+                  <Notice
+                    title={
+                      kind === 'Vehicle breakdown'
+                        ? 'Keep the delivery open while dispatch resolves the breakdown'
+                        : 'A delay does not cancel this delivery'
+                    }
+                  >
+                    If Fresh delivery will miss 08:00, contact dispatch and the outlet manager. Save
+                    the reason and your estimate; dispatch must arrange a replacement or agree a new
+                    receiving plan. The deadline is not extended here.
+                  </Notice>
+                </>
+              )}
               <label className="flex items-start gap-3 text-sm leading-relaxed">
                 <Checkbox checked={parked} onCheckedChange={(value) => setParked(value === true)} />
                 I am safely stopped or parked.
@@ -109,7 +144,11 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
                 }
                 onClick={() => setConfirm(true)}
               >
-                {kind === 'Delay' ? 'Save delay note' : 'Save unsuccessful attempt'}
+                {isDelay
+                  ? kind === 'Vehicle breakdown'
+                    ? 'Save breakdown report'
+                    : 'Save delay note'
+                  : 'Save unsuccessful attempt'}
               </Button>
               {blocked && (
                 <Notice title="This stop is not available for a new issue">
@@ -119,8 +158,8 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
               )}
               {saved && (
                 <Notice title="Delay saved locally" tone="success">
-                  Your note is durable. Dispatch notification and ETA recalculation are not
-                  connected in this demo.
+                  Your report and any revised estimate are saved. Remote dispatch and outlet
+                  notifications await the backend.
                 </Notice>
               )}
               {!parked && (
@@ -134,7 +173,9 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
       </Panel>
       <Modal
         title={
-          kind === 'Delay' ? 'Save this delay note?' : 'Confirm unsuccessful delivery attempt?'
+          isDelay
+            ? 'Save this delay or breakdown report?'
+            : 'Confirm unsuccessful delivery attempt?'
         }
         description="This saves a local record and keeps the delivery incomplete."
         open={confirm}
@@ -143,7 +184,7 @@ export function DriverIssueForm({ state }: { state: DriverStopState }) {
         }}
       >
         <p>
-          {kind === 'Delay' ? 'Delay' : reason} · {note}
+          {isDelay ? kind : reason} · {note}
         </p>
         <DriverActions>
           <Button onClick={reportIssue} disabled={busy}>

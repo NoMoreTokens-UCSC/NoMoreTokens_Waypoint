@@ -1,4 +1,6 @@
 import { useApiQuery } from '../../../hooks/useApiQuery'
+import { driverDepartureErrors, nextDriverStop } from '../../../../domain/driverWorkflow'
+import { useOperations } from '../../../hooks/useOperations'
 import { useConnectivity } from '../../../hooks/useOperations'
 import { useSession } from '../../../session/useSession'
 import { useSearchParams } from 'react-router-dom'
@@ -7,9 +9,10 @@ import { useDriverAutoSync } from './useDriverAutoSync'
 
 export function useDriverData() {
   const session = useSession()
+  const snapshot = useOperations()
   const online = useConnectivity()
   const query = useApiQuery(['driver', session.vehicleId], async (apis) => {
-    const [route, loads, settings, queue, drafts, orders, vehicle] = await Promise.all([
+    const [route, loads, settings, queue, drafts, orders, vehicle, history] = await Promise.all([
       apis.delivery.getRoute(),
       apis.loading.listLoads(),
       apis.account.getSettings(),
@@ -17,6 +20,7 @@ export function useDriverData() {
       apis.delivery.listProofDrafts(),
       apis.orders.listOrders(),
       session.vehicleId ? apis.fleet.getVehicle(session.vehicleId) : Promise.resolve(undefined),
+      apis.delivery.listRouteHistory(),
     ])
     const evidenceIds = new Set([
       ...queue.map((record) => record.evidenceId),
@@ -39,11 +43,17 @@ export function useDriverData() {
         ),
       }
     })
-    return { route, stops, load, settings, queue, drafts, orders, vehicle, evidenceById }
+    return { route, stops, load, settings, queue, drafts, orders, vehicle, evidenceById, history }
   })
   const connected = online && !query.data?.settings.simulatedOffline
   const syncError = useDriverAutoSync(connected, query.data?.queue ?? [])
-  return { ...query, session, online: connected, syncError }
+  return {
+    ...query,
+    session,
+    online: connected,
+    syncError,
+    departureErrors: snapshot.data ? driverDepartureErrors(snapshot.data) : [],
+  }
 }
 
 export function useDriverStop() {
@@ -52,7 +62,7 @@ export function useDriverStop() {
   const selected = params.get('stop')
   const stop = selected
     ? state.data?.stops.find((item) => item.id === selected)
-    : state.data?.stops.find((item) => !['delivered', 'issueReported'].includes(item.deliveryState))
+    : nextDriverStop(state.data?.stops ?? [])
   const selectedRecord = params.get('record')
   const record = state.data?.queue.find((item) =>
     selectedRecord

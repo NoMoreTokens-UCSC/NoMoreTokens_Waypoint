@@ -1,30 +1,37 @@
-import { useDriverHandoffForm } from '../hooks/useDriverHandoffForm'
-import type { DriverProofDraft } from '../../../../domain/driverProof'
-import type { Order } from '../../../../domain/models'
-import { DriverButton as Button } from '../atoms/DriverButton'
-import { Input } from '../../../shared/atoms/input'
-import { Textarea } from '../../../shared/atoms/textarea'
-import { Checkbox } from '../../../shared/atoms/checkbox'
-import { Field, Notice } from '../../../shared/molecules/Common'
+import { useManagerHandoffForm } from '../hooks/useManagerHandoffForm'
+import type { DriverProofDraft } from '../../../domain/driverProof'
+import type { Order } from '../../../domain/models'
+import { Button } from '../atoms/button'
+import { Input } from '../atoms/input'
+import { Textarea } from '../atoms/textarea'
+import { Checkbox } from '../atoms/checkbox'
+import { Field, Notice } from '../molecules/Common'
 import { ReceiverSignaturePad } from '../molecules/ReceiverSignaturePad'
 
-export function DriverHandoffForm({
+export function ManagerHandoffForm({
   draft,
   expected,
   orders,
   next,
+  ownDevice = false,
 }: {
   draft: DriverProofDraft
   expected: number
   orders: Order[]
   next: string
+  ownDevice?: boolean
 }) {
-  const form = useDriverHandoffForm(draft, expected, orders, next)
+  const form = useManagerHandoffForm(draft, expected, orders, next)
   return (
-    <form onSubmit={form.saveHandoff} className="flex min-w-0 flex-col gap-4">
+    <form
+      onSubmit={form.saveHandoff}
+      className="flex min-w-0 flex-col gap-4 [&_input]:min-h-11 [&_input]:text-base [&_textarea]:text-base [&_button]:min-h-11 [&_button]:h-auto [&_button]:whitespace-normal"
+    >
       <Notice title="Store Manager handoff" tone="neutral">
-        Hand the device to the Store Manager to check the unloaded orders, add remarks and sign. Any
-        edit to quantities, name or remarks requires a new signature.
+        {ownDevice
+          ? 'Check unloaded quantities, add your remarks and sign to confirm receipt.'
+          : 'Hand the device to the Store Manager to check the unloaded orders, add remarks and sign.'}{' '}
+        Any edit to quantities, name or remarks requires a new signature.
       </Notice>
       {orders.map((order) => (
         <Field

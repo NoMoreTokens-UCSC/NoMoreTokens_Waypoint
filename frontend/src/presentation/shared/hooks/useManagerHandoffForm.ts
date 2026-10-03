@@ -1,25 +1,25 @@
 import { useRef, useState, type FormEvent } from 'react'
-import type { DriverProofDraft } from '../../../../domain/driverProof'
-import type { Order } from '../../../../domain/models'
-import { handoffErrors } from '../../../../domain/driverProof'
+import type { DriverProofDraft } from '../../../domain/driverProof'
+import type { Order } from '../../../domain/models'
+import { handoffErrors } from '../../../domain/driverProof'
 import {
   hasSignatureInk,
   signOffBinding,
   type ManagerSignOff,
   type SignatureStroke,
-} from '../../../../domain/deliveryVerification'
-import { useApis } from '../../../providers/ApisContext'
-import { useDriverAction } from './useDriverAction'
-import { photoDigest } from '../../../../domain/photoDigest'
+} from '../../../domain/deliveryVerification'
+import { useApis } from '../../providers/ApisContext'
+import { useHandoffAction } from './useHandoffAction'
+import { photoDigest } from '../../../domain/photoDigest'
 
-export function useDriverHandoffForm(
+export function useManagerHandoffForm(
   draft: DriverProofDraft,
   expected: number,
   orders: Order[],
   next: string,
 ) {
   const apis = useApis(),
-    action = useDriverAction()
+    action = useHandoffAction()
   const [received, setReceived] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       orders.map((order) => [

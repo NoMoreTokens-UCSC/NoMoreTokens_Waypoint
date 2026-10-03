@@ -1,6 +1,6 @@
-import type { SignatureStroke } from '../../../../domain/deliveryVerification'
+import type { SignatureStroke } from '../../../domain/deliveryVerification'
 import { useSignaturePad } from '../hooks/useSignaturePad'
-import { DriverButton } from '../atoms/DriverButton'
+import { Button } from '../atoms/button'
 
 const EMPTY: SignatureStroke[] = []
 export function ReceiverSignaturePad({
@@ -47,9 +47,9 @@ export function ReceiverSignaturePad({
           ? 'Signature captured for these handoff details.'
           : 'A signature is required. A dot or blank drawing is not accepted.'}
       </p>
-      <DriverButton variant="outline" type="button" onClick={onClear}>
+      <Button variant="outline" type="button" onClick={onClear}>
         Clear signature
-      </DriverButton>
+      </Button>
     </fieldset>
   )
 }

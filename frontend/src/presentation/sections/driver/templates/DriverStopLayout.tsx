@@ -1,3 +1,4 @@
+import { DriverStopProgress } from '../molecules/DriverStopProgress'
 import { DeliveryWindowNotice } from '../molecules/DeliveryWindowNotice'
 import { DriverStoreContact } from '../organisms/DriverStoreContact'
 import type { ReactNode } from 'react'
@@ -61,6 +62,7 @@ export function DriverStopLayout({
               {state.stop.cases} cases · ETA {state.stop.eta} · Window {state.stop.window}
             </span>
           </div>
+          <DriverStopProgress state={state} />
           <DeliveryWindowNotice stop={state.stop} orders={state.data?.orders ?? []} />
           <DriverStoreContact stop={state.stop} />
           {proofStep && !parked ? (

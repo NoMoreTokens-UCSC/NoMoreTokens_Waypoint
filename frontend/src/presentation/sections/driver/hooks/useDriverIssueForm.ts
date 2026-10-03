@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { useState } from 'react'
 import type { DriverStopState } from './useDriverData'
 import { useApis } from '../../../providers/ApisContext'
@@ -6,7 +7,9 @@ import { useDriverAction } from './useDriverAction'
 export function useDriverIssueForm(state: DriverStopState) {
   const apis = useApis(),
     action = useDriverAction()
-  const [kind, setKind] = useState('Cannot deliver')
+  const [params] = useSearchParams()
+  const [kind, setKind] = useState(params.get('kind') === 'delay' ? 'Delay' : 'Cannot deliver')
+  const [revisedEta, setRevisedEta] = useState('')
   const [reason, setReason] = useState('Outlet closed')
   const [note, setNote] = useState('')
   const [photo, setPhoto] = useState<File>()
@@ -21,9 +24,14 @@ export function useDriverIssueForm(state: DriverStopState) {
   function reportIssue() {
     if (!state.stop || blocked) return
     const stopId = state.stop.id
-    if (kind === 'Delay') {
+    if (kind === 'Delay' || kind === 'Vehicle breakdown') {
       action.run(async () => {
-        await apis.delivery.reportDelay(stopId, note)
+        await apis.delivery.reportDelay(
+          stopId,
+          note,
+          revisedEta || undefined,
+          kind === 'Vehicle breakdown' ? 'breakdown' : 'delay',
+        )
         setSaved(true)
         setConfirm(false)
       }, 'Issue saved locally')
@@ -37,6 +45,8 @@ export function useDriverIssueForm(state: DriverStopState) {
   }
   return {
     kind,
+    revisedEta,
+    setRevisedEta,
     setKind,
     reason,
     setReason,
