@@ -19,6 +19,8 @@ import { clock12, windowText12 } from '../lib/timeText'
 import { formatTime12 } from '../lib/windows'
 import { deferredOrders, pickActiveOrder, useStoreOrders } from '../lib/useStore'
 import { useProof } from '../lib/useProof'
+import { StorePendingHandoffs } from '../organisms/StorePendingHandoffs'
+import { SignedReceipt } from '../components/SignedReceipt'
 
 /** Delivery tracking for one order: where it is, when it arrives and when to be ready. */
 export default function TrackingPage() {
@@ -67,6 +69,15 @@ export default function TrackingPage() {
   return (
     <StorePage>
       <PageIntro title={heading} context={context} />
+      <StorePendingHandoffs />
+      {proof.evidence?.kind === 'delivery' && proof.evidence.managerSignOff && (
+        <SignedReceipt
+          orderId={order.id}
+          outletId={outletId}
+          evidence={proof.evidence}
+          url={proof.url}
+        />
+      )}
       {late && (
         <Callout
           tone="danger"
@@ -139,7 +150,7 @@ export default function TrackingPage() {
               <ActionLink to={`/store-manager/deliveries/${order.id}/receipt`}>
                 Confirm receipt
               </ActionLink>
-            ) : delivered ? (
+            ) : delivered && (order.receipt === 'Confirmed' || order.receiptReport) ? (
               <ActionLink
                 to={
                   order.receipt === 'Confirmed'
@@ -149,14 +160,14 @@ export default function TrackingPage() {
               >
                 View receipt
               </ActionLink>
-            ) : (
+            ) : !delivered ? (
               <Action
                 disabled={action.isPending}
                 onClick={() => action.run(async () => {}, 'Delivery status refreshed')}
               >
                 {order.status === 'En route' ? 'Refresh delivery status' : 'Refresh tracking'}
               </Action>
-            )}
+            ) : null}
             {alertLink}
           </div>
         </section>

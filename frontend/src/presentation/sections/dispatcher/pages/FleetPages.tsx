@@ -472,7 +472,7 @@ export function AnalyticsPage() {
         />
       </div>
       <div className="split-grid">
-        <div className="analytics-column">
+        <div className="analytics-column min-w-0">
           <Panel title="Ordered volume by delivery window">
             <div className="panel-body">
               <div className="analytics-legend">
@@ -525,7 +525,7 @@ export function AnalyticsPage() {
             </div>
           </Panel>
         </div>
-        <div className="analytics-column">
+        <div className="analytics-column min-w-0">
           <Panel title="Demand by brand" description="Number of orders in this workspace.">
             <div className="panel-body pb-12">
               <div className="chart-bars">

@@ -1,19 +1,24 @@
 import { useEffect } from 'react'
-import { MapContainer, CircleMarker, Polyline, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import {
+  MapContainer,
+  CircleMarker,
+  Polyline,
+  Popup,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from 'react-leaflet'
 import { useConnectivity } from '../../hooks/useOperations'
 import type { Stop, Vehicle } from '../../../domain/models'
 import { RouteMapViewport } from './RouteMapViewport'
 import 'leaflet/dist/leaflet.css'
 
-function FitMapToPoints({ vehicles, stops }: { vehicles: Vehicle[]; stops: Stop[] }) {
+function FitMapToPoints({ coordinates }: { coordinates: string }) {
   const map = useMap()
   useEffect(() => {
-    const points = [
-      ...vehicles.map((vehicle) => [vehicle.lat, vehicle.lng] as [number, number]),
-      ...stops.map((stop) => [stop.lat, stop.lng] as [number, number]),
-    ]
+    const points = JSON.parse(coordinates) as [number, number][]
     if (points.length > 1) map.fitBounds(points, { padding: [64, 64], maxZoom: 11 })
-  }, [map, vehicles, stops])
+  }, [map, coordinates])
   return null
 }
 
@@ -57,11 +62,17 @@ export default function OperationsMap({
         className="operations-map"
         aria-label="Operations map"
       >
-        <FitMapToPoints vehicles={vehicles} stops={stops} />
-        {fitRoute && (
+        {fitRoute ? (
           <RouteMapViewport
             coordinates={JSON.stringify([...points, ...vehicles.map((v) => [v.lat, v.lng])])}
             recenterKey={recenterKey}
+          />
+        ) : (
+          <FitMapToPoints
+            coordinates={JSON.stringify([
+              ...vehicles.map((vehicle) => [vehicle.lat, vehicle.lng]),
+              ...stops.map((stop) => [stop.lat, stop.lng]),
+            ])}
           />
         )}
         {connected && !offline && (
@@ -82,7 +93,12 @@ export default function OperationsMap({
             pathOptions={{
               color: '#fff',
               weight: 2,
-              fillColor: v.status === 'Offline' ? '#6e737b' : delayedVehicleIds.includes(v.id) ? '#c63a2f' : '#f26a2e',
+              fillColor:
+                v.status === 'Offline'
+                  ? '#6e737b'
+                  : delayedVehicleIds.includes(v.id)
+                    ? '#c63a2f'
+                    : '#f26a2e',
               fillOpacity: 1,
             }}
           >

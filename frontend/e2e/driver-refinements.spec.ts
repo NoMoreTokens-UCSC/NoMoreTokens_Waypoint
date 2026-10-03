@@ -96,6 +96,11 @@ test('manager confirms quantities, remarks and signature in their workspace with
   await expect(
     page.getByText('Manager confirmation is already recorded', { exact: false }),
   ).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Confirm receipt', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'View driver evidence' }).click()
+  await expect(page.getByRole('img', { name: 'Retained Store Manager e-signature' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
   const saved = await storedDriverState(page)
   expect(saved.statuses[0]).toBe('Delivered')
   expect(saved.evidence[0].signatureSize).toBeGreaterThan(0)
@@ -144,6 +149,30 @@ test('breakdown records an updated late ETA and persists daily history while lea
   await expect(page.getByLabel('Route day')).toHaveValue('2026-10-03')
   await expect(page.getByRole('list', { name: 'Route activity timeline' })).toContainText('08:20')
   expect((await storedDriverState(page)).statuses[1]).toBe('Upcoming')
+})
+
+test('Store Manager retains pending signed evidence and can log out while Driver uploads are pending', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 740 })
+  await startAndPark(page)
+  await driverScenario(page, { simulatedOffline: true })
+  await captureAndReview(page)
+  await confirmProof(page, true)
+  await page.goto('/store-manager/deliveries')
+  await expect(page.getByText('Manager confirmation is already recorded')).toBeVisible()
+  await expect(page.getByText(/Upload is pending; the signed receipt remains saved/)).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open saved records' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'View driver evidence' }).click()
+  await expect(page.getByRole('img', { name: 'Retained Store Manager e-signature' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Log Out', exact: true }).click()
+  const logout = page.getByRole('dialog', { name: 'Log out of Waypoint?' })
+  await expect(logout).toBeVisible()
+  await logout.getByRole('button', { name: 'Log Out', exact: true }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  expect((await storedDriverState(page)).queue[0].status).toBe('pending')
 })
 
 test('manager contacts open on demand and remain usable without internet', async ({ page }) => {

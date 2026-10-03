@@ -69,6 +69,7 @@ export default function IssueSubmittedPage() {
         outletId={outletId}
         url={proof.url}
         capturedAt={proof.capturedAt}
+        evidence={proof.evidence}
       />
     </StorePage>
   )
