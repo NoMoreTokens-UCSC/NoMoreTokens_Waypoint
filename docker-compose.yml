@@ -1,0 +1,67 @@
+services:
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: waypoint
+      POSTGRES_PASSWORD: waypoint
+      POSTGRES_DB: waypoint
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waypoint -d waypoint"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  # ── Waypoint API ─────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://waypoint:waypoint@db:5432/waypoint
+      JWT_SECRET: dev-secret-change-in-production
+      JWT_EXPIRE_MINUTES: "480"
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:4173"
+      UPLOAD_DIR: /uploads
+      DATA_DIR: /data/General Data
+      SEED_ON_START: "true"
+      DEMO_DELIVERY_DATE: "2024-04-10"
+      BUSINESS_DATE: ""
+    volumes:
+      - uploads:/uploads
+      - ./data:/data:ro          # CSVs mounted read-only
+      - ./api:/app:cached        # hot-reload in dev
+    ports:
+      - "8000:8000"
+    command: >
+      bash -c "alembic upgrade head &&
+               python -m seed.run &&
+               uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # ── Frontend (Vite dev server) ────────────────────────────────────────────
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+    volumes:
+      - ./frontend:/app:cached
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  uploads:
