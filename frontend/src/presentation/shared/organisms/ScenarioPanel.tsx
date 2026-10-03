@@ -5,6 +5,13 @@ import { Switch } from '../atoms/switch'
 import { Modal, Field, Notice } from '../molecules/Common'
 import { useOperations, useAction } from '../../hooks/useOperations'
 import { useServices } from '../../providers/ServicesContext'
+import { useActiveRole } from '../../session/useSession'
+import { outletProfiles } from '../../../domain/outlets'
+import {
+  applyStoreDemoState,
+  storeDemoStates,
+  type StoreDemoState,
+} from '../../../application/storeDemoStates'
 
 export function ScenarioPanel({
   open,
@@ -17,7 +24,9 @@ export function ScenarioPanel({
     service = useServices(),
     action = useAction()
   const [confirmReset, setConfirmReset] = useState(false)
+  const role = useActiveRole()
   if (!data) return null
+  const load = data.loads[0]
   return (
     <Modal
       title="Demo scenarios"
@@ -71,6 +80,62 @@ export function ScenarioPanel({
           <option value="review">Route review required</option>
         </select>
       </Field>
+      <Field
+        label={`Store orders · ${data.activeOutletId ?? 'OUT001'}`}
+        hint="Loads sample delivery states for the signed-in store outlet. Other outlets are not changed; Reset demo restores everything."
+      >
+        <select
+          className="native-select"
+          aria-label="Store orders"
+          value=""
+          disabled={action.isPending}
+          onChange={(e) => {
+            const state = e.target.value as StoreDemoState
+            if (!state) return
+            action.run(
+              () =>
+                service.repository.update((snapshot) =>
+                  applyStoreDemoState(snapshot, state, data.activeOutletId ?? 'OUT001'),
+                ),
+              'Store orders updated',
+            )
+          }}
+        >
+          <option value="">Choose a state…</option>
+          {storeDemoStates.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field
+        label="Store manager signed in as"
+        hint="Opens the store workspace for an outlet of another brand: Style (mall) or Tech."
+      >
+        <select
+          className="native-select"
+          aria-label="Store outlet"
+          value={data.activeOutletId ?? 'OUT001'}
+          disabled={action.isPending}
+          onChange={(e) => {
+            const activeOutletId = e.target.value
+            action.run(
+              () =>
+                service.repository.update(
+                  (snapshot) => void (snapshot.activeOutletId = activeOutletId),
+                ),
+              'Store workspace switched',
+            )
+          }}
+        >
+          {outletProfiles.map((outlet) => (
+            <option key={outlet.id} value={outlet.id}>
+              {outlet.id} · {outlet.name} · {outlet.brand}
+            </option>
+          ))}
+        </select>
+      </Field>
       <p role="status" className="text-xs text-muted-foreground">
         {action.isPending ? 'Saving scenario…' : 'Scenario settings saved'}
       </p>
@@ -79,13 +144,14 @@ export function ScenarioPanel({
           variant="outline"
           disabled={
             action.isPending ||
-            !data.loads[0].issue ||
-            data.loads[0].issueResolved ||
-            data.loads[0].released
+            role !== 'dispatcher' ||
+            !load?.issue ||
+            load.issueResolved ||
+            load.released
           }
           onClick={() =>
             action.run(
-              () => service.resolveLoadIssue(data.loads[0].id),
+              () => service.resolveLoadIssue(load?.id ?? ''),
               'Demo Dispatcher decision issued · collect replacement and repeat checks',
             )
           }
@@ -104,14 +170,11 @@ export function ScenarioPanel({
         </Button>
         <Button
           variant="outline"
-          disabled={action.isPending || data.loads[0].released}
+          disabled={action.isPending || !load || load.released || !data.settings.published}
           onClick={() =>
             action.run(
               () =>
-                service.reportLoadIssue(
-                  data.loads[0].id,
-                  'One milk case is missing. Loading held.',
-                ),
+                service.reportLoadIssue(load?.id ?? '', 'One milk case is missing. Loading held.'),
               'Loading shortfall recorded',
             )
           }
@@ -146,6 +209,8 @@ export function ScenarioPanel({
             else
               action.run(async () => {
                 await service.repository.reset()
+                // Anything saved on this device for sending is part of the demo state too.
+                window.dispatchEvent(new Event('waypoint:demo-reset'))
                 setConfirmReset(false)
                 onOpenChange(false)
               }, 'Demo reset to the Figma sample data')

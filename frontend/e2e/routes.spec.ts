@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test'
+import { mockMapTiles } from './map.helpers'
+
+test.beforeEach(async ({ page }) => mockMapTiles(page))
 
 // Keep in step with the module definitions in src/presentation/sections/*/index.ts.
 const routes = [
@@ -16,15 +19,47 @@ const routes = [
   '/dispatcher/analytics',
   '/store-manager/overview',
   '/store-manager/orders',
+  '/store-manager/orders/new',
+  '/store-manager/notifications',
+  '/store-manager/profile',
+  '/store-manager/settings',
+  '/store-manager/orders/ORD0910',
+  '/store-manager/orders/ORD0906',
   '/store-manager/deliveries',
   '/store-manager/alerts',
+  '/store-manager/orders/review',
+  '/store-manager/orders/confirmed',
+  '/store-manager/orders/draft',
+  '/store-manager/deliveries/ORD1042/receipt',
+  '/store-manager/deliveries/ORD1042/receipt/confirmed',
+  '/store-manager/deliveries/ORD1042/issue',
+  '/store-manager/deliveries/ORD1042/issue/submitted',
   '/loader/queue',
   '/loader/loading',
   '/loader/proof',
+  '/loader/loading/LOAD055-1',
+  '/loader/proof/LOAD055-1',
+  '/loader/loading/missing',
   '/driver/home',
   '/driver/route',
   '/driver/delivery',
   '/driver/issues',
+  '/driver/pre-departure',
+  '/driver/route/details',
+  '/driver/navigation',
+  '/driver/arrival',
+  '/driver/proof/capture',
+  '/driver/proof/camera-unavailable',
+  '/driver/proof/review',
+  '/driver/proof/attached',
+  '/driver/proof/submit',
+  '/driver/delivered',
+  '/driver/offline',
+  '/driver/sync',
+  '/driver/route/revision',
+  '/driver/sync/history',
+  '/driver/history',
+  '/store-manager/deliveries/confirm',
   '/administration/team',
   '/administration/roles',
   '/administration/assignments',
@@ -72,7 +107,7 @@ test('the root opens the welcome page and leads to sign-in and workspaces', asyn
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).toHaveURL(/\/workspaces$/)
   await page.getByRole('link', { name: /Store manager/ }).click()
-  await expect(page).toHaveURL(/\/store-manager\/orders$/)
+  await expect(page).toHaveURL(/\/store-manager\/overview$/)
 })
 
 test('breadcrumbs name the page, link home and go back', async ({ page }) => {

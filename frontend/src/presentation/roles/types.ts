@@ -16,6 +16,11 @@ export interface NavItem {
   label: string
   path: string
   icon: LucideIcon
+  activePaths?: string[]
+  availability?: (
+    snapshot: Snapshot,
+    session: Session,
+  ) => { path?: string; disabledReason?: string }
   /** Draws a custom icon (e.g. from the design) instead of `icon`; `active` marks the current page. */
   renderIcon?: (active: boolean) => ReactNode
   /** Label in the compact navigation menu when it differs from the sidebar label. */
@@ -34,6 +39,8 @@ export interface ShellOptions {
   /** Second line of the compact header, e.g. "Store · OUT001". */
   compactSubtitle?: (session: Session) => string
   /** Number shown on the header bell (e.g. unacknowledged alerts). Hidden when 0 or absent. */
+  /** Role-specific account pages for the bell and the account menu; the shared ones are used otherwise. */
+  accountPaths?: { profile?: string; settings?: string; notifications?: string }
   alertCount?: (snapshot: Snapshot, session: Session) => number
 }
 export interface SearchResult {

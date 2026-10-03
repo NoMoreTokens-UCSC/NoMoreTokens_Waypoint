@@ -1,10 +1,12 @@
 import { sourceFleet } from '../demo/fleetReference'
 import type { OperationsRepository } from '../../domain/ports'
 import type { Evidence, QueuedAction, Snapshot } from '../../domain/models'
+import type { DriverProofDraft } from '../../domain/driverProof'
 import { createSeed } from '../demo/seed'
 import { WaypointDatabase } from './database'
 import { sourceTeam, unlistedTeamCounts } from '../demo/teamReference'
 import { sourceAudit } from '../demo/auditReference'
+import { outletOrderHistory } from '../demo/orderHistory'
 
 export class DexieOperationsRepository implements OperationsRepository {
   private ready: Promise<void> | undefined
@@ -17,6 +19,22 @@ export class DexieOperationsRepository implements OperationsRepository {
         if (queue.length) await this.db.queue.bulkPut(queue)
       }
       const record = await this.db.snapshots.get('workspace')
+      if (record) {
+        const templates = createSeed().loads
+        let changed = false
+        for (const load of record.data.loads) {
+          const template = templates.find((entry) => entry.id === load.id)
+          if (!load.depot && template?.depot) {
+            load.depot = template.depot
+            changed = true
+          }
+          if (!load.departureTime && template?.departureTime) {
+            load.departureTime = template.departureTime
+            changed = true
+          }
+        }
+        if (changed) await this.db.snapshots.put(record)
+      }
       if (record && !record.data.designDataVersion) {
         // Preserve uploads, queue records, route progress and custom invitations.
         for (const reference of sourceTeam) {
@@ -53,6 +71,12 @@ export class DexieOperationsRepository implements OperationsRepository {
         record.data.fleetReferenceVersion = 1
         await this.db.snapshots.put(record)
       }
+      if (record && !record.data.orderHistoryVersion) {
+        // Browsers that stored data before order history existed receive the sample history.
+        record.data.orderHistory = outletOrderHistory.map((order) => ({ ...order }))
+        record.data.orderHistoryVersion = 1
+        await this.db.snapshots.put(record)
+      }
       // Interrupted uploads remain recoverable after a tab closes.
       await this.db.queue
         .where('status')
@@ -86,6 +110,47 @@ export class DexieOperationsRepository implements OperationsRepository {
     await this.initialize()
     return this.db.evidence.get(id)
   }
+  async getProofDraft(stopId: string) {
+    await this.initialize()
+    return this.db.driverProofDrafts.get(stopId)
+  }
+  async listProofDrafts() {
+    await this.initialize()
+    return this.db.driverProofDrafts.toArray()
+  }
+  async saveProofDraft(draft: DriverProofDraft) {
+    await this.initialize()
+    await this.db.driverProofDrafts.put(draft)
+  }
+  async deleteProofDraft(stopId: string) {
+    await this.initialize()
+    await this.db.driverProofDrafts.delete(stopId)
+  }
+  async restoreProofDraft(
+    actionId: string,
+    draft: DriverProofDraft,
+    change: (snapshot: Snapshot) => void,
+  ) {
+    await this.initialize()
+    await this.db.transaction(
+      'rw',
+      this.db.snapshots,
+      this.db.queue,
+      this.db.driverProofDrafts,
+      async () => {
+        const action = await this.db.queue.get(actionId)
+        if (!action || action.status === 'syncing' || action.status === 'superseded')
+          throw new Error('This record cannot be reopened.')
+        await this.db.queue.update(actionId, {
+          status: 'superseded',
+          message:
+            'Retained historical proof. Manager sign-off must be completed on the replacement.',
+        })
+        await this.mutate(change)
+        await this.db.driverProofDrafts.put(draft)
+      },
+    )
+  }
   async saveEvidence(
     evidence: Evidence,
     action: QueuedAction | undefined,
@@ -97,10 +162,12 @@ export class DexieOperationsRepository implements OperationsRepository {
       this.db.snapshots,
       this.db.queue,
       this.db.evidence,
+      this.db.driverProofDrafts,
       async () => {
         await this.db.evidence.put(evidence)
         if (action) await this.db.queue.put(action)
         await this.mutate(change)
+        if (evidence.kind === 'delivery') await this.db.driverProofDrafts.delete(evidence.entityId)
       },
     )
   }
@@ -132,10 +199,12 @@ export class DexieOperationsRepository implements OperationsRepository {
       this.db.snapshots,
       this.db.queue,
       this.db.evidence,
+      this.db.driverProofDrafts,
       async () => {
         await this.db.snapshots.clear()
         await this.db.queue.clear()
         await this.db.evidence.clear()
+        await this.db.driverProofDrafts.clear()
         const { queue: _queue, ...data } = createSeed()
         void _queue
         await this.db.snapshots.put({ id: 'workspace', data })

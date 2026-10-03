@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom'
 import { DropdownMenu } from 'radix-ui'
 import { ArrowLeftRight, CloudUpload, LogOut, Menu, Settings, User } from 'lucide-react'
+import { WorkspaceNavItem } from '../molecules/WorkspaceNavItem'
 import { SearchField, Modal, Notice } from '../molecules/Common'
 import { Button } from '../atoms/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../atoms/dialog'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { useConnectivity, useOperations } from '../../hooks/useOperations'
+import { useApiQuery } from '../../hooks/useApiQuery'
 import { roleModules } from '../../roles/registry'
 import { useSession } from '../../session/useSession'
 import { workspaceSearch } from './workspaceSearch'
@@ -33,11 +35,23 @@ export default function WorkspaceLayout() {
     [search, setSearch] = useState(''),
     [trail, setTrail] = useState<Crumb[]>([])
   const workspace = roleModules.find((module) => module.key === session.role)!
+  const drafts = useApiQuery(['driver', 'drafts'], (apis) => apis.delivery.listProofDrafts())
   const options = workspace.shell ?? {}
   const compactNav = options.compactNav ?? 'tabs'
   const compact = useMediaQuery(`(max-width: ${(options.compactBelow ?? 761) - 1}px)`)
   const headerSearch = workspace.search ?? workspaceSearch
-  const pendingCount = data?.queue.filter((q) => q.status !== 'accepted').length ?? 0
+  const pendingCount =
+    (data?.queue.filter((q) => !['accepted', 'superseded'].includes(q.status)).length ?? 0) +
+    (session.role === 'driver'
+      ? (drafts.data?.filter(
+          (draft) =>
+            !data?.queue.some(
+              (record) =>
+                record.stopId === draft.stopId &&
+                !['accepted', 'superseded'].includes(record.status),
+            ),
+        ).length ?? 0)
+      : 0)
   const offline = !online || data?.settings.simulatedOffline
   const identity = options.identity?.(session) ?? {
     title: session.name,
@@ -46,14 +60,15 @@ export default function WorkspaceLayout() {
   const alertCount = data ? (options.alertCount?.(data, session) ?? 0) : 0
   const logout = () => {
     setConfirmLogout(false)
-    if (pendingCount) toast.error('Sync your saved records before leaving this workspace.')
+    if (session.role === 'driver' && pendingCount)
+      toast.error('Sync your saved records before leaving this workspace.')
     else window.location.assign('/login')
   }
   const results = search.trim() && data ? headerSearch.find(data, search.trim(), session) : []
   const bell = (
     <Link
       className="header-button"
-      to="/account/notifications"
+      to={options.accountPaths?.notifications ?? '/account/notifications'}
       aria-label={alertCount ? `Notifications, ${alertCount} new` : 'Notifications'}
     >
       <BellIcon />
@@ -79,19 +94,14 @@ export default function WorkspaceLayout() {
         </Link>
         <div className="workspace-label">{workspace.label}</div>
         <nav aria-label="Workspace navigation">
-          {workspace.nav.map(({ label, path, icon: Icon, renderIcon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            >
-              {({ isActive }) => (
-                <>
-                  {renderIcon ? renderIcon(isActive) : <Icon />}
-                  {label}
-                </>
-              )}
-            </NavLink>
+          {workspace.nav.map((item) => (
+            <WorkspaceNavItem
+              key={item.path}
+              item={item}
+              snapshot={data}
+              session={session}
+              className="nav-item"
+            />
           ))}
           {options.recoveryLink !== false && (
             <div className="border-t mt-5 pt-3">
@@ -100,7 +110,7 @@ export default function WorkspaceLayout() {
                 className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
               >
                 <CloudUpload />
-                Recovery
+                Saved records
                 {pendingCount > 0 && (
                   <span className="ml-auto text-xs text-primary">{pendingCount}</span>
                 )}
@@ -165,14 +175,18 @@ export default function WorkspaceLayout() {
                       </div>
                       <DropdownMenu.Item
                         className="account-menu-item"
-                        onSelect={() => navigate('/account/profile')}
+                        onSelect={() =>
+                          navigate(options.accountPaths?.profile ?? '/account/profile')
+                        }
                       >
                         <User size={20} />
                         Profile
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
                         className="account-menu-item"
-                        onSelect={() => navigate('/account/settings')}
+                        onSelect={() =>
+                          navigate(options.accountPaths?.settings ?? '/account/settings')
+                        }
                       >
                         <Settings size={20} />
                         Settings
@@ -214,10 +228,19 @@ export default function WorkspaceLayout() {
           <Breadcrumbs home={workspace.home} trail={trail} />
           {offline && (
             <Notice title="Offline · your work is saved on this device">
-              {pendingCount} record{pendingCount === 1 ? '' : 's'} waiting.{' '}
-              <Link to="/recovery" className="underline">
-                Open recovery
-              </Link>
+              {session.role === 'store-manager' ? (
+                'Changes are saved locally. Their sending status is shown on each store screen.'
+              ) : (
+                <>
+                  {pendingCount} record{pendingCount === 1 ? '' : 's'} waiting.{' '}
+                  <Link
+                    to={session.role === 'driver' ? '/driver/sync' : '/recovery'}
+                    className="underline"
+                  >
+                    Open saved records
+                  </Link>
+                </>
+              )}
             </Notice>
           )}
           {isPending ? (
@@ -239,11 +262,14 @@ export default function WorkspaceLayout() {
       </div>
       {compactNav === 'tabs' && (
         <nav className="mobile-bottom-nav" aria-label="Compact workspace navigation">
-          {workspace.nav.slice(0, 4).map(({ label, path, icon: Icon }) => (
-            <NavLink key={path} to={path}>
-              <Icon size={20} />
-              {label}
-            </NavLink>
+          {workspace.nav.slice(0, 4).map((item) => (
+            <WorkspaceNavItem
+              key={item.path}
+              item={item}
+              snapshot={data}
+              session={session}
+              className=""
+            />
           ))}
           <Link
             to="/workspaces"
@@ -257,7 +283,7 @@ export default function WorkspaceLayout() {
       <Dialog open={menu} onOpenChange={setMenu}>
         <DialogContent
           showCloseButton={false}
-          className="compact-menu !top-[88px] !left-4 !translate-x-0 !translate-y-0 !gap-2 !border-0 !p-5 max-[760px]:!top-[72px] min-[761px]:!left-auto min-[761px]:!right-4 min-[761px]:!max-w-[420px]"
+          className="compact-menu max-h-[calc(100dvh-104px)] overflow-y-auto [&_.menu-item]:min-h-11 !top-[88px] !left-4 !translate-x-0 !translate-y-0 !gap-2 !border-0 !p-5 max-[760px]:!top-[72px] min-[761px]:!left-auto min-[761px]:!right-4 min-[761px]:!max-w-[420px]"
           aria-describedby={undefined}
         >
           <DialogTitle className="sr-only">Navigation</DialogTitle>
@@ -285,16 +311,31 @@ export default function WorkspaceLayout() {
           <p className="compact-menu-title">
             {identity.title} · {workspace.label.charAt(0) + workspace.label.slice(1).toLowerCase()}
           </p>
-          {workspace.nav.map(({ label, menuLabel, path }) => (
-            <NavLink key={path} to={path} className="menu-item" onClick={() => setMenu(false)} end>
-              {menuLabel ?? label}
-            </NavLink>
+          {workspace.nav.map((item) => (
+            <WorkspaceNavItem
+              key={item.path}
+              item={item}
+              snapshot={data}
+              session={session}
+              className="menu-item"
+              showIcon={false}
+              menuLabel
+              onNavigate={() => setMenu(false)}
+            />
           ))}
           <p className="compact-menu-group">Account</p>
-          <Link to="/account/profile" className="menu-item" onClick={() => setMenu(false)}>
+          <Link
+            to={options.accountPaths?.profile ?? '/account/profile'}
+            className="menu-item"
+            onClick={() => setMenu(false)}
+          >
             Profile
           </Link>
-          <Link to="/account/settings" className="menu-item" onClick={() => setMenu(false)}>
+          <Link
+            to={options.accountPaths?.settings ?? '/account/settings'}
+            className="menu-item"
+            onClick={() => setMenu(false)}
+          >
             Settings
           </Link>
           <button
@@ -310,13 +351,32 @@ export default function WorkspaceLayout() {
         </DialogContent>
       </Dialog>
       <Modal
-        title="Log out of Waypoint?"
-        description="You can sign in again to continue in your workspace."
+        title={
+          session.role === 'driver' && pendingCount
+            ? 'Saved records need attention'
+            : 'Log out of Waypoint?'
+        }
+        description={
+          session.role === 'driver' && pendingCount
+            ? `${pendingCount} local record(s) still need submission or sync. Keep this workspace open until they are accepted.`
+            : 'You can sign in again to continue in your workspace.'
+        }
         open={confirmLogout}
         onOpenChange={setConfirmLogout}
       >
         <div className="flex gap-3">
-          <Button onClick={logout}>Log Out</Button>
+          {session.role === 'driver' && pendingCount ? (
+            <Button
+              onClick={() => {
+                setConfirmLogout(false)
+                navigate('/driver/sync')
+              }}
+            >
+              Open saved records
+            </Button>
+          ) : (
+            <Button onClick={logout}>Log Out</Button>
+          )}
           <Button variant="outline" onClick={() => setConfirmLogout(false)}>
             Cancel
           </Button>
