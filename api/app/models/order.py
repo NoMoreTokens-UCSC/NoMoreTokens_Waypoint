@@ -76,6 +76,65 @@ class Order(Base):
     issues: Mapped[list["Issue"]] = relationship("Issue", back_populates="order_rel")  # type: ignore[name-defined]
     deferrals: Mapped[list["Deferral"]] = relationship("Deferral", back_populates="order_rel")  # type: ignore[name-defined]
 
+    @property
+    def window_open(self) -> Optional[str]:
+        if self.outlet_rel and self.outlet_rel.window_open_time:
+            return self.outlet_rel.window_open_time.strftime("%H:%M")
+        return None
+
+    @property
+    def window_close(self) -> Optional[str]:
+        if self.outlet_rel and self.outlet_rel.window_close_time:
+            return self.outlet_rel.window_close_time.strftime("%H:%M")
+        return None
+
+    @property
+    def vehicle_id(self) -> Optional[str]:
+        for so in self.stop_orders or []:
+            if so.stop_rel and so.stop_rel.trip_rel:
+                return so.stop_rel.trip_rel.vehicle_id
+        return None
+
+    @property
+    def receipt_status(self) -> Optional[str]:
+        if self.receipts:
+            return self.receipts[-1].status
+        return None
+
+    @property
+    def receipt_report(self) -> Optional[dict]:
+        import json
+        for iss in reversed(self.issues or []):
+            if iss.type in ("SHORT", "DAMAGED") or (iss.description and "{" in iss.description):
+                try:
+                    data = json.loads(iss.description or "{}")
+                    return {
+                        "kind": "Missing" if iss.type == "SHORT" else "Damaged",
+                        "received": data.get("received", 0),
+                        "affected": data.get("affected", 0),
+                        "description": data.get("notes", iss.description or ""),
+                        "recorded_at": iss.created_at.isoformat() if iss.created_at else None,
+                    }
+                except Exception:
+                    return {
+                        "kind": "Missing" if iss.type == "SHORT" else "Damaged",
+                        "received": self.total_cases,
+                        "affected": 0,
+                        "description": iss.description or "",
+                        "recorded_at": iss.created_at.isoformat() if iss.created_at else None,
+                    }
+        return None
+
+    @property
+    def delivered_at(self) -> Optional[dt.datetime]:
+        for event in reversed(self.delivery_events or []):
+            if event.outcome in ("DELIVERED", "PARTIAL") and event.received_at:
+                return event.received_at
+        for so in self.stop_orders or []:
+            if so.stop_rel and so.stop_rel.actual_arrival:
+                return so.stop_rel.actual_arrival
+        return None
+
 
 class OrderLine(Base):
     __tablename__ = "order_lines"

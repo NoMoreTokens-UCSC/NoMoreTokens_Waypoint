@@ -36,11 +36,11 @@ export default function StoreHandoffPage() {
         (stop) =>
           stop.id === stopId &&
           stop.outlet === session.outletId &&
-          route.stops.some((assigned) => assigned.id === stop.id),
+          (route.stops.length === 0 || route.stops.some((assigned) => assigned.id === stop.id)),
       ),
       orders,
       draft,
-      started: route.started,
+      started: route.started || route.stops.length === 0,
       settings,
     }
   })
@@ -84,7 +84,7 @@ export default function StoreHandoffPage() {
         </Notice>
       ) : !stop ? (
         <EmptyState title="No delivery assigned to this outlet" />
-      ) : stop.status !== 'Arrived' || !query.data?.started ? (
+      ) : stop.status !== 'Arrived' ? (
         <Notice title="Handoff is not awaiting confirmation">
           The Driver must arrive and park first. Already submitted or completed receipts are
           available in Deliveries.

@@ -143,6 +143,8 @@ class Stop(Base):
     @property
     def proof_id(self) -> Optional[str]:
         for event in reversed(self.delivery_events or []):
+            if event.pod_photo_path:
+                return event.pod_photo_path
             if event.note:
                 return event.note
         return None

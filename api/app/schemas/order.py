@@ -19,15 +19,36 @@ class OrderLineIn(BaseModel):
 
 class OrderCreate(BaseModel):
     outlet_id: str
-    brand: str
+    brand: Optional[str] = None
     temperature_class: str
-    delivery_date: dt.date
-    total_weight: float
-    total_volume: float
+    delivery_date: Optional[dt.date] = None
+    total_weight: Optional[float] = None
+    total_volume: Optional[float] = None
     total_cases: int = 0
+    cases: Optional[int] = None
+    window_open: Optional[str] = None
+    window_close: Optional[str] = None
     priority: bool = False
     notes: Optional[str] = None
     lines: list[OrderLineIn] = []
+
+
+class OrderUpdate(BaseModel):
+    cases: Optional[int] = None
+    total_cases: Optional[int] = None
+    total_weight: Optional[float] = None
+    total_volume: Optional[float] = None
+    window_open: Optional[str] = None
+    window_close: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ReceiptReportOut(BaseModel):
+    kind: str
+    received: int
+    affected: int
+    description: str
+    recorded_at: Optional[str] = None
 
 
 class OrderLineOut(OrmModel):
@@ -55,10 +76,22 @@ class OrderOut(OrmModel):
     cutoff_missed: bool
     notes: Optional[str] = None
     lines: list[OrderLineOut] = []
+    vehicle_id: Optional[str] = None
+    window_open: Optional[str] = None
+    window_close: Optional[str] = None
+    receipt_status: Optional[str] = None
+    receipt_report: Optional[ReceiptReportOut] = None
+    delivered_at: Optional[dt.datetime] = None
+    created_at: Optional[dt.datetime] = None
+    updated_at: Optional[dt.datetime] = None
 
 
 class ReceiptCreate(BaseModel):
-    status: str = "FULL"
+    status: Optional[str] = "FULL"
+    outcome: Optional[str] = None
+    received_qty: Optional[int] = None
+    affected_qty: Optional[int] = None
+    notes: Optional[str] = None
 
 
 class IssueCreate(BaseModel):
