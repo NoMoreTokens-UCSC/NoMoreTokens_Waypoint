@@ -31,6 +31,7 @@ class TripOut(OrmModel):
     planned_fuel: Optional[float] = None
     status: str
     stops: list[StopOut] = []
+    photo_path: Optional[str] = None
 
 
 class PlanOut(OrmModel):
@@ -61,6 +62,7 @@ class LoadFlagIn(BaseModel):
     order_id: Optional[int] = None
     status: str  # 'OK' | 'MISSING' | 'DAMAGED'
     note: Optional[str] = None
+    photo_path: Optional[str] = None
 
 
 class DeliveryEventIn(BaseModel):

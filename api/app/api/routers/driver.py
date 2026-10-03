@@ -5,7 +5,7 @@ import os
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -21,6 +21,7 @@ from app.services.state_machine import transition_order, transition_stop, transi
 router = APIRouter(prefix="/driver", tags=["driver"])
 
 _DRIVER = require_role("DRIVER", "DISPATCHER")  # dispatcher can also call for demo
+_UPLOAD_ROLES = require_role("DRIVER", "DISPATCHER", "LOADER")
 
 
 @router.get("/trips/current", response_model=Optional[TripOut])
@@ -173,8 +174,9 @@ def sync_events(body: SyncBatch, db: DbDep, current_user: CurrentUser, _: None =
 @router.post("/uploads")
 async def upload_pod(
     file: UploadFile,
-    current_user: CurrentUser,
-    _: None = _DRIVER,
+    stop_id: Optional[str] = Form(None),
+    current_user: CurrentUser = None,
+    _: None = _UPLOAD_ROLES,
 ):
     """Upload a POD photo. Returns the server-side path."""
     settings = get_settings()

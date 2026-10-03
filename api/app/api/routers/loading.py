@@ -32,7 +32,7 @@ def list_loading_trips(
     q = (
         db.query(Trip)
         .join(Plan, Trip.plan_id == Plan.id)
-        .options(selectinload(Trip.stops))
+        .options(selectinload(Trip.stops), selectinload(Trip.load_checks))
     )
     if date:
         q = q.filter(Plan.delivery_date == date)
@@ -53,7 +53,7 @@ def list_loading_trips(
 
 @router.get("/trips/{trip_id}", response_model=TripOut)
 def get_loading_trip(trip_id: int, db: DbDep, current_user: CurrentUser, _: None = _LOADER):
-    trip = db.get(Trip, trip_id, options=[selectinload(Trip.stops)])
+    trip = db.get(Trip, trip_id, options=[selectinload(Trip.stops), selectinload(Trip.load_checks)])
     if not trip:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Trip not found."})
     # Stops come in reverse-sequence order for loading (last stop loaded first)
@@ -77,11 +77,12 @@ def flag_load(
         order_id=body.order_id,
         status=body.status,
         note=body.note,
+        photo_path=body.photo_path,
         flagged_by=current_user.id,
     )
     db.add(check)
     log_action(db, "LOAD_FLAG", "Trip", trip_id, actor_user_id=current_user.id,
-               after={"status": body.status, "order_id": body.order_id})
+               after={"status": body.status, "order_id": body.order_id, "photo_path": body.photo_path})
     db.commit()
     return {"ok": True}
 

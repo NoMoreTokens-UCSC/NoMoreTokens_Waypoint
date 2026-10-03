@@ -7,7 +7,7 @@
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
 
-function getToken(): string | null {
+export function getToken(): string | null {
   try {
     return localStorage.getItem('waypoint.token')
   } catch {
@@ -15,15 +15,36 @@ function getToken(): string | null {
   }
 }
 
-function setToken(token: string): void {
+export function setToken(token: string): void {
   try {
     localStorage.setItem('waypoint.token', token)
   } catch {}
 }
 
-function clearToken(): void {
+export function clearToken(): void {
   try {
     localStorage.removeItem('waypoint.token')
+  } catch {}
+}
+
+export function getUser(): ApiUserProfile | null {
+  try {
+    const raw = localStorage.getItem('waypoint.user')
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+export function setUser(user: ApiUserProfile): void {
+  try {
+    localStorage.setItem('waypoint.user', JSON.stringify(user))
+  } catch {}
+}
+
+export function clearUser(): void {
+  try {
+    localStorage.removeItem('waypoint.user')
   } catch {}
 }
 
@@ -92,15 +113,19 @@ export async function login(username: string, password: string): Promise<LoginRe
     body: JSON.stringify({ username, password }),
   })
   setToken(resp.access_token)
+  setUser(resp.user)
   return resp
 }
 
 export async function getMe(): Promise<ApiUserProfile> {
-  return request<ApiUserProfile>('/auth/me')
+  const profile = await request<ApiUserProfile>('/auth/me')
+  setUser(profile)
+  return profile
 }
 
 export function logout(): void {
   clearToken()
+  clearUser()
 }
 
 // ── Reference ─────────────────────────────────────────────────────────────
@@ -174,5 +199,3 @@ export const referenceApi = {
     return request<ApiCalendarDay[]>(`/reference/calendar?${params.toString()}`)
   },
 }
-
-export { getToken, setToken, clearToken }
