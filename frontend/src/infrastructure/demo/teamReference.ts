@@ -1,4 +1,4 @@
-import type { TeamMember } from '../../domain/models'
+import type { MemberActivity, TeamMember } from '../../domain/models'
 
 /** The six identities actually shown in Figma; remaining source totals are aggregates. */
 export const sourceTeam: TeamMember[] = [
@@ -14,6 +14,9 @@ export const sourceTeam: TeamMember[] = [
     status: 'Active',
     onRoute: false,
     accessState: 'Ready',
+    lastActive: 'On route',
+    joined: '24 September',
+    lastSeen: '05:44 · near Peliyagoda',
   },
   {
     id: 'USR002',
@@ -26,6 +29,9 @@ export const sourceTeam: TeamMember[] = [
     status: 'Active',
     onRoute: false,
     accessState: 'Ready',
+    lastActive: 'Just now',
+    joined: '12 September',
+    lastSeen: 'Just now',
   },
   {
     id: 'USR003',
@@ -38,6 +44,9 @@ export const sourceTeam: TeamMember[] = [
     status: 'Active',
     onRoute: false,
     accessState: 'Ready',
+    lastActive: '05:10',
+    joined: '12 September',
+    lastSeen: '05:10 · Dock bay 03',
   },
   {
     id: 'USR004',
@@ -51,6 +60,9 @@ export const sourceTeam: TeamMember[] = [
     status: 'Active',
     onRoute: false,
     accessState: 'Ready',
+    lastActive: '05:41',
+    joined: '14 September',
+    lastSeen: '05:41 · OUT001',
   },
   {
     id: 'USR005',
@@ -64,6 +76,7 @@ export const sourceTeam: TeamMember[] = [
     status: 'Invited',
     onRoute: false,
     accessState: 'Invitation pending',
+    lastActive: 'Not signed in',
   },
   {
     id: 'USR006',
@@ -77,6 +90,20 @@ export const sourceTeam: TeamMember[] = [
     status: 'Suspended',
     onRoute: false,
     accessState: 'Ready',
+    lastActive: '3 days ago',
+    joined: '2 September',
+    lastSeen: '3 days ago',
   },
 ]
 export const unlistedTeamCounts = { Active: 37, Invited: 4, Suspended: 1 }
+
+/** What the Figma user detail shows for the driver; other people show their audit entries only. */
+export const memberActivityReference: Record<string, MemberActivity[]> = {
+  USR001: [
+    { when: '05:41', title: 'Submitted delivery proof', detail: 'ORD1042 · OUT001' },
+    { when: '05:36', title: 'Went offline', detail: 'Kandy corridor, no signal' },
+    { when: '05:02', title: 'Started Trip 1', detail: 'VEH055 · 2 stops' },
+    { when: '04:58', title: 'Signed in', detail: 'Phone browser' },
+    { when: '24 Sep', title: 'Role assigned', detail: 'By Administrator · Driver' },
+  ],
+}

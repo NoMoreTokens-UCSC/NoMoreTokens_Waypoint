@@ -61,6 +61,8 @@ const routes = [
   '/driver/history',
   '/store-manager/deliveries/confirm',
   '/administration/team',
+  '/administration/team/new',
+  '/administration/team/USR001',
   '/administration/roles',
   '/administration/assignments',
   '/administration/audit',

@@ -210,9 +210,13 @@ export class OperationsService {
             outlet,
             name: orders[0].outletName,
             address: old?.address ?? `${outlet} receiving bay · demo location`,
-            window: `${windowStart}–${orders
-              .map((order) => receivingWindowEnd(order.window, order.windowEnd, order.brand === 'Fresh'))
-              .sort()[0]}`,
+            window: `${windowStart}–${
+              orders
+                .map((order) =>
+                  receivingWindowEnd(order.window, order.windowEnd, order.brand === 'Fresh'),
+                )
+                .sort()[0]
+            }`,
             eta: old?.eta ?? windowStart,
             lat: old?.lat ?? 6.95 + index * 0.008,
             lng: old?.lng ?? 79.9 + index * 0.006,
@@ -1565,20 +1569,26 @@ export class OperationsService {
       log(s, 'Demo role updated', `${member.name} · ${role}`)
     })
   }
-  suspend(memberId: string, scheduled = false) {
+  suspend(memberId: string, scheduled = false, reason?: string) {
     return this.repository.update((s) => {
       const member = s.members.find((m) => m.id === memberId)
       assert(member, 'Team member was not found.')
+      const now = member.onRoute && !scheduled
       assert(
-        !member.onRoute || scheduled,
-        'This driver is on route. Schedule suspension or complete the trip first.',
+        !now || (reason?.trim().length ?? 0) >= 4,
+        'This driver is on route. Hand over the trip, schedule the suspension, or give a reason to suspend now.',
       )
       if (scheduled && member.onRoute) member.suspensionScheduled = true
-      else member.status = 'Suspended'
+      else {
+        member.status = 'Suspended'
+        member.onRoute = false
+      }
       log(
         s,
-        'Demo suspension updated',
-        `${member.name} · ${scheduled ? 'after trip' : 'suspended'}`,
+        now ? 'Suspended mid-route' : 'Demo suspension updated',
+        now
+          ? `${member.name} · ${reason!.trim()} · dispatcher alerted, route has no driver`
+          : `${member.name} · ${scheduled ? 'after trip' : 'suspended'}`,
       )
     })
   }

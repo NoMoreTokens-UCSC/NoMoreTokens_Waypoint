@@ -117,6 +117,7 @@ export function createSeed(): Snapshot {
     members: sourceTeam.map((member) => ({ ...member })),
     unlistedTeamCounts: { ...unlistedTeamCounts },
     designDataVersion: 1,
+    teamDetailVersion: 1,
     orderHistory: outletOrderHistory.map((order) => ({ ...order })),
     orderHistoryVersion: 1,
     activeDriverId: 'USR001',

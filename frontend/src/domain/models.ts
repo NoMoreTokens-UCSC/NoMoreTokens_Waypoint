@@ -167,6 +167,27 @@ export interface TeamMember {
   outletId?: string
   accessState?: 'Ready' | 'Invitation pending' | 'Recovery requested'
   invitationExpiresAt?: string
+  /** Shown in the team list: "Just now", "05:10", "3 days ago". Blank until the person signs in. */
+  lastActive?: string
+  /** "24 September": when the person accepted their invitation. */
+  joined?: string
+  /** "05:44 · near Peliyagoda": the last place or time the person was seen working. */
+  lastSeen?: string
+}
+/** One line of a person's recent activity, newest first. */
+export interface MemberActivity {
+  /** "05:41" or "24 Sep". */
+  when: string
+  title: string
+  detail: string
+}
+/** Headline numbers for the team and audit pages (the lists show only the people on screen). */
+export interface TeamSummary {
+  total: number
+  active: number
+  invited: number
+  suspended: number
+  auditEvents: number
 }
 export interface MobileInvitation {
   name: string
@@ -230,6 +251,7 @@ export interface Snapshot {
   /** Earlier orders, kept apart from the live orders so planning screens are unaffected. */
   orderHistory?: Order[]
   orderHistoryVersion?: number
+  teamDetailVersion?: number
   unlistedTeamCounts?: { Active: number; Invited: number; Suspended: number }
   fleetReferenceVersion?: number
   designDataVersion?: number

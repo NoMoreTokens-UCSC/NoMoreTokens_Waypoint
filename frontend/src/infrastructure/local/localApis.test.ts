@@ -311,6 +311,32 @@ describe('local API adapters', () => {
       apis.orders.placeOrders('OUT019', [{ ...item, orderId: 'ORD0000' }]),
     ).rejects.toThrow(/no longer open/)
   })
+  it('summarises the team including people the list does not page in', async () => {
+    const summary = await apis.team.getSummary()
+    expect(summary).toMatchObject({ total: 48, active: 41, invited: 5, suspended: 2 })
+    expect(summary.auditEvents).toBeGreaterThan(200)
+  })
+  it('lists a person’s recent activity, newest first', async () => {
+    const driver = await apis.team.listActivity('USR001')
+    expect(driver[0]).toMatchObject({ when: '05:41', title: 'Submitted delivery proof' })
+    expect(driver).toHaveLength(5)
+    expect(await apis.team.listActivity('USR999')).toEqual([])
+  })
+  it('suspends an on-route driver only after a schedule or with a reason', async () => {
+    await repository.update((snapshot) => {
+      snapshot.members.find((member) => member.id === 'USR001')!.onRoute = true
+    })
+    const driver = async () =>
+      (await apis.team.listMembers()).find((member) => member.id === 'USR001')!
+    await expect(apis.team.suspend('USR001')).rejects.toThrow(/on route/)
+    await expect(apis.team.suspend('USR001', false, 'no')).rejects.toThrow(/on route/)
+    await apis.team.suspend('USR001', true)
+    expect(await driver()).toMatchObject({ suspensionScheduled: true, status: 'Active' })
+    await apis.team.suspend('USR001', false, 'Vehicle broke down on the Kandy road')
+    expect(await driver()).toMatchObject({ status: 'Suspended', onRoute: false })
+    const audit = await apis.team.listAudit()
+    expect(audit.some((entry) => entry.action === 'Suspended mid-route')).toBe(true)
+  })
   it('refuses outlets the local demo does not model', async () => {
     await expect(apis.orders.createOrder('OUT002', 'Chilled', 10, '05:30')).rejects.toThrow(
       /OUT016 and OUT019 only/,
