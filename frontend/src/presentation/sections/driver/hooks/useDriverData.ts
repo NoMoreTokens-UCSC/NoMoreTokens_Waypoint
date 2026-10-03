@@ -52,7 +52,13 @@ export function useDriverData() {
     session,
     online: connected,
     syncError,
-    departureErrors: snapshot.data ? driverDepartureErrors(snapshot.data) : [],
+    departureErrors: query.data?.route
+      ? query.data.route.stops.length === 0
+        ? ['No open deliveries are assigned to this truck.']
+        : []
+      : snapshot.data
+        ? driverDepartureErrors(snapshot.data)
+        : [],
   }
 }
 
