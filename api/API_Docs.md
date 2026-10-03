@@ -355,6 +355,7 @@ Endpoints for drivers to view active delivery runs, record delivery events at cu
 * **Request Body:**
   ```json
   {
+    "stop_id": 122,
     "order_id": 12,
     "outcome": "DELIVERED",
     "receiver_name": "Kamal Perera",
@@ -425,15 +426,15 @@ Endpoints for retail store managers to place daily/weekly inventory orders, trac
     "total_weight": 280.0,
     "total_volume": 1.4,
     "total_cases": 25,
-    "priority": 1,
+    "priority": false,
     "notes": "Deliver through side loading dock",
     "lines": [
       {
         "sku": "SKU-0012",
         "description": "Fresh Milk 1L Pack",
-        "cases": 15,
-        "weight_kg": 180.0,
-        "volume_m3": 0.8
+        "quantity": 15,
+        "unit_weight": 12.0,
+        "unit_volume": 0.05
       }
     ]
   }
