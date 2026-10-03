@@ -386,7 +386,10 @@ describe('shared demo workflows and persistence', () => {
     await service.reviewAllocation()
     await service.publish()
     const s = await repo.getSnapshot()
-    expect(s.stops.some((stop) => stop.orderIds.includes('ORD1042'))).toBe(false)
+    expect(
+      s.stops.some((stop) => stop.loadId === 'LOAD055-1' && stop.orderIds.includes('ORD1042')),
+    ).toBe(false)
+    expect(s.stops.find((stop) => stop.orderIds.includes('ORD1042'))?.loadId).toBe('LOAD001-2')
     expect(s.loads[0].items.reduce((n, item) => n + item.expected, 0)).toBe(14)
   })
   it('proposes all 24 valid allocations and enforces gated handoff', async () => {
@@ -475,6 +478,30 @@ describe('shared demo workflows and persistence', () => {
       }),
     ).rejects.toThrow('Load changed')
     expect(await repo.getEvidence('rollback')).toBeUndefined()
+  })
+  it('rolls back loading evidence when the manifest changes during attachment', async () => {
+    await service.autoAllocate()
+    await service.updateSettings({ cutoffClosed: true })
+    await service.reviewAllocation()
+    await service.publish()
+    const load = (await repo.getSnapshot()).loads[0]
+    for (const item of load.items)
+      await service.setLoaded(load.id, item.outlet, item.expected, load.revision)
+    for (const key of ['refrigeration', 'condition', 'restraints'] as const)
+      await service.setCheck(load.id, key, true, load.revision)
+    const save = repo.saveEvidence.bind(repo)
+    let evidenceId = ''
+    vi.spyOn(repo, 'saveEvidence').mockImplementationOnce(async (evidence, queued, update) => {
+      evidenceId = evidence.id
+      await service.reportLoadIssue(load.id, 'One milk case damaged', load.revision)
+      await service.resolveLoadIssue(load.id)
+      return save(evidence, queued, update)
+    })
+    await expect(service.attachLoadingPhoto(load.id, photo(), load.revision)).rejects.toThrow(
+      /changed/,
+    )
+    expect(await repo.getEvidence(evidenceId)).toBeUndefined()
+    expect((await repo.getSnapshot()).loads[0].photoId).toBeUndefined()
   })
   it('does not mark a failed delivery attempt as delivered after sync', async () => {
     await prepareTrip()

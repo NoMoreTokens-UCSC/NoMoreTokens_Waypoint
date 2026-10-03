@@ -35,5 +35,15 @@ export const loaderModule: RoleModule = {
       component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage), { proofOnly: true }),
       shell: true,
     },
+    {
+      path: '/loader/loading/:loadId',
+      component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage)),
+      shell: true,
+    },
+    {
+      path: '/loader/proof/:loadId',
+      component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage), { proofOnly: true }),
+      shell: true,
+    },
   ],
 }
