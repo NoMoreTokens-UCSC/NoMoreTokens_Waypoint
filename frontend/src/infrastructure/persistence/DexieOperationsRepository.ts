@@ -77,6 +77,19 @@ export class DexieOperationsRepository implements OperationsRepository {
         record.data.orderHistoryVersion = 1
         await this.db.snapshots.put(record)
       }
+      if (record && !record.data.teamDetailVersion) {
+        // Browsers that stored the team before it had last-active and join details receive them.
+        for (const reference of sourceTeam) {
+          const member = record.data.members.find((candidate) => candidate.id === reference.id)
+          if (member) {
+            member.lastActive ??= reference.lastActive
+            member.joined ??= reference.joined
+            member.lastSeen ??= reference.lastSeen
+          }
+        }
+        record.data.teamDetailVersion = 1
+        await this.db.snapshots.put(record)
+      }
       // Interrupted uploads remain recoverable after a tab closes.
       await this.db.queue
         .where('status')

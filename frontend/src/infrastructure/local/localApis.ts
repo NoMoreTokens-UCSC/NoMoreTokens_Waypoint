@@ -1,6 +1,7 @@
 import { DriverSignalsService } from '../../application/DriverSignalsService'
 import type { Apis } from '../../domain/api'
 import { profileOf } from '../../domain/outlets'
+import { memberActivityReference } from '../demo/teamReference'
 import { assignedDriverLoad, isAssignedStop } from '../../domain/driverWorkflow'
 import { tripsFromOrders } from '../../domain/trips'
 import type { OperationsService } from '../../application/OperationsService'
@@ -199,6 +200,40 @@ export function createLocalApis(service: OperationsService): Apis {
     team: {
       listMembers: async () => (await snapshot()).members,
       listAudit: async () => (await snapshot()).audit,
+      getSummary: async () => {
+        const { members, unlistedTeamCounts, audit, unlistedAuditCount } = await snapshot()
+        const count = (status: 'Active' | 'Invited' | 'Suspended') =>
+          members.filter((member) => member.status === status).length +
+          (unlistedTeamCounts?.[status] ?? 0)
+        const [active, invited, suspended] = [count('Active'), count('Invited'), count('Suspended')]
+        return {
+          total: active + invited + suspended,
+          active,
+          invited,
+          suspended,
+          auditEvents: audit.length + (unlistedAuditCount ?? 0),
+        }
+      },
+      listActivity: async (memberId) => {
+        const { audit, members } = await snapshot()
+        const own = audit
+          .filter((entry) => entry.recordId === memberId)
+          .map((entry) => ({
+            when:
+              entry.referenceWhen ??
+              new Date(entry.at).toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            title: entry.action,
+            detail: entry.detail,
+          }))
+        return [...own, ...(memberActivityReference[memberId] ?? [])].length
+          ? [...own, ...(memberActivityReference[memberId] ?? [])]
+          : members.some((member) => member.id === memberId)
+            ? []
+            : []
+      },
       invite: (name, email, role) => service.invite(name, email, role),
       inviteByMobile: (invitation) => service.inviteByMobile(invitation),
       completeInvitation: (memberId) => service.completeInvitation(memberId),
@@ -209,7 +244,7 @@ export function createLocalApis(service: OperationsService): Apis {
         service.changeAssignment(memberId, depot, assignment),
       reassignTrip: (fromMemberId, toMemberId) => service.reassignTrip(fromMemberId, toMemberId),
       updateRole: (memberId, role) => service.updateMember(memberId, role),
-      suspend: (memberId, scheduled) => service.suspend(memberId, scheduled),
+      suspend: (memberId, scheduled, reason) => service.suspend(memberId, scheduled, reason),
     },
     account: {
       getSettings: async () => (await snapshot()).settings,

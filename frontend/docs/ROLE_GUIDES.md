@@ -6,15 +6,15 @@ routes and the shared shell work.
 
 ## Where things stand
 
-| Area                                                   | State                                                                                                                                                                                                 |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Routing, module registry, shared shell                 | Done. Every route opens a native page.                                                                                                                                                                |
-| Entry pages (welcome, how it works, login, workspaces) | Done, rebuilt from the Figma frames. Login is a demo (any filled-in credentials).                                                                                                                    |
-| Data contract `src/domain/api` + local adapter         | Done and unit-tested.                                                                                                                                                                                  |
-| Role pages                                             | Work, but are the first native drafts: they do not match Figma and use the old data access.                                                                                                          |
+| Area                                                   | State                                                                                                                                                                                                          |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Routing, module registry, shared shell                 | Done. Every route opens a native page.                                                                                                                                                                         |
+| Entry pages (welcome, how it works, login, workspaces) | Done, rebuilt from the Figma frames. Login is a demo (any filled-in credentials).                                                                                                                              |
+| Data contract `src/domain/api` + local adapter         | Done and unit-tested.                                                                                                                                                                                          |
+| Role pages                                             | Work, but are the first native drafts: they do not match Figma and use the old data access.                                                                                                                    |
 | Pages using `useApis()`                                | **Driver pages use the API contract.** Loader reads/writes now use the API boundary. Dispatcher review, publication, issue resolution and release writes also use APIs. Other role pages still need migration. |
-| Full order-to-receipt flow in the browser              | Dispatcher publication is unblocked. The native Loader-to-release flow has dedicated browser coverage, and Driver route execution can proceed after release.                                          |
-| End-to-end workflow tests                              | Native Driver journeys (including recovery/map/layout checks), route smoke tests, the entry walkthrough, and native Loader workflow specs. Legacy Figma specs remain skipped.                        |
+| Full order-to-receipt flow in the browser              | Dispatcher publication is unblocked. The native Loader-to-release flow has dedicated browser coverage, and Driver route execution can proceed after release.                                                   |
+| End-to-end workflow tests                              | Native Driver journeys (including recovery/map/layout checks), route smoke tests, the entry walkthrough, and native Loader workflow specs. Legacy Figma specs remain skipped.                                  |
 
 ## Definition of done for any page
 
@@ -135,6 +135,7 @@ example for the other roles: copy its structure, not its content.
 | `assets/`     | the route map artwork and the delivery-photo placeholder, copied from the design                                                                                                                                                                           |
 
 **Patterns worth copying**
+
 - `'OUT001'` appears 8 times and the map filters `'VEH055'`: use `useSession().outletId` and the stop's
   vehicle.
 - Use `placeOrders` (chilled and dry confirmed together, as Figma "Create separate orders → Review →
@@ -307,23 +308,38 @@ current gateway and alert transport remain explicitly local; see the Driver repo
 
 ## Administration
 
-**Pages** (`sections/administration/pages/AdminPages.tsx`): `TeamPage`, `RolesPage`,
-`AssignmentsPage`, `AuditPage`.
+**Status: built to the Figma frames** (desktop and phone): Team & access, Add user, Invite sent, User
+detail, Suspend blocked, Roles & access and Audit log. Assignments has no frame; it follows the same
+look. The old renderer file `pages/FigmaAdminPage.tsx` is dead code and the first native version
+(`AdminPages.tsx`) was removed.
 
-**API to use:** `apis.team` (`listMembers`, `listAudit`, `invite`, `inviteByMobile`,
-`completeInvitation`, `resetAccess`, `requestAccountChange`, `changeAssignment`, `reassignTrip`,
-`updateRole`, `suspend`).
+**Where things are** (`sections/administration`): `pages/` (one file per screen: `TeamPage`,
+`AddUserPage`, `InvitedPage`, `UserDetailPage` with its role, reset and suspend dialogs, `RolesPage`,
+`AssignmentsPage`, `AuditPage`), `components/AdminKit.tsx` (page, intro, card, pill, buttons, field),
+`lib/team.ts` (role order and labels, the capability matrix, the "will / will not" lists, data hooks,
+`useCompactLayout`), `admin.css` (styles prefixed `ad-`, desktop table and phone cards).
 
-**Change**
+**API used:** `apis.team` (`listMembers`, `getSummary`, `listActivity`, `listAudit`, `inviteByMobile`,
+`resetAccess`, `updateRole`, `changeAssignment`, `reassignTrip`, `suspend`), `apis.fleet.listVehicles` for
+the free vehicles and `apis.delivery` for the driver's stops and unsynced records.
 
-- The page only uses `invite`, `updateMember` and `suspend`. Figma also has invite by mobile, user
-  detail, assignment changes and trip reassignment: all are in the API.
-- "Suspend blocked · driver on route": offer scheduled suspension or trip reassignment.
-- Fixed "Peliyagoda", "VEH055", "Sanjeewa" copy: use the member records.
-- Roles list comes from the registry (`roleModules`); keep it that way.
+**Behaviour worth knowing**
 
-**Figma:** 7 frames (team & access, add user, invite sent, user detail, roles & access, suspend
-blocked, audit log).
+- Totals come from `getSummary` (48 people, 41 active, 5 invited, 2 suspended; 214 audit events): the
+  list shows the people the demo holds, the totals include the rest. A backend returns real counts and
+  pages the list and the log on the server.
+- Add user: pick the role, the form adapts (vehicle for a driver, dock bay for a loader, outlet for a
+  store manager). On a phone it is two steps. No message is sent in the demo.
+- Suspending a driver who is on route is blocked: reassign the trip, schedule the suspension after the
+  trip, or suspend now with a reason (the dispatcher is alerted). `suspend(memberId, scheduled?,
+reason?)` enforces this behind the API. The demo panel's "Driver on route" switch shows it.
+- Audit log: search, filter by action and time, and Export CSV of what is shown.
+- Roles & access is a fixed reference table in `lib/team.ts`; real permissions are enforced by the
+  backend.
+- Dialogs close after their action, so toasts are shown from inside the action (a message passed to
+  `useAction().run` is lost when the component that called it unmounts).
+
+**Not built:** per-person offline-sync detail beyond the count, bulk invite, and server-side paging.
 
 ## Shared: entry, account, recovery
 

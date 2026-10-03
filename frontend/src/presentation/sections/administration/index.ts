@@ -1,8 +1,14 @@
-import { ClipboardList, ShieldCheck, Truck, Users } from 'lucide-react'
+import { ClipboardList, Link2, Shield, Users } from 'lucide-react'
+import type { ComponentType } from 'react'
 import { lazyPage } from '../../roles/lazyPage'
 import type { RoleModule } from '../../roles/types'
 
-const pages = () => import('./pages/AdminPages')
+const route = (path: string, title: string, page: () => Promise<{ default: ComponentType }>) => ({
+  path,
+  title,
+  component: lazyPage(() => page().then((m) => m.default)),
+  shell: true,
+})
 
 export const administrationModule: RoleModule = {
   key: 'administration',
@@ -12,35 +18,43 @@ export const administrationModule: RoleModule = {
   basePath: '/administration',
   home: '/administration/team',
   nav: [
-    { label: 'Team & access', path: '/administration/team', icon: Users },
-    { label: 'Roles & access', path: '/administration/roles', icon: ShieldCheck },
-    { label: 'Assignments', path: '/administration/assignments', icon: Truck },
+    { label: 'Users', menuLabel: 'Team & access', path: '/administration/team', icon: Users },
+    { label: 'Roles & access', path: '/administration/roles', icon: Shield },
+    { label: 'Assignments', path: '/administration/assignments', icon: Link2 },
     { label: 'Audit log', path: '/administration/audit', icon: ClipboardList },
   ],
+  search: {
+    placeholder: 'Search users, roles or outlets',
+    find: (snapshot, query) => {
+      const text = query.toLowerCase()
+      return snapshot.members
+        .filter((member) =>
+          `${member.name} ${member.role} ${member.assignment ?? ''} ${member.mobile ?? ''}`
+            .toLowerCase()
+            .includes(text),
+        )
+        .map((member) => ({
+          id: member.id,
+          text: `${member.name} · ${member.role} · ${member.assignment ?? member.depot ?? ''}`,
+          path: `/administration/team/${member.id}`,
+        }))
+    },
+  },
+  shell: {
+    compactBelow: 900,
+    compactNav: 'menu',
+    recoveryLink: false,
+    identity: () => ({ title: 'Administrator', subtitle: 'Waypoint Group' }),
+    compactSubtitle: () => 'Admin',
+  },
   routes: [
-    {
-      path: '/administration/team',
-      title: 'Team & access',
-      component: lazyPage(() => pages().then((m) => m.TeamPage)),
-      shell: true,
-    },
-    {
-      path: '/administration/roles',
-      title: 'Roles & access',
-      component: lazyPage(() => pages().then((m) => m.RolesPage)),
-      shell: true,
-    },
-    {
-      path: '/administration/assignments',
-      title: 'Assignments',
-      component: lazyPage(() => pages().then((m) => m.AssignmentsPage)),
-      shell: true,
-    },
-    {
-      path: '/administration/audit',
-      title: 'Audit log',
-      component: lazyPage(() => pages().then((m) => m.AuditPage)),
-      shell: true,
-    },
+    route('/administration/team', 'Team & access', () => import('./pages/TeamPage')),
+    // Fixed paths first: the user detail route takes any other id.
+    route('/administration/team/new', 'Add user', () => import('./pages/AddUserPage')),
+    route('/administration/team/invited', 'Invite sent', () => import('./pages/InvitedPage')),
+    route('/administration/team/:memberId', 'User', () => import('./pages/UserDetailPage')),
+    route('/administration/roles', 'Roles & access', () => import('./pages/RolesPage')),
+    route('/administration/assignments', 'Assignments', () => import('./pages/AssignmentsPage')),
+    route('/administration/audit', 'Audit log', () => import('./pages/AuditPage')),
   ],
 }
