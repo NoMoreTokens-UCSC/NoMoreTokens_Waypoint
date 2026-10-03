@@ -37,11 +37,13 @@ export const loaderModule: RoleModule = {
     },
     {
       path: '/loader/loading/:loadId',
+      title: 'Load workspace',
       component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage)),
       shell: true,
     },
     {
       path: '/loader/proof/:loadId',
+      title: 'Loading proof',
       component: lazyPage(() => pages().then((m) => m.LoaderWorkspacePage), { proofOnly: true }),
       shell: true,
     },
