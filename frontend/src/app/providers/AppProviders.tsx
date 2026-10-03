@@ -27,6 +27,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     const subscription = liveQuery(async () => [
       await database.snapshots.get('workspace'),
       await database.queue.toArray(),
+      await database.driverProofDrafts.toArray(),
     ]).subscribe({
       next: () => {
         void client.invalidateQueries({ queryKey: snapshotKey })
@@ -39,6 +40,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
     // Retry once when the browser regains connectivity. Failed or revised
     // records remain available for an explicit recovery decision.
     const retryOnReconnect = () => {
+      // Driver screens resume pending uploads through their API hook; failures need explicit retry.
+      if (window.location.pathname.startsWith('/driver/')) return
       void service.repository
         .getSnapshot()
         .then((snapshot) => {

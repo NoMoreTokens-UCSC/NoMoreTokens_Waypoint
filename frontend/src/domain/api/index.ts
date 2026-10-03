@@ -1,3 +1,4 @@
+import type { DriverSignalsApi } from './driverSignals'
 import type { AccountApi } from './account'
 import type { DeliveryApi } from './delivery'
 import type { FleetApi } from './fleet'
@@ -6,6 +7,7 @@ import type { OrdersApi } from './orders'
 import type { PlanningApi } from './planning'
 import type { TeamApi } from './team'
 
+export type * from './driverSignals'
 export type * from './account'
 export type * from './delivery'
 export type * from './fleet'
@@ -19,6 +21,7 @@ export type * from './team'
  * order passes through every role. A backend replaces the implementations, not this contract.
  */
 export interface Apis {
+  driverSignals: DriverSignalsApi
   orders: OrdersApi
   planning: PlanningApi
   loading: LoadingApi

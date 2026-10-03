@@ -8,6 +8,11 @@ export interface TeamApi {
   inviteByMobile(invitation: MobileInvitation): Promise<void>
   completeInvitation(memberId: string): Promise<void>
   resetAccess(memberId: string): Promise<void>
+  /** The person's own name, phone and email. Role, outlet and depot need an administrator. */
+  updateContact(
+    memberId: string,
+    contact: { name: string; mobile: string; email: string },
+  ): Promise<void>
   requestAccountChange(memberId: string, detail: string): Promise<void>
   changeAssignment(memberId: string, depot: string, assignment: string): Promise<void>
   reassignTrip(fromMemberId: string, toMemberId: string): Promise<void>

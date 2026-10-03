@@ -19,6 +19,7 @@ export const loaderModule: RoleModule = {
   routes: [
     {
       path: '/loader/queue',
+      title: 'Shift dashboard',
       component: lazyPage(() => pages().then((m) => m.LoaderQueuePage)),
       shell: true,
     },
