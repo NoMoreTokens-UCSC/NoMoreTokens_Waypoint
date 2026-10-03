@@ -928,3 +928,16 @@
 .ad-card > .ad-pill {
   justify-self: start;
 }
+
+.ad-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #6e737b;
+}
+.ad-inline-link {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c2501d;
+  text-decoration: underline;
+}

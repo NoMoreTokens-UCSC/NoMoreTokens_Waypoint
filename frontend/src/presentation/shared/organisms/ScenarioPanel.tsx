@@ -154,7 +154,7 @@ export function ScenarioPanel({
             )
           }}
         >
-          {outletProfiles.map((outlet) => (
+          {(data.outlets ?? outletProfiles).map((outlet) => (
             <option key={outlet.id} value={outlet.id}>
               {outlet.id} · {outlet.name} · {outlet.brand}
             </option>

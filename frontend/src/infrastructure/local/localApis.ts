@@ -1,17 +1,9 @@
 import { DriverSignalsService } from '../../application/DriverSignalsService'
 import type { Apis } from '../../domain/api'
-import { profileOf } from '../../domain/outlets'
 import { memberActivityReference } from '../demo/teamReference'
 import { assignedDriverLoad, isAssignedStop } from '../../domain/driverWorkflow'
 import { tripsFromOrders } from '../../domain/trips'
 import type { OperationsService } from '../../application/OperationsService'
-
-/** The local demo models three outlets (one per brand); a backend scopes every outlet. */
-function requireDemoOutlet(outletId: string) {
-  const profile = profileOf(outletId)
-  if (!profile) throw new Error('The local demo places orders for OUT001, OUT016 and OUT019 only.')
-  return profile
-}
 
 /**
  * Implements the API contract in the browser over IndexedDB, through the existing
@@ -20,6 +12,12 @@ function requireDemoOutlet(outletId: string) {
  */
 export function createLocalApis(service: OperationsService): Apis {
   const snapshot = () => service.repository.getSnapshot()
+  /** The outlet's profile, or an error when it is not set up (orders need its brand and hours). */
+  const requireOutlet = async (outletId: string) => {
+    const outlet = (await snapshot()).outlets?.find((candidate) => candidate.id === outletId)
+    if (!outlet) throw new Error(`Outlet ${outletId} is not set up.`)
+    return outlet
+  }
   const signals = new DriverSignalsService(service.repository)
   return {
     driverSignals: {
@@ -29,6 +27,10 @@ export function createLocalApis(service: OperationsService): Apis {
       listNotices: (outletId) => signals.listNotices(outletId),
       acknowledgeNotice: (id) => signals.acknowledgeNotice(id),
       checkDeliveryWindows: (now) => signals.checkDeliveryWindows(now),
+    },
+    outlets: {
+      listOutlets: async () => (await snapshot()).outlets ?? [],
+      createOutlet: (input) => service.createOutlet(input),
     },
     orders: {
       listOrders: async (filter = {}) =>
@@ -41,25 +43,25 @@ export function createLocalApis(service: OperationsService): Apis {
         ((await snapshot()).orderHistory ?? [])
           .filter((order) => !filter.outletId || order.outlet === filter.outletId)
           .sort((a, b) => (b.deliveryDate ?? '').localeCompare(a.deliveryDate ?? '')),
-      getOutletProfile: async (outletId) => requireDemoOutlet(outletId),
+      getOutletProfile: (outletId) => requireOutlet(outletId),
       listDrafts: async () => (await snapshot()).drafts,
       getIntakeStatus: async () => {
         const { cutoffClosed, published } = (await snapshot()).settings
         return { cutoffClosed, published }
       },
       createOrder: async (outletId, temperature, cases, window) => {
-        if (requireDemoOutlet(outletId).id !== 'OUT001')
+        if ((await requireOutlet(outletId)).id !== 'OUT001')
           throw new Error('createOrder models OUT001 only; use placeOrders.')
         await service.createOrder(temperature, cases, window)
       },
       placeOrders: async (outletId, inputs) => {
-        const profile = requireDemoOutlet(outletId)
+        const profile = await requireOutlet(outletId)
         await service.confirmStoreOrders(inputs, profile)
       },
       editOrder: (orderId, cases, window) => service.editOrder(orderId, cases, window),
       saveDraft: (temperature, cases, window) => service.saveDraft(temperature, cases, window),
       saveDrafts: async (outletId, inputs) => {
-        const profile = requireDemoOutlet(outletId)
+        const profile = await requireOutlet(outletId)
         await service.saveStoreDrafts(inputs, profile)
       },
       confirmReceipt: (orderId) => service.confirmReceipt(orderId),

@@ -342,6 +342,17 @@ the free vehicles and `apis.delivery` for the driver's stops and unsynced record
   trip, or suspend now with a reason (the dispatcher is alerted). `suspend(memberId, scheduled?,
 reason?)` enforces this behind the API. The demo panel's "Driver on route" switch shows it.
 - Audit log: search, filter by action and time, and Export CSV of what is shown.
+- Outlets (`/administration/outlets`): every store in the system with its brand, district, depot,
+  delivery window, access (any vehicle, vans only, mall window) and store manager. **Add outlet**
+  (`OutletsApi.createOutlet`) takes the brand, name, district, depot, access and the delivery hours; the
+  system assigns the next id (OUT058 and so on) and builds the outlet's receiving limits from what was
+  entered. The store module reads the same list (`OrdersApi.getOutletProfile`), so a new outlet can order
+  straight away and can be opened from the demo panel's "Store manager signed in as". The demo seeds the
+  outlets the sample orders mention; a backend serves `outlets.csv`. Not built: editing or retiring an
+  outlet.
+- Add user for a **store manager** picks the outlet from this list (only outlets without a manager), and the
+  depot follows the outlet. An outlet's page has an **Add store manager** shortcut that starts the form on
+  that outlet. `createUser` refuses an unknown outlet or one that already has a manager.
 - Roles & access is a fixed reference table in `lib/team.ts`; real permissions are enforced by the
   backend.
 - Dialogs close after their action, so toasts are shown from inside the action (a message passed to

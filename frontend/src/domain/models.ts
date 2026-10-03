@@ -1,3 +1,4 @@
+import type { OutletProfile } from './outlets'
 import type { DeliveryNotice, DevicePosition, WebPushRegistration } from './api/driverSignals'
 import type { ManagerSignOff } from './deliveryVerification'
 
@@ -262,6 +263,9 @@ export interface Snapshot {
   /** Earlier orders, kept apart from the live orders so planning screens are unaffected. */
   orderHistory?: Order[]
   orderHistoryVersion?: number
+  /** Every outlet in the system; administrators add to it and store managers are assigned from it. */
+  outlets?: OutletProfile[]
+  outletsVersion?: number
   teamDetailVersion?: number
   unlistedTeamCounts?: { Active: number; Invited: number; Suspended: number }
   fleetReferenceVersion?: number

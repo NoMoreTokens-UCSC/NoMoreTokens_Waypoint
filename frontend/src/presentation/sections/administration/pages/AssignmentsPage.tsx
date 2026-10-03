@@ -7,6 +7,7 @@ import { useAction } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
 import { Modal } from '../../../shared/molecules/Common'
 import { AdminIntro, AdminPage, Avatar, Btn, Field, Pill } from '../components/AdminKit'
+import { managerOf, outletAssignment, useOutlets } from '../lib/outlets'
 import {
   assignmentText,
   initials,
@@ -22,6 +23,7 @@ function ChangeAssignment({ member, close }: { member: TeamMember; close: () => 
   const apis = useApis()
   const action = useAction()
   const { members } = useMembers()
+  const { outlets } = useOutlets()
   const vehicles = useApiQuery(['vehicles'], (api) => api.fleet.listVehicles())
   const [depot, setDepot] = useState(member.depot ?? 'Peliyagoda')
   const [assignment, setAssignment] = useState(member.vehicleId ?? member.assignment ?? '')
@@ -34,6 +36,12 @@ function ChangeAssignment({ member, close }: { member: TeamMember; close: () => 
   const listed = here.length ? here : free
   const missing = attempted && assignment.trim().length < 2
   const driver = member.role === 'driver'
+  const storeManager = member.role === 'store-manager'
+  // Outlets without a manager, plus the one this person already has.
+  const outletChoices = outlets.filter((outlet) => {
+    const manager = managerOf(outlet, members)
+    return !manager || manager.id === member.id
+  })
   return (
     <div className="ad-dialog">
       <div className="ad-form-grid">
@@ -60,6 +68,25 @@ function ChangeAssignment({ member, close }: { member: TeamMember; close: () => 
                 <option key={vehicle.id} value={vehicle.id}>
                   {vehicle.id} · {vehicle.reefer ? 'Refrigerated ' : ''}
                   {vehicle.type.toLowerCase()}
+                </option>
+              ))}
+            </select>
+          ) : storeManager ? (
+            <select
+              value={assignment}
+              aria-invalid={missing}
+              onChange={(event) => {
+                const outlet = outlets.find(
+                  (candidate) => outletAssignment(candidate) === event.target.value,
+                )
+                setAssignment(event.target.value)
+                if (outlet) setDepot(outlet.depot)
+              }}
+            >
+              <option value="">Choose an outlet</option>
+              {outletChoices.map((outlet) => (
+                <option key={outlet.id} value={outletAssignment(outlet)}>
+                  {outlet.id} · {outlet.name} · {outlet.brand}
                 </option>
               ))}
             </select>
