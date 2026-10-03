@@ -2,6 +2,7 @@ import { sourceFleet } from './fleetReference'
 import { sourceAudit } from './auditReference'
 import type { Order, Snapshot, Vehicle } from '../../domain/models'
 import { sourceTeam, unlistedTeamCounts } from './teamReference'
+import { outletOrderHistory } from './orderHistory'
 
 const demand: [string, string, Order['brand'], string, number, number, Order['temperature']][] = [
   ['ORD1042', 'OUT001', 'Fresh', '05:30', 1.2, 120, 'Chilled'],
@@ -19,16 +20,19 @@ const demand: [string, string, Order['brand'], string, number, number, Order['te
   ['ORD1069', 'OUT005', 'Fresh', '07:00', 3.6, 320, 'Ambient'],
   ['ORD1076', 'OUT012', 'Fresh', '07:00', 4.2, 420, 'Chilled'],
   ['ORD1083', 'OUT019', 'Tech', '07:00', 1, 110, 'Ambient'],
-  ['ORD1070', 'OUT006', 'Fresh', '08:30', 4.2, 420, 'Chilled'],
-  ['ORD1077', 'OUT013', 'Fresh', '08:30', 1, 110, 'Chilled'],
+  ['ORD1070', 'OUT006', 'Fresh', '07:00', 4.2, 420, 'Chilled'],
+  ['ORD1077', 'OUT013', 'Fresh', '07:00', 1, 110, 'Chilled'],
   ['ORD1084', 'OUT020', 'Tech', '08:30', 0.8, 90, 'Ambient'],
   ['ORD1058', 'OUT032', 'Tech', '09:00', 3.2, 460, 'Ambient'],
-  ['ORD1071', 'OUT007', 'Fresh', '09:00', 1, 110, 'Chilled'],
-  ['ORD1078', 'OUT014', 'Fresh', '09:00', 0.8, 90, 'Ambient'],
+  ['ORD1071', 'OUT007', 'Fresh', '07:00', 1, 110, 'Chilled'],
+  ['ORD1078', 'OUT014', 'Fresh', '07:00', 0.8, 90, 'Ambient'],
   ['ORD1051', 'OUT010', 'Style', '10:00', 8.6, 280, 'Ambient'],
-  ['ORD1072', 'OUT008', 'Fresh', '10:00', 0.8, 90, 'Ambient'],
+  ['ORD1072', 'OUT008', 'Fresh', '07:00', 0.8, 90, 'Ambient'],
   ['ORD1079', 'OUT015', 'Style', '10:00', 1.4, 140, 'Ambient'],
 ]
+
+/** The demo's "now": Friday 25 September 2026, 15:42 in Sri Lanka. */
+const demoPlacedAt = '2026-09-25T15:42:00+05:30'
 
 export function createSeed(): Snapshot {
   const orders: Order[] = demand.map(
@@ -50,6 +54,7 @@ export function createSeed(): Snapshot {
       status: 'Confirmed',
       priority: outlet === 'OUT057',
       receipt: 'Pending',
+      placedAt: demoPlacedAt,
     }),
   )
   const vehicles: Vehicle[] = sourceFleet.map((vehicle) => ({ ...vehicle }))
@@ -100,8 +105,8 @@ export function createSeed(): Snapshot {
         outlet: 'OUT008',
         name: 'Fresh Kelaniya',
         address: 'Receiving bay · 18 Kandy Road, Kelaniya',
-        window: '10:00–12:00',
-        eta: '10:15',
+        window: '07:00–08:00',
+        eta: '07:10',
         lat: 6.955,
         lng: 79.923,
         orderIds: ['ORD1072'],
@@ -112,6 +117,8 @@ export function createSeed(): Snapshot {
     members: sourceTeam.map((member) => ({ ...member })),
     unlistedTeamCounts: { ...unlistedTeamCounts },
     designDataVersion: 1,
+    orderHistory: outletOrderHistory.map((order) => ({ ...order })),
+    orderHistoryVersion: 1,
     activeDriverId: 'USR001',
     queue: [],
     drafts: [],

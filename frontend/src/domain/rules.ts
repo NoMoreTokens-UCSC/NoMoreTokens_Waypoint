@@ -1,3 +1,4 @@
+import { freshWindowErrors } from './deliveryWindow'
 import type { Load, Order, Snapshot, Vehicle } from './models'
 
 export function allocationErrors(
@@ -11,6 +12,7 @@ export function allocationErrors(
     (o) =>
       o.id !== order.id && o.vehicleId === vehicle.id && o.trip === trip && o.status !== 'Deferred',
   )
+  if (order.brand === 'Fresh') errors.push(...freshWindowErrors(order.window, order.windowEnd))
   if (trip < 1 || trip > 2) errors.push('A vehicle can make at most two trips per day.')
   if (order.temperature === 'Chilled' && !vehicle.reefer)
     errors.push('Chilled cargo requires a refrigerated vehicle.')

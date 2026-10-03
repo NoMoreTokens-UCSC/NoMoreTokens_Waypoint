@@ -17,7 +17,7 @@ export const sourceFleet: Vehicle[] = [
     updatedMinutes: 0,
   },
   {
-    id: 'VEH027',
+    id: 'VEH045',
     brand: 'Tech',
     type: 'Van',
     reefer: false,
@@ -602,7 +602,7 @@ export const sourceFleet: Vehicle[] = [
     updatedMinutes: 0,
   },
   {
-    id: 'VEH045',
+    id: 'VEH027',
     brand: 'Tech',
     type: 'Van',
     reefer: false,

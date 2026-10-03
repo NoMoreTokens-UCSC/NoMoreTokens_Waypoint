@@ -32,6 +32,7 @@ label, icon, home page, navigation and routes:
 routes: [
   {
     path: '/store-manager/deliveries',
+    title: 'Deliveries', // shown in the breadcrumb
     component: lazyPage(() => pages().then((m) => m.StoreDeliveriesPage)),
     shell: true, // render inside the shared sidebar and header
   },
@@ -42,6 +43,26 @@ routes: [
 shell builds its navigation from `nav`. You never edit `App.tsx` or the layout to add a screen.
 `lazyPage(load, props)` splits each page into its own chunk and can pass fixed props, so one page
 can serve several URLs.
+
+## Shell options
+
+The shared shell renders each role's sidebar, header and navigation. A module tunes it with optional
+settings; leave them out and you get the defaults.
+
+```ts
+shell: {
+  compactBelow: 1200,        // width where the sidebar becomes a header (default 761)
+  compactNav: 'menu',        // 'tabs' (bottom bar, default) or 'menu' (header menu only)
+  recoveryLink: false,       // hide the Recovery link in the sidebar (default true)
+  identity: (s) => ({ title: s.outletId, subtitle: 'Waypoint Group' }), // sidebar footer
+  compactSubtitle: (s) => `Store · ${s.outletId}`,   // second line of the compact header
+  alertCount: (snapshot, s) => 0,                    // number on the header bell
+}
+```
+
+Nav items can set `renderIcon(active)` for a custom icon and `menuLabel` for a different label in the
+compact menu. `search` replaces the header search. The shell sets `data-role` and `data-compact` on
+`.app-shell`, so a module's own CSS can theme itself, e.g. `.app-shell[data-role='store-manager'][data-compact='true'] ...`.
 
 ## Adding or replacing a screen
 
@@ -72,6 +93,10 @@ Rules of thumb:
   `Field`, `Modal`, `Metric`, `EmptyState`), `shared/atoms/*` and `shared/organisms/*`
   (`OperationsMap`, `EvidenceDetails`, `PhotoCapture`).
 - **Header search**: set `search` in your module to change what the header search finds.
+- **Breadcrumb**: the shell shows "< Back | Home / {route title}". Home links to your module's `home`;
+  Back returns to the previous screen (or home when opened directly). On a detail page, replace the page
+  part with `useBreadcrumb([{ label: 'Deliveries', to: '/store-manager/deliveries' }, { label: orderId }])`
+  from `shared/templates/Breadcrumbs`. Every item except the last is a link.
 - **Design reference**: the Figma screen images, not the Figma renderer code. The renderer is dead
   code (`docs/FIGMA_DEAD_CODE.md`) and lint blocks importing it.
 

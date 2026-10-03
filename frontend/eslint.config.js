@@ -88,5 +88,9 @@ export default tseslint.config(
   },
   ...boundaries,
   { files: ['**/*.js'], languageOptions: { globals: globals.node } },
+  {
+    files: ['public/delivery-notifications.js'],
+    languageOptions: { globals: globals.serviceworker },
+  },
   { files: ['tools/*.mjs'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
 )

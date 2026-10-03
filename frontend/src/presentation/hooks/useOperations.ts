@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useBlobUrl } from './useBlobUrl'
 import { toast } from 'sonner'
 import { useServices } from '../providers/ServicesContext'
 import { useApis } from '../providers/ApisContext'
@@ -56,16 +57,7 @@ export function useEvidence(id?: string) {
     queryFn: () => apis.delivery.getEvidence(id!),
     enabled: Boolean(id),
   })
-  const url = useMemo(
-    () => (query.data ? URL.createObjectURL(query.data.photo) : undefined),
-    [query.data],
-  )
-  useEffect(
-    () => () => {
-      if (url) URL.revokeObjectURL(url)
-    },
-    [url],
-  )
+  const url = useBlobUrl(query.data?.photo)
   return {
     evidence: query.data,
     url,
