@@ -200,3 +200,29 @@ def test_store_manager_list_stops_and_confirm_receipt(client, store_manager_user
     assert ord_data["receipt_report"]["kind"] == "Missing"
     assert ord_data["receipt_report"]["received"] == 8
     assert ord_data["receipt_report"]["affected"] == 2
+
+
+def test_store_manager_cannot_place_duplicate_order_type(
+    client, store_manager_user, store_manager_token
+):
+    headers = {"Authorization": f"Bearer {store_manager_token}"}
+    outlet_id = store_manager_user.outlet_id
+    payload = {"outlet_id": outlet_id, "temperature_class": "AMBIENT", "cases": 5}
+    first = client.post("/api/v1/orders", json=payload, headers=headers)
+    assert first.status_code == 201, first.text
+
+    # A second dry order for the same delivery day is rejected and points at the first one.
+    second = client.post("/api/v1/orders", json=payload, headers=headers)
+    assert second.status_code == 409, second.text
+    detail = second.json()["detail"]
+    assert detail["code"] == "DUPLICATE_ORDER"
+    assert detail["order_id"] == first.json()["id"]
+
+    # The other type is still allowed, and a cancelled order frees its slot.
+    chilled = client.post(
+        "/api/v1/orders", json={**payload, "temperature_class": "CHILLED"}, headers=headers
+    )
+    assert chilled.status_code == 201, chilled.text
+    client.post(f"/api/v1/orders/{first.json()['id']}/cancel", headers=headers)
+    again = client.post("/api/v1/orders", json=payload, headers=headers)
+    assert again.status_code == 201, again.text

@@ -16,7 +16,7 @@ import type { DeliveryApi } from '../../domain/api/delivery'
 import type { FleetApi } from '../../domain/api/fleet'
 import type { Order, OrderStatus, Stop, Trip, Vehicle, Load } from '../../domain/models'
 import { outletProfiles, profileOf, type OutletProfile } from '../../domain/outlets'
-import { request } from './apiClient'
+import { getUser, request } from './apiClient'
 import { WaypointDatabase } from '../persistence/database'
 
 const localDb = new WaypointDatabase()
@@ -38,6 +38,14 @@ function mapOrderStatus(s: string): OrderStatus {
     CANCELLED: 'Deferred',
   }
   return (map[s] ?? 'Confirmed') as OrderStatus
+}
+
+/** A vehicle only means "allocated" until the order moves on; delivered and en route orders keep that status. */
+function orderStatus(status: string, hasVehicle: boolean, published: boolean): OrderStatus {
+  if (status === 'LOADED') return 'Scheduled'
+  if (status === 'PLANNED') return published ? 'Scheduled' : 'Allocated'
+  const mapped = mapOrderStatus(status)
+  return mapped === 'Confirmed' && hasVehicle ? 'Allocated' : mapped
 }
 
 function mapReceiptStatus(status?: string): Order['receipt'] {
@@ -71,8 +79,13 @@ function toFrontendReason(code?: string): string | undefined {
   return map[code] ?? code
 }
 
-function mapOrder(o: ApiOrder): Order {
-  const isDeferred = o.status === 'DEFERRED'
+/**
+ * `published` is whether the plan for the order's day is published: before that a planned order is only
+ * a dispatcher draft, so the store still sees it as waiting for allocation.
+ */
+function mapOrder(o: ApiOrder, published = false): Order {
+  // The backend records a deferral without always changing the status, so a reason with no vehicle counts too.
+  const isDeferred = o.status === 'DEFERRED' || (!o.vehicle_id && Boolean(o.deferral_reason))
   const isAllocated = !isDeferred && Boolean(o.vehicle_id)
   return {
     id: String(o.id),
@@ -85,7 +98,7 @@ function mapOrder(o: ApiOrder): Order {
     weight: o.total_weight,
     temperature: o.temperature_class === 'AMBIENT' ? 'Ambient' : 'Chilled',
     cases: o.total_cases ?? 0,
-    status: isDeferred ? 'Deferred' : isAllocated ? 'Allocated' : mapOrderStatus(o.status),
+    status: isDeferred ? 'Deferred' : orderStatus(o.status, isAllocated, published),
     priority: o.priority,
     vehicleId: o.vehicle_id,
     trip: o.trip,
@@ -230,6 +243,14 @@ interface ApiPlan {
 
 // ── Orders HTTP adapter ────────────────────────────────────────────────────
 
+/** The day orders are being placed for, and whether its plan is published. */
+async function deliveryDay(): Promise<{ date?: string; published?: boolean }> {
+  const intake = await request<{ delivery_date?: string; published?: boolean }>(
+    '/orders/intake-status',
+  ).catch(() => ({}) as { delivery_date?: string; published?: boolean })
+  return { date: intake.delivery_date, published: intake.published }
+}
+
 function createHttpOrdersApi(outletId?: string): OrdersApi {
   return {
     async listOrders(filter = {}) {
@@ -237,8 +258,14 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
       const scope = filter.outletId ?? outletId
       if (scope) params.set('outlet_id', scope)
       if (filter.status) params.set('status', filter.status.toUpperCase())
-      const orders = await request<ApiOrder[]>(`/orders?${params}`)
-      return orders.map(mapOrder)
+      const [orders, intake] = await Promise.all([
+        request<ApiOrder[]>(`/orders?${params}`),
+        filter.outletId ? deliveryDay() : Promise.resolve(undefined),
+      ])
+      // For one outlet this is the next delivery; its earlier orders come from listHistory.
+      return orders
+        .filter((o) => !intake?.date || o.delivery_date === intake.date)
+        .map((o) => mapOrder(o, intake?.published))
     },
 
     async listDrafts() {
@@ -246,12 +273,17 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
     },
 
     async getIntakeStatus() {
-      const data = await request<{ cutoff_closed: boolean; published: boolean }>(
-        '/orders/intake-status',
-      ).catch(() => ({ cutoff_closed: false, published: true }))
+      const data = await request<{
+        cutoff_closed: boolean
+        published: boolean
+        now?: string
+        delivery_date?: string
+      }>('/orders/intake-status').catch(() => ({ cutoff_closed: false, published: true, now: undefined, delivery_date: undefined }))
       return {
         cutoffClosed: data.cutoff_closed,
         published: data.published,
+        now: data.now,
+        deliveryDate: data.delivery_date,
       }
     },
 
@@ -272,7 +304,31 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
     },
 
     async placeOrders(outlet, inputs) {
-      for (const inp of inputs) {
+      // An outlet has one dry and one chilled order per delivery day, so a type it already has is edited.
+      const [intake, mine] = await Promise.all([
+        request<{ delivery_date?: string }>('/orders/intake-status').catch(
+          () => ({}) as { delivery_date?: string },
+        ),
+        request<ApiOrder[]>('/orders').catch(() => [] as ApiOrder[]),
+      ])
+      const existingFor = (temperature: string) =>
+        mine.find(
+          (order) =>
+            order.outlet_id === outlet &&
+            order.brand === 'Fresh' &&
+            order.temperature_class === temperature &&
+            order.status !== 'CANCELLED' &&
+            (!intake.delivery_date || order.delivery_date === intake.delivery_date),
+        )
+      for (const input of inputs) {
+        const inp = {
+          ...input,
+          orderId:
+            input.orderId ??
+            (outlet && input.temperature
+              ? existingFor(input.temperature === 'Chilled' ? 'CHILLED' : 'AMBIENT')?.id?.toString()
+              : undefined),
+        }
         if (inp.orderId) {
           await request(`/orders/${inp.orderId}`, {
             method: 'PATCH',
@@ -344,8 +400,14 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
       const params = new URLSearchParams()
       const scope = filter.outletId ?? outletId
       if (scope) params.set('outlet_id', scope)
-      const orders = await request<ApiOrder[]>(`/orders?${params.toString()}`).catch(() => [] as ApiOrder[])
-      return orders.map(mapOrder).sort((a, b) => (b.placedAt ?? '').localeCompare(a.placedAt ?? ''))
+      const [orders, intake] = await Promise.all([
+        request<ApiOrder[]>(`/orders?${params.toString()}`).catch(() => [] as ApiOrder[]),
+        deliveryDay(),
+      ])
+      return orders
+        .filter((o) => !intake.date || o.delivery_date !== intake.date)
+        .map((o) => mapOrder(o))
+        .sort((a, b) => (b.placedAt ?? '').localeCompare(a.placedAt ?? ''))
     },
 
     async getOutletProfile(id: string): Promise<OutletProfile> {
@@ -375,7 +437,7 @@ function createHttpPlanningApi(): PlanningApi {
       const trips = plan?.trips.map(mapTrip) ?? []
       const ordersUrl = plan?.delivery_date ? `/orders?date=${plan.delivery_date}` : '/orders'
       const orders = await request<ApiOrder[]>(ordersUrl)
-        .then((os) => os.map(mapOrder))
+        .then((os) => os.map((o) => mapOrder(o)))
         .catch(() => [] as Order[])
 
       let isReviewed = plan?.status === 'PUBLISHED'
@@ -562,6 +624,7 @@ function createHttpLoadingApi(): LoadingApi {
       let vehicle: Vehicle = {
         id: trip.vehicle_id,
         brand: 'Fresh',
+        brandRestricted: false,
         type: 'Truck',
         reefer: true,
         weightCapacity: 5000,
@@ -585,6 +648,7 @@ function createHttpLoadingApi(): LoadingApi {
           vehicle = {
             id: v.vehicle_id,
             brand: 'Fresh',
+            brandRestricted: false,
             type: v.type?.toLowerCase() === 'van' ? 'Van' : 'Truck',
             reefer: v.is_refrigerated,
             weightCapacity: v.weight_cap_kg,
@@ -714,7 +778,9 @@ function createHttpLoadingApi(): LoadingApi {
 function createHttpDeliveryApi(): DeliveryApi {
   return {
     async getRoute() {
-      const resp = await request<ApiTrip>('/driver/trips/current').catch(() => null)
+      // Only the driver has a current route; other roles are refused if they ask for it.
+      const driver = getUser()?.role === 'DRIVER'
+      const resp = driver ? await request<ApiTrip>('/driver/trips/current').catch(() => null) : null
       if (!resp) {
         return {
           started: false,
@@ -983,6 +1049,7 @@ function createHttpFleetApi(): FleetApi {
         (v): Vehicle => ({
           id: v.vehicle_id,
           brand: 'Fresh',
+          brandRestricted: false,
           type: v.type === 'van' ? 'Van' : 'Truck',
           reefer: v.is_refrigerated,
           weightCapacity: v.weight_cap_kg,
@@ -1011,6 +1078,7 @@ function createHttpFleetApi(): FleetApi {
       return {
         id: v.vehicle_id,
         brand: 'Fresh',
+        brandRestricted: false,
         type: v.type === 'van' ? 'Van' : 'Truck',
         reefer: v.is_refrigerated,
         weightCapacity: v.weight_cap_kg,

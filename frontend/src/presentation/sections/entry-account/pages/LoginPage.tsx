@@ -4,7 +4,7 @@ import { CircleAlert } from 'lucide-react'
 import { Modal } from '../../../shared/molecules/Common'
 import { Button } from '../../../shared/atoms/button'
 import { Wordmark } from '../components/EntryChrome'
-import { login as apiLogin } from '../../../../infrastructure/http/apiClient'
+import { ApiError, login as apiLogin } from '../../../../infrastructure/http/apiClient'
 
 const IS_REAL_BACKEND =
   !!import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL !== ''
@@ -62,7 +62,7 @@ export default function LoginPage() {
       } catch (err) {
         setFailed(true)
         setErrorMsg(
-          err instanceof Error && err.message.includes('401')
+          err instanceof ApiError && err.status === 401
             ? 'Incorrect username or password.'
             : 'Sign-in failed. Check your connection and try again.',
         )

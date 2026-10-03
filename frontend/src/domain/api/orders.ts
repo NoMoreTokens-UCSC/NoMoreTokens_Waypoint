@@ -11,6 +11,10 @@ export interface IntakeStatus {
   cutoffClosed: boolean
   /** True once the dispatcher publishes the plan; orders can no longer be edited. */
   published: boolean
+  /** The server's current time (ISO), when the backend supplies it. Demo adapters leave it out. */
+  now?: string
+  /** The day orders placed now are delivered (YYYY-MM-DD), when the backend supplies it. */
+  deliveryDate?: string
 }
 export interface ReceiptIssue {
   kind: 'Missing' | 'Damaged'

@@ -58,6 +58,8 @@ export interface Order {
 export interface Vehicle {
   id: string
   brand: Order['brand']
+  /** False when the source does not tie vehicles to a brand (the backend), so any brand may use it. */
+  brandRestricted?: boolean
   type: 'Van' | 'Truck'
   reefer: boolean
   weightCapacity: number

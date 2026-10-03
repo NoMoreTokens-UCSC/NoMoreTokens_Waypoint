@@ -12,6 +12,8 @@ import type { OperationsService } from '../../application/OperationsService'
 
 async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise<Snapshot> {
   const base = await services.repository.getSnapshot()
+  // Planning, loading and route data belong to other roles: a store manager's request for them is refused.
+  if (getUser()?.role === 'STORE_MANAGER') return base
   try {
     const user = getUser()
     const roleUpper = (user?.role || '').toUpperCase()
