@@ -86,7 +86,18 @@ def auto_plan(
             detail={"code": "NOT_OPERATING", "message": f"{delivery_date} is not an operating day."},
         )
 
-    # Check there are orders to plan
+    # Check there are orders to plan; auto-confirm any PLACED orders first
+    placed_orders = (
+        db.query(Order)
+        .filter(Order.delivery_date == delivery_date, Order.status == "PLACED")
+        .all()
+    )
+    for po in placed_orders:
+        transition_order(po, "CONFIRMED")
+        transition_order(po, "QUEUED")
+    if placed_orders:
+        db.flush()
+
     orders_count = (
         db.query(Order)
         .filter(
@@ -242,23 +253,34 @@ def edit_plan(
         to_trip_id = move.get("to_trip_id")
         new_sequence = move.get("sequence")
 
-        if not order_id or not to_trip_id:
+        if not order_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "BAD_MOVE", "message": "Each move requires order_id and to_trip_id."},
+                detail={"code": "BAD_MOVE", "message": "Each move requires order_id."},
             )
 
         order = db.get(Order, order_id)
-        target_trip = db.get(Trip, to_trip_id)
-
-        if not order or not target_trip or target_trip.plan_id != plan_id:
-            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order or trip not found."})
+        if not order:
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
 
         # Remove from current stop
         existing = db.query(StopOrder).filter(StopOrder.order_id == order_id).first()
         if existing:
+            old_stop = db.get(Stop, existing.stop_id)
             db.delete(existing)
             db.flush()
+            if old_stop and db.query(StopOrder).filter(StopOrder.stop_id == old_stop.id).count() == 0:
+                db.delete(old_stop)
+                db.flush()
+
+        # If to_trip_id is None, this is an unallocation move
+        if to_trip_id is None:
+            order.status = "QUEUED"
+            continue
+
+        target_trip = db.get(Trip, to_trip_id)
+        if not target_trip or target_trip.plan_id != plan_id:
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Trip not found."})
 
         # Find or create stop for this outlet on target trip
         existing_stop = next(
@@ -276,6 +298,7 @@ def edit_plan(
             db.flush()
 
         db.add(StopOrder(stop_id=existing_stop.id, order_id=order_id))
+        order.status = "PLANNED"
 
     log_action(db, "EDIT_PLAN", "Plan", plan_id, actor_user_id=current_user.id,
                after={"moves": len(moves)})
@@ -363,6 +386,7 @@ def publish_plan(
     # Advance all planned orders
     all_stop_order_ids: set[int] = set()
     for trip in plan.trips:
+        trip.status = "PLANNED"
         for stop in trip.stops:
             for so in db.query(StopOrder).filter(StopOrder.stop_id == stop.id).all():
                 all_stop_order_ids.add(so.order_id)
@@ -373,6 +397,12 @@ def publish_plan(
         if order and order.status in ("QUEUED", "CONFIRMED"):
             order.status = "PLANNED"
             orders_planned += 1
+
+    # Also transition any deferred orders on this plan to DEFERRED
+    for d in plan.deferrals:
+        d_order = db.get(Order, d.order_id)
+        if d_order and d_order.status != "DEFERRED":
+            d_order.status = "DEFERRED"
 
     # Broadcast notification to loaders
     db.add(Notification(

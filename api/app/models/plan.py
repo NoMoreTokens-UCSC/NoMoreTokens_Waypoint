@@ -81,6 +81,24 @@ class Trip(Base):
                 return check.photo_path
         return None
 
+    @property
+    def planned_weight(self) -> float:
+        total = 0.0
+        for s in self.stops or []:
+            for so in s.stop_orders or []:
+                if so.order_rel:
+                    total += so.order_rel.total_weight
+        return round(total, 2)
+
+    @property
+    def planned_volume(self) -> float:
+        total = 0.0
+        for s in self.stops or []:
+            for so in s.stop_orders or []:
+                if so.order_rel:
+                    total += so.order_rel.total_volume
+        return round(total, 3)
+
 
 class Stop(Base):
     __tablename__ = "stops"

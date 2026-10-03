@@ -5,16 +5,16 @@ from fastapi import HTTPException, status
 
 # Allowed transitions: {current_status: set_of_allowed_next_statuses}
 ORDER_TRANSITIONS: dict[str, set[str]] = {
-    "PLACED":    {"CONFIRMED", "CANCELLED"},
-    "CONFIRMED": {"QUEUED", "CANCELLED"},
-    "QUEUED":    {"PLANNED", "CANCELLED"},
-    "PLANNED":   {"LOADED", "DEFERRED", "CANCELLED"},
+    "PLACED":    {"CONFIRMED", "QUEUED", "CANCELLED"},
+    "CONFIRMED": {"QUEUED", "CANCELLED", "DEFERRED", "PLANNED"},
+    "QUEUED":    {"PLANNED", "CANCELLED", "DEFERRED"},
+    "PLANNED":   {"LOADED", "DEFERRED", "CANCELLED", "QUEUED"},
     "LOADED":    {"IN_TRANSIT", "DELIVERED", "PARTIAL", "FAILED", "CANCELLED"},
     "IN_TRANSIT":{"DELIVERED", "PARTIAL", "FAILED", "DEFERRED"},
     "DELIVERED": {"PARTIAL"},          # receipt dispute
     "PARTIAL":   set(),
     "FAILED":    {"DEFERRED", "CANCELLED"},
-    "DEFERRED":  {"QUEUED", "CANCELLED"},
+    "DEFERRED":  {"QUEUED", "CONFIRMED", "CANCELLED"},
     "CANCELLED": set(),
 }
 

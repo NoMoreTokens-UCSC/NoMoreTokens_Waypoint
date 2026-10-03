@@ -5,13 +5,66 @@ import { toast } from 'sonner'
 import { useServices } from '../providers/ServicesContext'
 import { useApis } from '../providers/ApisContext'
 
+import { getToken } from '../../infrastructure/http/apiClient'
+import type { Snapshot, Stop } from '../../domain/models'
+import type { Apis } from '../../domain/api'
+import type { OperationsService } from '../../application/OperationsService'
+
+async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise<Snapshot> {
+  const base = await services.repository.getSnapshot()
+  try {
+    const [planState, vehicles, loads] = await Promise.all([
+      apis.planning.getPlan(),
+      apis.fleet.listVehicles(),
+      apis.loading.listLoads(),
+    ])
+
+    const stops: Stop[] = []
+    for (const load of loads) {
+      for (const item of load.items) {
+        stops.push({
+          id: `${load.id}-${item.stop}`,
+          loadId: load.id,
+          outlet: item.outlet,
+          name: item.name,
+          address: 'Colombo',
+          window: '05:00',
+          eta: load.departureTime ?? '05:00',
+          lat: 6.93,
+          lng: 79.86,
+          orderIds: planState.orders.filter((o) => o.outlet === item.outlet).map((o) => o.id),
+          cases: item.expected,
+          status: load.completed ? 'Delivered' : 'Upcoming',
+        })
+      }
+    }
+
+    return {
+      ...base,
+      orders: planState.orders,
+      vehicles: vehicles.length > 0 ? vehicles : base.vehicles,
+      stops: stops.length > 0 ? stops : base.stops,
+      loads: loads.length > 0 ? loads : base.loads,
+      settings: {
+        ...base.settings,
+        cutoffClosed: planState.status.cutoffClosed,
+        published: planState.status.published,
+        allocationReviewed: planState.status.allocationReviewed,
+      },
+    }
+  } catch {
+    return base
+  }
+}
+
 export const snapshotKey = ['operations', 'snapshot'] as const
 export function useOperations() {
   const services = useServices()
+  const apis = useApis()
   return useQuery({
     queryKey: snapshotKey,
     networkMode: 'always',
-    queryFn: () => services.repository.getSnapshot(),
+    queryFn: () => (getToken() ? getLiveSnapshot(apis, services) : services.repository.getSnapshot()),
     staleTime: 5000,
   })
 }
@@ -20,7 +73,13 @@ export function useAction() {
   const mutation = useMutation({
     networkMode: 'always',
     mutationFn: (action: () => Promise<unknown>) => action(),
-    onSuccess: () => client.invalidateQueries({ queryKey: snapshotKey }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: snapshotKey })
+      void client.invalidateQueries({ queryKey: ['orders'] })
+      void client.invalidateQueries({ queryKey: ['planning'] })
+      void client.invalidateQueries({ queryKey: ['loads'] })
+      void client.invalidateQueries({ queryKey: ['fleet'] })
+    },
     onError: (error: Error) => {
       toast.error(error.message)
       void client.invalidateQueries({ queryKey: snapshotKey })

@@ -46,11 +46,38 @@ function mapReceiptStatus(status?: string): Order['receipt'] {
   return 'Pending'
 }
 
+function toBackendReason(reason: string): string {
+  const map: Record<string, string> = {
+    'Insufficient Volume Capacity': 'VOLUME_CAPACITY',
+    'Insufficient Weight Capacity': 'WEIGHT_CAPACITY',
+    'No Compatible Temperature Capacity': 'TEMP_MISMATCH',
+    'Two-Trip Limit Reached': 'TWO_TRIP_LIMIT',
+  }
+  return map[reason] ?? reason.slice(0, 30)
+}
+
+function toFrontendReason(code?: string): string | undefined {
+  if (!code) return undefined
+  const map: Record<string, string> = {
+    VOLUME_CAPACITY: 'Insufficient Volume Capacity',
+    WEIGHT_CAPACITY: 'Insufficient Weight Capacity',
+    CAPACITY: 'Insufficient Weight Capacity',
+    TEMP_MISMATCH: 'No Compatible Temperature Capacity',
+    TWO_TRIP_LIMIT: 'Two-Trip Limit Reached',
+    MAX_TRIPS: 'Two-Trip Limit Reached',
+    VAN_ONLY: 'Insufficient Volume Capacity',
+    FUEL_QUOTA: 'Insufficient Volume Capacity',
+  }
+  return map[code] ?? code
+}
+
 function mapOrder(o: ApiOrder): Order {
+  const isDeferred = o.status === 'DEFERRED'
+  const isAllocated = !isDeferred && Boolean(o.vehicle_id)
   return {
     id: String(o.id),
     outlet: o.outlet_id,
-    outletName: o.outlet_id,   // enriched by reference data if needed
+    outletName: o.outlet_name ?? o.outlet_id,
     brand: (o.brand as Order['brand']) ?? 'Fresh',
     window: o.window_open ?? '05:00',
     windowEnd: o.window_close ?? '07:30',
@@ -58,9 +85,11 @@ function mapOrder(o: ApiOrder): Order {
     weight: o.total_weight,
     temperature: o.temperature_class === 'AMBIENT' ? 'Ambient' : 'Chilled',
     cases: o.total_cases ?? 0,
-    status: mapOrderStatus(o.status),
+    status: isDeferred ? 'Deferred' : isAllocated ? 'Allocated' : mapOrderStatus(o.status),
     priority: o.priority,
     vehicleId: o.vehicle_id,
+    trip: o.trip,
+    deferralReason: toFrontendReason(o.deferral_reason),
     receipt: mapReceiptStatus(o.receipt_status),
     receiptReport: o.receipt_report
       ? {
@@ -132,6 +161,7 @@ interface ApiOrder {
   id: number
   reference?: string
   outlet_id: string
+  outlet_name?: string
   brand: string
   temperature_class: string
   total_weight: number
@@ -140,6 +170,8 @@ interface ApiOrder {
   status: string
   priority: boolean
   vehicle_id?: string
+  trip?: number
+  deferral_reason?: string
   window_open?: string
   window_close?: string
   receipt_status?: string
@@ -221,6 +253,10 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
         cutoffClosed: data.cutoff_closed,
         published: data.published,
       }
+    },
+
+    async closeIntake() {
+      await request('/orders/close', { method: 'POST' })
     },
 
     async createOrder(outlet, temperature, cases, window) {
@@ -327,40 +363,50 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
 function createHttpPlanningApi(): PlanningApi {
   return {
     async getPlan() {
-      const [plans, intakeResp] = await Promise.all([
-        request<ApiPlan[]>('/plans?status=PUBLISHED').catch(() =>
-          request<ApiPlan[]>('/plans?status=DRAFT').catch(() => [] as ApiPlan[]),
+      const [intakeResp, draftPlans, pubPlans] = await Promise.all([
+        request<{ cutoff_closed: boolean; published: boolean }>('/orders/intake-status').catch(
+          () => ({ cutoff_closed: false, published: false }),
         ),
-        request<{ past_cutoff: boolean; has_published_plan: boolean }>('/orders/close').catch(
-          () => ({ past_cutoff: false, has_published_plan: false }),
-        ),
+        request<ApiPlan[]>('/plans?status=DRAFT').catch(() => [] as ApiPlan[]),
+        request<ApiPlan[]>('/plans?status=PUBLISHED').catch(() => [] as ApiPlan[]),
       ])
 
-      const plan = plans[0]
+      const plan = draftPlans[0] ?? pubPlans[0]
       const trips = plan?.trips.map(mapTrip) ?? []
-      const orders = plan
-        ? await request<ApiOrder[]>(`/orders?delivery_date=${plan.delivery_date}`).then((os) =>
-            os.map(mapOrder),
-          )
-        : []
+      const ordersUrl = plan?.delivery_date ? `/orders?date=${plan.delivery_date}` : '/orders'
+      const orders = await request<ApiOrder[]>(ordersUrl)
+        .then((os) => os.map(mapOrder))
+        .catch(() => [] as Order[])
+
+      let isReviewed = plan?.status === 'PUBLISHED'
+      if (plan && !isReviewed) {
+        try {
+          isReviewed = localStorage.getItem(`waypoint.plan.reviewed.${plan.id}`) === 'true'
+        } catch {}
+      }
 
       return {
         orders,
         trips,
         status: {
-          cutoffClosed: intakeResp.past_cutoff,
-          published: intakeResp.has_published_plan,
-          allocationReviewed: plan?.status === 'PUBLISHED',
+          cutoffClosed: intakeResp.cutoff_closed,
+          published: intakeResp.published,
+          allocationReviewed: isReviewed,
         },
       }
     },
 
     async autoAllocate() {
       await request('/plans/auto-plan', { method: 'POST' })
+      const plans = await request<ApiPlan[]>('/plans?status=DRAFT').catch(() => [] as ApiPlan[])
+      if (plans[0]) {
+        try {
+          localStorage.removeItem(`waypoint.plan.reviewed.${plans[0].id}`)
+        } catch {}
+      }
     },
 
     async allocate(orderId, vehicleId, trip) {
-      // Find the published/draft plan and move the order
       const plans = await request<ApiPlan[]>('/plans?status=DRAFT').catch(() => [] as ApiPlan[])
       const plan = plans[0]
       if (!plan) throw new Error('No draft plan to edit')
@@ -368,25 +414,49 @@ function createHttpPlanningApi(): PlanningApi {
         (t) => t.vehicle_id === vehicleId && t.trip_number === trip,
       )
       if (!targetTrip) throw new Error('Trip not found')
+      try {
+        localStorage.removeItem(`waypoint.plan.reviewed.${plan.id}`)
+      } catch {}
       await request(`/plans/${plan.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ moves: [{ order_id: Number(orderId), to_trip_id: targetTrip.id }] }),
       })
     },
 
-    async unallocate(_orderId) {
-      // Removing from plan: not yet in backend scope — noop
+    async unallocate(orderId) {
+      const plans = await request<ApiPlan[]>('/plans?status=DRAFT').catch(() => [] as ApiPlan[])
+      const plan = plans[0]
+      if (plan) {
+        try {
+          localStorage.removeItem(`waypoint.plan.reviewed.${plan.id}`)
+        } catch {}
+        await request(`/plans/${plan.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ moves: [{ order_id: Number(orderId), to_trip_id: null }] }),
+        })
+      }
     },
 
     async defer(orderId, reason) {
-      await request(`/deferrals`, {
+      await request('/deferrals', {
         method: 'POST',
-        body: JSON.stringify({ order_id: Number(orderId), reason_code: reason }),
+        body: JSON.stringify({
+          order_id: Number(orderId),
+          reason_code: toBackendReason(reason),
+          explanation: reason,
+        }),
       }).catch(() => {})
     },
 
     async reviewAllocation() {
-      // Treated as a local-only state in demo; noop in backend
+      const plans = await request<ApiPlan[]>('/plans?status=DRAFT').catch(() => [] as ApiPlan[])
+      const plan = plans[0]
+      if (plan) {
+        try {
+          localStorage.setItem(`waypoint.plan.reviewed.${plan.id}`, 'true')
+        } catch {}
+        await request(`/plans/${plan.id}/validate`, { method: 'POST' }).catch(() => {})
+      }
     },
 
     async publish() {
@@ -398,6 +468,10 @@ function createHttpPlanningApi(): PlanningApi {
 
     async release(loadId) {
       await request(`/loading/trips/${loadId}/release`, { method: 'POST' })
+    },
+
+    async closeIntake() {
+      await request('/orders/close', { method: 'POST' })
     },
   }
 }
@@ -883,17 +957,28 @@ function createHttpDeliveryApi(): DeliveryApi {
 function createHttpFleetApi(): FleetApi {
   return {
     async listVehicles() {
-      const vehicles = await request<Array<{
-        vehicle_id: string
-        type: string
-        is_refrigerated: boolean
-        weight_cap_kg: number
-        volume_cap_m3: number
-        brand?: string
-        status?: string
-        lat?: number
-        lng?: number
-      }>>('/reference/vehicles').catch(() => [])
+      const [vehicles, trips] = await Promise.all([
+        request<Array<{
+          vehicle_id: string
+          type: string
+          is_refrigerated: boolean
+          weight_cap_kg: number
+          volume_cap_m3: number
+          brand?: string
+          depot_code?: string
+          status?: string
+          lat?: number
+          lng?: number
+        }>>('/reference/vehicles').catch(() => []),
+        request<ApiTrip[]>('/loading/trips').catch(() => [] as ApiTrip[]),
+      ])
+
+      const tripStatusByVehicle = new Map<string, string>()
+      for (const t of trips) {
+        if (t.status === 'IN_TRANSIT') tripStatusByVehicle.set(t.vehicle_id, 'En route')
+        else if (t.status === 'LOADING') tripStatusByVehicle.set(t.vehicle_id, 'Loading')
+      }
+
       return vehicles.map(
         (v): Vehicle => ({
           id: v.vehicle_id,
@@ -902,10 +987,10 @@ function createHttpFleetApi(): FleetApi {
           reefer: v.is_refrigerated,
           weightCapacity: v.weight_cap_kg,
           volumeCapacity: v.volume_cap_m3,
-          status: 'Available',
-          location: '',
-          lat: v.lat ?? 0,
-          lng: v.lng ?? 0,
+          status: (tripStatusByVehicle.get(v.vehicle_id) ?? 'Available') as Vehicle['status'],
+          location: v.depot_code ?? 'Peliyagoda',
+          lat: v.lat ?? (v.depot_code === 'Kandy' ? 7.29 : 6.965),
+          lng: v.lng ?? (v.depot_code === 'Kandy' ? 80.63 : 79.885),
           updatedMinutes: 0,
         }),
       )
@@ -918,6 +1003,7 @@ function createHttpFleetApi(): FleetApi {
         is_refrigerated: boolean
         weight_cap_kg: number
         volume_cap_m3: number
+        depot_code?: string
         lat?: number
         lng?: number
       }>(`/reference/vehicles/${vehicleId}`).catch(() => null)
@@ -930,7 +1016,7 @@ function createHttpFleetApi(): FleetApi {
         weightCapacity: v.weight_cap_kg,
         volumeCapacity: v.volume_cap_m3,
         status: 'Available',
-        location: '',
+        location: v.depot_code ?? 'Peliyagoda',
         lat: v.lat ?? 0,
         lng: v.lng ?? 0,
         updatedMinutes: 0,

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { RefreshCw, Package, Snowflake, Clock, ArrowRight } from 'lucide-react'
 import { useOperations, useAction } from '../../../hooks/useOperations'
 import { useServices } from '../../../providers/ServicesContext'
+import { useApis } from '../../../providers/ApisContext'
 import {
   PageHeading,
   Metric,
@@ -19,6 +20,7 @@ import { PlanningSteps } from '../organisms/PlanningSteps'
 export default function OrderQueuePage() {
   const { data } = useOperations(),
     service = useServices(),
+    apis = useApis(),
     action = useAction(),
     [params] = useSearchParams()
   const [search, setSearch] = useState(params.get('search') ?? ''),
@@ -95,6 +97,22 @@ export default function OrderQueuePage() {
           <StatusBadge tone={closed ? 'neutral' : 'success'}>
             {closed ? 'Intake closed' : 'Accepting orders'}
           </StatusBadge>
+          {!closed && (
+            <Button
+              size="sm"
+              disabled={action.isPending}
+              onClick={() =>
+                action.run(
+                  async () => {
+                    await apis.planning.closeIntake?.()
+                  },
+                  'Intake closed. Orders locked for allocation.',
+                )
+              }
+            >
+              Close intake
+            </Button>
+          )}
         </div>
         <Button
           variant="outline"
