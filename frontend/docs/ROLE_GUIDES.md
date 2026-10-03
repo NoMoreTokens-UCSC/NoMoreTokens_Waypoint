@@ -135,6 +135,7 @@ example for the other roles: copy its structure, not its content.
 | `assets/`     | the route map artwork and the delivery-photo placeholder, copied from the design                                                                                                                                                                           |
 
 **Patterns worth copying**
+
 - `'OUT001'` appears 8 times and the map filters `'VEH055'`: use `useSession().outletId` and the stop's
   vehicle.
 - Use `placeOrders` (chilled and dry confirmed together, as Figma "Create separate orders → Review →
