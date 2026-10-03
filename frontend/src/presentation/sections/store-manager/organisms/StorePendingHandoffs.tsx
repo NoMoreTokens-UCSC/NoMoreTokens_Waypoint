@@ -2,19 +2,33 @@ import { Link } from 'react-router-dom'
 import { useApiQuery } from '../../../hooks/useApiQuery'
 import { useSession } from '../../../session/useSession'
 import { Button } from '../../../shared/atoms/button'
-import { Panel, StatusBadge } from '../../../shared/molecules/Common'
+import { Notice, Panel, StatusBadge } from '../../../shared/molecules/Common'
 
 export function StorePendingHandoffs() {
   const session = useSession()
   const query = useApiQuery(['manager-handoffs', session.outletId], async (apis) => {
-    const [stops, drafts] = await Promise.all([
+    if (!session.outletId) return []
+    const [stops, drafts, route] = await Promise.all([
       apis.delivery.listStops({ outletId: session.outletId }),
       apis.delivery.listProofDrafts(),
+      apis.delivery.getRoute(),
     ])
     return stops
-      .filter((stop) => stop.outlet === session.outletId && stop.status === 'Arrived')
+      .filter(
+        (stop) =>
+          route.started &&
+          route.stops.some((assigned) => assigned.id === stop.id) &&
+          stop.outlet === session.outletId &&
+          stop.status === 'Arrived',
+      )
       .map((stop) => ({ stop, draft: drafts.find((draft) => draft.stopId === stop.id) }))
   })
+  if (query.error)
+    return (
+      <Notice title="Pending handoffs could not be opened" tone="danger">
+        {query.error.message}
+      </Notice>
+    )
   if (!query.data?.length) return null
   return (
     <Panel

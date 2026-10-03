@@ -62,6 +62,7 @@ export default function ReceiptConfirmedPage() {
         outletId={outletId}
         url={proof.url}
         capturedAt={proof.capturedAt}
+        evidence={proof.evidence}
       />
     </StorePage>
   )

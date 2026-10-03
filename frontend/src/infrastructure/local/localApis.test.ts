@@ -115,6 +115,21 @@ describe('local API adapters', () => {
       /OUT016 and OUT019 only/,
     )
   })
+  it('applies the 08:00 deadline to Fresh without blocking the Style mall window', async () => {
+    const input = {
+      temperature: 'Ambient' as const,
+      cases: 20,
+      weight: 200,
+      volume: 2,
+      window: '08:00',
+      windowEnd: '09:00',
+    }
+    await apis.orders.placeOrders('OUT016', [input])
+    expect(await apis.orders.listOrders({ outletId: 'OUT016' })).toEqual([
+      expect.objectContaining({ window: '08:00', windowEnd: '09:00', brand: 'Style' }),
+    ])
+    await expect(apis.orders.placeOrders('OUT001', [input])).rejects.toThrow(/before 08:00/)
+  })
   it('projects trips from allocations', async () => {
     await apis.planning.autoAllocate()
     const plan = await apis.planning.getPlan()

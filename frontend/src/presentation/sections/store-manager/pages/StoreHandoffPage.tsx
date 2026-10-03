@@ -10,6 +10,7 @@ import { Button } from '../../../shared/atoms/button'
 import { PageHeading, Notice, EmptyState } from '../../../shared/molecules/Common'
 import { ManagerHandoffForm } from '../../../shared/organisms/ManagerHandoffForm'
 import { ManagerSignOffDetails } from '../../../shared/organisms/ManagerSignOffDetails'
+import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 
 export default function StoreHandoffPage() {
   const [params] = useSearchParams()
@@ -18,6 +19,10 @@ export default function StoreHandoffPage() {
     online = useConnectivity(),
     action = useHandoffAction()
   const stopId = params.get('stop') ?? ''
+  useBreadcrumb([
+    { label: 'Deliveries', to: '/store-manager/deliveries' },
+    { label: 'Confirm handoff' },
+  ])
   const query = useApiQuery(['manager-handoff', session.outletId, stopId], async (apis) => {
     const [stops, orders, draft, route, settings] = await Promise.all([
       apis.delivery.listStops({ outletId: session.outletId }),

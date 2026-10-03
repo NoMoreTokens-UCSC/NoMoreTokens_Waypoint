@@ -21,5 +21,5 @@ export function useProof(order?: Order) {
     },
     [url],
   )
-  return { stop, url, capturedAt: evidence.data?.createdAt }
+  return { stop, url, capturedAt: evidence.data?.createdAt, evidence: evidence.data ?? undefined }
 }

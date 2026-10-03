@@ -12,6 +12,7 @@ import {
 import { durationText, lateOrders } from '../lib/lateness'
 import { issueReference, kindSlash } from '../lib/orderView'
 import { useStoreHistory, useStoreOrders, useStoreStops } from '../lib/useStore'
+import { DeliveryAlerts } from '../../../shared/organisms/DeliveryAlerts'
 
 const pageSize = 12
 
@@ -33,8 +34,9 @@ export default function NotificationsPage() {
     <StorePage>
       <PageIntro
         title="Notifications"
-        context={`${outletId} · ${waiting ? `${waiting} need${waiting === 1 ? 's' : ''} your attention` : 'Nothing needs your attention'}`}
+        context={`${outletId} · ${waiting ? `${waiting} order${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} your attention` : 'Delivery updates and order activity'}`}
       />
+      <DeliveryAlerts />
       {late.length > 0 && (
         <section className="sm-panel" aria-label="Running late">
           <h2 className="sm-h22">Running late</h2>

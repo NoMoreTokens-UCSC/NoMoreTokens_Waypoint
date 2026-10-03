@@ -60,7 +60,8 @@ export default function WorkspaceLayout() {
   const alertCount = data ? (options.alertCount?.(data, session) ?? 0) : 0
   const logout = () => {
     setConfirmLogout(false)
-    if (pendingCount) toast.error('Sync your saved records before leaving this workspace.')
+    if (session.role === 'driver' && pendingCount)
+      toast.error('Sync your saved records before leaving this workspace.')
     else window.location.assign('/login')
   }
   const results = search.trim() && data ? headerSearch.find(data, search.trim(), session) : []
@@ -227,13 +228,19 @@ export default function WorkspaceLayout() {
           <Breadcrumbs home={workspace.home} trail={trail} />
           {offline && (
             <Notice title="Offline · your work is saved on this device">
-              {pendingCount} record{pendingCount === 1 ? '' : 's'} waiting.{' '}
-              <Link
-                to={session.role === 'driver' ? '/driver/sync' : '/recovery'}
-                className="underline"
-              >
-                Open saved records
-              </Link>
+              {session.role === 'store-manager' ? (
+                'Changes are saved locally. Their sending status is shown on each store screen.'
+              ) : (
+                <>
+                  {pendingCount} record{pendingCount === 1 ? '' : 's'} waiting.{' '}
+                  <Link
+                    to={session.role === 'driver' ? '/driver/sync' : '/recovery'}
+                    className="underline"
+                  >
+                    Open saved records
+                  </Link>
+                </>
+              )}
             </Notice>
           )}
           {isPending ? (

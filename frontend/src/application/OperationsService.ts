@@ -964,10 +964,11 @@ export class OperationsService {
             input.volume > 0,
           'Enter a positive weight and volume for each order.',
         )
-        assert(
-          !freshWindowErrors(input.window, input.windowEnd).length,
-          freshWindowErrors(input.window, input.windowEnd).join(' '),
-        )
+        if (outlet.brand === 'Fresh')
+          assert(
+            !freshWindowErrors(input.window, input.windowEnd).length,
+            freshWindowErrors(input.window, input.windowEnd).join(' '),
+          )
         assert(/^([01]\d|2[0-3]):[0-5]\d$/.test(input.window), 'Enter a valid receiving window.')
         assert(
           !input.windowEnd ||
