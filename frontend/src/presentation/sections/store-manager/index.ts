@@ -71,7 +71,7 @@ export const storeManagerModule: RoleModule = {
   shell: {
     compactBelow: 761,
     compactNav: 'tabs',
-    // The store has its own account pages; the shared ones show other roles' data.
+    // The store has its own notifications and preferences pages; the profile page is shared.
     accountPaths: {
       profile: '/store-manager/profile',
       settings: '/store-manager/settings',
@@ -138,7 +138,7 @@ export const storeManagerModule: RoleModule = {
       'Notifications',
       () => import('./pages/NotificationsPage'),
     ),
-    route('/store-manager/profile', 'Profile', () => import('./pages/ProfilePage')),
+    route('/store-manager/profile', 'Profile', () => import('../../shared/pages/ProfilePage')),
     route('/store-manager/settings', 'Preferences', () => import('./pages/SettingsPage')),
     // Last: a path parameter, so the fixed paths above (new, review, confirmed, draft) win.
     route('/store-manager/orders/:orderId', 'Order', () => import('./pages/OrderDetailPage')),

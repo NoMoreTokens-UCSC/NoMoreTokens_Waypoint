@@ -8,6 +8,8 @@ import { getUser } from '../../infrastructure/http/apiClient'
 export interface Session {
   role: Workspace
   memberId?: string
+  /** The sign-in name, for a real account. */
+  username?: string
   name: string
   initials: string
   depot?: string
@@ -89,6 +91,7 @@ export function useSession(): Session {
     return {
       role: mappedRole,
       memberId: String(user.id),
+      username: user.username,
       name,
       initials: initialsOf(name),
       depot,

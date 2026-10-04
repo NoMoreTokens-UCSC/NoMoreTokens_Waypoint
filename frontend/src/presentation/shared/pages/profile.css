@@ -1,0 +1,16 @@
+/* The profile page uses the store manager's look (white page, grey tiles) for every role. */
+.workspace-main:has(.profile-page) {
+  background: white;
+  min-height: 100dvh;
+}
+.app-shell[data-compact='true'] .workspace-main:has(.profile-page) {
+  background: transparent;
+}
+.profile-page .sm-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 760px) {
+  .profile-page .sm-facts {
+    grid-template-columns: 1fr;
+  }
+}

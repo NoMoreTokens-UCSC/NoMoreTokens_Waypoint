@@ -34,7 +34,7 @@ export const entryAccountModule: AppModule = {
     {
       path: '/account/profile',
       title: 'Profile',
-      component: lazyPage(() => account().then((m) => m.ProfilePage)),
+      component: lazyPage(() => import('../../shared/pages/ProfilePage').then((m) => m.default)),
       shell: true,
     },
     {

@@ -14,7 +14,10 @@ import type { OperationsService } from '../../application/OperationsService'
  * With a backend, the demo's orders, vehicles, stops, loads and team never show: what the server did not
  * supply is empty. Device-only data (offline queue, saved proof, preferences) is kept.
  */
-function withoutDemoData(base: Snapshot): Snapshot {
+function withoutDemoData(
+  base: Snapshot,
+  prefs?: Pick<Snapshot['settings'], 'notifications' | 'compactRows'>,
+): Snapshot {
   const user = getUser()
   return {
     ...base,
@@ -30,14 +33,18 @@ function withoutDemoData(base: Snapshot): Snapshot {
       simulatedOffline: false,
       profileName: user?.full_name ?? '',
       profilePhone: '',
+      // Preferences chosen on this device (Preferences page) win over what the browser store holds.
+      ...(prefs ? { notifications: prefs.notifications, compactRows: prefs.compactRows } : {}),
     },
   }
 }
 
 async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise<Snapshot> {
   const base = await services.repository.getSnapshot()
+  const prefs = await apis.account.getSettings().catch(() => undefined)
+  const clean = withoutDemoData(base, prefs)
   // Planning, loading and route data belong to other roles: a store manager's request for them is refused.
-  if (getUser()?.role === 'STORE_MANAGER') return withoutDemoData(base)
+  if (getUser()?.role === 'STORE_MANAGER') return clean
   try {
     const user = getUser()
     const roleUpper = (user?.role || '').toUpperCase()
@@ -77,24 +84,24 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
     }
 
     return {
-      ...withoutDemoData(base),
+      ...clean,
       orders: planState ? planState.orders : [],
       vehicles,
       stops,
       loads,
       settings: planState
         ? {
-            ...withoutDemoData(base).settings,
+            ...clean.settings,
             cutoffClosed: planState.status.cutoffClosed,
             published: planState.status.published,
             allocationReviewed: planState.status.allocationReviewed,
           }
         : intake
-          ? { ...withoutDemoData(base).settings, cutoffClosed: intake.cutoffClosed, published: intake.published }
-          : withoutDemoData(base).settings,
+          ? { ...clean.settings, cutoffClosed: intake.cutoffClosed, published: intake.published }
+          : clean.settings,
     }
   } catch {
-    return withoutDemoData(base)
+    return clean
   }
 }
 
