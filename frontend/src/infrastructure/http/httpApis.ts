@@ -534,15 +534,17 @@ function createHttpPlanningApi(): PlanningApi {
     async unallocate(orderId) {
       const plans = await request<ApiPlan[]>('/plans?status=DRAFT').catch(() => [] as ApiPlan[])
       const plan = plans[0]
-      if (plan) {
-        try {
-          localStorage.removeItem(`waypoint.plan.reviewed.${plan.id}`)
-        } catch {}
-        await request(`/plans/${plan.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ moves: [{ order_id: Number(orderId), to_trip_id: null }] }),
-        })
+      // Say so rather than reporting success for a removal that never happened.
+      if (!plan) throw new Error('No draft plan to edit. A published plan cannot be changed.')
+      try {
+        localStorage.removeItem(`waypoint.plan.reviewed.${plan.id}`)
+      } catch {
+        // Storage can be blocked; the review flag is re-read from the server anyway.
       }
+      await request(`/plans/${plan.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ moves: [{ order_id: Number(orderId), to_trip_id: null }] }),
+      })
     },
 
     async defer(orderId, reason) {

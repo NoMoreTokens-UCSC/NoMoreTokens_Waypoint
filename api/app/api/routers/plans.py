@@ -213,6 +213,30 @@ def validate_plan_endpoint(
     }
 
 
+def _detach_order_from_plan(db, order_id: int, plan_id: int) -> None:
+    """Remove an order from every stop on this plan, dropping stops left empty.
+
+    Scoped to one plan: an order can appear on superseded plans too, and removing
+    a row from one of those would leave the order in place on the plan being edited.
+    """
+    rows = (
+        db.query(StopOrder)
+        .join(Stop, Stop.id == StopOrder.stop_id)
+        .join(Trip, Trip.id == Stop.trip_id)
+        .filter(StopOrder.order_id == order_id, Trip.plan_id == plan_id)
+        .all()
+    )
+    stop_ids = {row.stop_id for row in rows}
+    for row in rows:
+        db.delete(row)
+    db.flush()
+    for stop_id in stop_ids:
+        stop = db.get(Stop, stop_id)
+        if stop and db.query(StopOrder).filter(StopOrder.stop_id == stop_id).count() == 0:
+            db.delete(stop)
+    db.flush()
+
+
 def _trip_violations(db, trip_id: int, ctx) -> list[str]:
     """Blocking rule messages for one trip as currently stored: capacity, temperature,
     van-only access, home depot. Window misses are warnings and do not appear here."""
@@ -285,15 +309,8 @@ def edit_plan(
         if not order:
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
 
-        # Remove from current stop
-        existing = db.query(StopOrder).filter(StopOrder.order_id == order_id).first()
-        if existing:
-            old_stop = db.get(Stop, existing.stop_id)
-            db.delete(existing)
-            db.flush()
-            if old_stop and db.query(StopOrder).filter(StopOrder.stop_id == old_stop.id).count() == 0:
-                db.delete(old_stop)
-                db.flush()
+        # Remove from its current stop on this plan
+        _detach_order_from_plan(db, order_id, plan_id)
 
         # If to_trip_id is None, this is an unallocation move
         if to_trip_id is None:

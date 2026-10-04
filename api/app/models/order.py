@@ -89,18 +89,32 @@ class Order(Base):
         return None
 
     @property
-    def vehicle_id(self) -> Optional[str]:
+    def _current_trip(self):
+        """The trip on the newest plan that holds this order.
+
+        An order can still sit on the stops of superseded plans. Only a live plan
+        counts, so an order removed from the plan being worked on reports no vehicle,
+        rather than one left over from an earlier plan.
+        """
+        live = []
         for so in self.stop_orders or []:
-            if so.stop_rel and so.stop_rel.trip_rel:
-                return so.stop_rel.trip_rel.vehicle_id
-        return None
+            trip = so.stop_rel.trip_rel if so.stop_rel else None
+            if not trip:
+                continue
+            plan = trip.plan_rel
+            if plan and plan.status in ("DRAFT", "PUBLISHED"):
+                live.append(trip)
+        return max(live, key=lambda t: t.plan_id) if live else None
+
+    @property
+    def vehicle_id(self) -> Optional[str]:
+        trip = self._current_trip
+        return trip.vehicle_id if trip else None
 
     @property
     def trip(self) -> Optional[int]:
-        for so in self.stop_orders or []:
-            if so.stop_rel and so.stop_rel.trip_rel:
-                return so.stop_rel.trip_rel.trip_number
-        return None
+        trip = self._current_trip
+        return trip.trip_number if trip else None
 
     @property
     def deferral_reason(self) -> Optional[str]:
