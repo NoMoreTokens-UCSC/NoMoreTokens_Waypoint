@@ -10,10 +10,28 @@ import type { Snapshot, Stop } from '../../domain/models'
 import type { Apis } from '../../domain/api'
 import type { OperationsService } from '../../application/OperationsService'
 
+/**
+ * With a backend, the demo's orders, vehicles, stops, loads and team never show: what the server did not
+ * supply is empty. Device-only data (offline queue, saved proof, preferences) is kept.
+ */
+function withoutDemoData(base: Snapshot): Snapshot {
+  const user = getUser()
+  return {
+    ...base,
+    orders: [],
+    vehicles: [],
+    stops: [],
+    loads: [],
+    members: [],
+    activeOutletId: user?.outlet_id ?? undefined,
+    activeDriverId: user ? String(user.id) : undefined,
+  }
+}
+
 async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise<Snapshot> {
   const base = await services.repository.getSnapshot()
   // Planning, loading and route data belong to other roles: a store manager's request for them is refused.
-  if (getUser()?.role === 'STORE_MANAGER') return base
+  if (getUser()?.role === 'STORE_MANAGER') return withoutDemoData(base)
   try {
     const user = getUser()
     const roleUpper = (user?.role || '').toUpperCase()
@@ -25,6 +43,9 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
       apis.loading.listLoads().catch(() => []),
     ])
 
+    // Roles without planning access still learn from the server whether intake is closed and the plan published.
+    const intake = planState ? null : await apis.orders.getIntakeStatus().catch(() => null)
+
     const stops: Stop[] = []
     if (loads && loads.length > 0) {
       for (const load of loads) {
@@ -34,11 +55,11 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
             loadId: load.id,
             outlet: item.outlet,
             name: item.name,
-            address: 'Colombo',
-            window: '05:00',
-            eta: load.departureTime ?? '05:00',
-            lat: 6.93,
-            lng: 79.86,
+            address: item.district ?? '',
+            window: item.window ?? '',
+            eta: item.eta ?? load.departureTime ?? '',
+            lat: item.lat ?? 0,
+            lng: item.lng ?? 0,
             orderIds: planState
               ? planState.orders.filter((o) => o.outlet === item.outlet).map((o) => o.id)
               : [],
@@ -50,11 +71,11 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
     }
 
     return {
-      ...base,
-      orders: planState ? planState.orders : base.orders,
-      vehicles: vehicles.length > 0 ? vehicles : base.vehicles,
-      stops: stops.length > 0 ? stops : base.stops,
-      loads: loads.length > 0 ? loads : base.loads,
+      ...withoutDemoData(base),
+      orders: planState ? planState.orders : [],
+      vehicles,
+      stops,
+      loads,
       settings: planState
         ? {
             ...base.settings,
@@ -62,10 +83,12 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
             published: planState.status.published,
             allocationReviewed: planState.status.allocationReviewed,
           }
-        : base.settings,
+        : intake
+          ? { ...base.settings, cutoffClosed: intake.cutoffClosed, published: intake.published }
+          : base.settings,
     }
   } catch {
-    return base
+    return withoutDemoData(base)
   }
 }
 

@@ -4,6 +4,8 @@ import { ArrowRight, CheckCircle2, Circle, WandSparkles, Truck, ShieldCheck } fr
 import { useOperations, useAction, useEvidence } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
 import { Button } from '../../../shared/atoms/button'
+import { formatLongDate, formatShortDate, formatWeekday } from '../../../../domain/calendar'
+import { useBusinessClock } from '../../../session/useBusinessClock'
 import {
   PageHeading,
   Panel,
@@ -16,14 +18,13 @@ import {
 import { PlanningSteps } from '../organisms/PlanningSteps'
 import { publicationErrors, departureErrors } from '../../../../domain/rules'
 
-const WEIGHT_CAP = 800
-
 type ConstraintType = 'VOLUME_CAPACITY' | 'WEIGHT_CAPACITY' | 'TEMPERATURE_MISMATCH' | 'MAX_TRIPS'
 type ConstraintError = { type: ConstraintType; orderId: string; vehicleId: string; trip: number }
 
 export function AllocationPage() {
   const { data } = useOperations(),
     apis = useApis(),
+    clock = useBusinessClock(),
     action = useAction()
   const [vehicleIdx, setVehicleIdx] = useState(0)
   const [constraintError, setConstraintError] = useState<ConstraintError | null>(null)
@@ -42,6 +43,7 @@ export function AllocationPage() {
   const t1 = tripOrders(1),
     t2 = tripOrders(2)
   const volCap = vehicle.volumeCapacity
+  const WEIGHT_CAP = vehicle.weightCapacity
 
   const sum = (orders: typeof data.orders, key: 'weight' | 'volume') =>
     orders.reduce((n, o) => n + o[key], 0)
@@ -189,7 +191,7 @@ export function AllocationPage() {
     <>
       <PageHeading
         title="Planning & allocation"
-        description={`Saturday, 26 September · Locked demand · Revision ${revNum} draft`}
+        description={`${formatLongDate(clock.deliveryDate)} · Locked demand · Revision ${revNum} draft`}
         action={
           <Button
             variant="outline"
@@ -211,8 +213,8 @@ export function AllocationPage() {
 
       {priorityViolation && (
         <Notice tone="danger" title="1 priority outlet needs allocation">
-          OUT057 was unserved on the previous run. Publishing is blocked until this order has a valid
-          trip.
+          {priorityViolation.outlet} was unserved on the previous run. Publishing is blocked until
+          this order has a valid trip.
         </Notice>
       )}
       {allDone && !priorityViolation && (
@@ -481,6 +483,7 @@ const DEFERRAL_REASONS = [
 export function DeferralsPage() {
   const { data } = useOperations(),
     apis = useApis(),
+    clock = useBusinessClock(),
     action = useAction()
   const [selectingFor, setSelectingFor] = useState<string | null>(null)
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
@@ -498,8 +501,16 @@ export function DeferralsPage() {
       setSelectingFor(null)
       return null
     }
-    const suggestedReason =
-      ord.volume > 4 ? 'Insufficient Volume Capacity' : 'Insufficient Weight Capacity'
+    // Only vehicles that can carry the order's temperature count.
+    const carriers = data.vehicles.filter((v) => ord.temperature !== 'Chilled' || v.reefer)
+    const maxWeight = Math.max(0, ...carriers.map((v) => v.weightCapacity))
+    const maxVolume = Math.max(0, ...carriers.map((v) => v.volumeCapacity))
+    const tooBig = ord.weight > maxWeight || ord.volume > maxVolume
+    const suggestedReason = !carriers.length
+      ? 'No Compatible Temperature Capacity'
+      : ord.volume > maxVolume
+        ? 'Insufficient Volume Capacity'
+        : 'Insufficient Weight Capacity'
 
     return (
       <>
@@ -514,9 +525,11 @@ export function DeferralsPage() {
           </div>
           <div className="panel-body">
             <Notice tone="warning" title="Capacity check">
-              {ord.volume > 4
-                ? `The order needs ${ord.volume} m³. The tested ${WEIGHT_CAP / 200} m³ van cannot accommodate it, even when empty. Review larger compatible vehicles first.`
-                : `The tested ${WEIGHT_CAP} kg van would reach ${ord.weight} kg with this order. Review other compatible capacity before confirming.`}
+              {!carriers.length
+                ? `No vehicle in the fleet can carry ${ord.temperature.toLowerCase()} goods.`
+                : tooBig
+                  ? `The order needs ${ord.weight} kg and ${ord.volume} m³. The largest compatible vehicle carries ${maxWeight} kg and ${maxVolume} m³, even when empty.`
+                  : `The order needs ${ord.weight} kg and ${ord.volume} m³. Compatible vehicles can carry it, but none has room left in both trips. Review the plan before confirming.`}
             </Notice>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
               {DEFERRAL_REASONS.map((r) => {
@@ -575,14 +588,14 @@ export function DeferralsPage() {
     <>
       <PageHeading
         title="Deferrals management"
-        description="Saturday, 26 September · Capacity exceptions require an auditable reason"
+        description={`${formatLongDate(clock.deliveryDate)} · Capacity exceptions require an auditable reason`}
       />
       <PlanningSteps current={2} />
 
       {priorityViolations.length > 0 && (
         <Notice tone="danger" title="Consecutive unserved day blocked">
-          OUT057 was skipped on the previous run. It cannot be deferred again. Allocate ORD1065 to
-          continue.
+          {priorityViolations[0].outlet} was skipped on the previous run. It cannot be deferred
+          again. Allocate order {priorityViolations[0].id} to continue.
         </Notice>
       )}
       {!allRecorded && priorityViolations.length === 0 && deferred.length > 0 && (
@@ -592,8 +605,8 @@ export function DeferralsPage() {
       )}
       {allRecorded && (
         <Notice tone="success" title="All deferrals documented">
-          Both deferred orders have capacity reasons. OUT057 has a valid allocation and is protected
-          from another missed day.
+          {deferred.length === 1 ? 'The deferred order has' : `All ${deferred.length} deferred orders have`}{' '}
+          a recorded reason. No outlet is left unserved two days running.
         </Notice>
       )}
 
@@ -737,6 +750,7 @@ export function DeferralsPage() {
 export function ReviewPage() {
   const { data } = useOperations(),
     apis = useApis(),
+    clock = useBusinessClock(),
     action = useAction()
   const navigate = useNavigate()
   const [showConfirm, setShowConfirm] = useState(false)
@@ -752,7 +766,7 @@ export function ReviewPage() {
     {
       title: 'Intake closed',
       valid: data.settings.cutoffClosed,
-      desc: '16:00 cutoff passed · 24 confirmed orders locked',
+      desc: `16:00 cutoff passed · ${data.orders.length} confirmed orders locked`,
     },
     {
       title: 'Vehicle constraints valid',
@@ -776,7 +790,7 @@ export function ReviewPage() {
       : {
           title: 'All orders allocated',
           valid: !data.orders.some((o) => o.status === 'Confirmed' && !o.vehicleId),
-          desc: '24 confirmed orders have valid trips. No deferrals are required.',
+          desc: `${allocatedCount} confirmed orders have valid trips. No deferrals are required.`,
         },
     {
       title: 'Priority outlets protected',
@@ -806,8 +820,8 @@ export function ReviewPage() {
             </Notice>
             <div className="publish-meta-grid">
               <div className="publish-meta-box">
-                <p className="meta-value">26 Sep</p>
-                <p className="meta-label">Saturday</p>
+                <p className="meta-value">{formatShortDate(clock.deliveryDate)}</p>
+                <p className="meta-label">{formatWeekday(clock.deliveryDate)}</p>
               </div>
               <div className="publish-meta-box">
                 <p className="meta-value">Revision {revNum}</p>
@@ -837,7 +851,7 @@ export function ReviewPage() {
     <>
       <PageHeading
         title="Review allocation"
-        description={`Revision ${revNum} · Saturday, 26 September · ${data.orders.length} confirmed orders`}
+        description={`Revision ${revNum} · ${formatLongDate(clock.deliveryDate)} · ${data.orders.length} confirmed orders`}
       />
       <PlanningSteps current={3} />
 
@@ -862,7 +876,7 @@ export function ReviewPage() {
           </strong>
           <small>
             {priorityViolations === 0
-              ? 'OUT057 restored to today\'s plan'
+              ? 'No priority outlet is left unserved'
               : 'Resolve before publishing'}
           </small>
         </div>
