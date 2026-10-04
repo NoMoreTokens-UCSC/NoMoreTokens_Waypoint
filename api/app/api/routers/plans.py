@@ -28,7 +28,7 @@ _DISPATCHER = require_role("DISPATCHER")
 def _load_plan(db, plan_id: int) -> Plan:
     plan = db.get(
         Plan, plan_id,
-        options=[selectinload(Plan.trips).selectinload(Trip.stops)]
+        options=[selectinload(Plan.trips).selectinload(Trip.stops).selectinload(Stop.outlet_rel)]
     )
     if not plan:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Plan not found."})
@@ -45,7 +45,7 @@ def list_plans(
     date: Optional[dt.date] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
 ):
-    q = db.query(Plan).options(selectinload(Plan.trips).selectinload(Trip.stops))
+    q = db.query(Plan).options(selectinload(Plan.trips).selectinload(Trip.stops).selectinload(Stop.outlet_rel))
     if date:
         q = q.filter(Plan.delivery_date == date)
     if status_filter:
