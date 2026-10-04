@@ -14,6 +14,8 @@ import {
   Notice,
 } from '../../../shared/molecules/Common'
 import { Button } from '../../../shared/atoms/button'
+import { formatLongDate } from '../../../../domain/calendar'
+import { useBusinessClock } from '../../../session/useBusinessClock'
 import { OrderTable } from '../organisms/OrderTable'
 import { PlanningSteps } from '../organisms/PlanningSteps'
 
@@ -21,6 +23,7 @@ export default function OrderQueuePage() {
   const { data } = useOperations(),
     service = useServices(),
     apis = useApis(),
+    clock = useBusinessClock(),
     action = useAction(),
     [params] = useSearchParams()
   const [search, setSearch] = useState(params.get('search') ?? ''),
@@ -39,7 +42,7 @@ export default function OrderQueuePage() {
   return (
     <>
       <PageHeading
-        eyebrow="Dispatch · Saturday, 26 September"
+        eyebrow={`Dispatch · ${formatLongDate(clock.deliveryDate)}`}
         title="Orders"
         description="Turn incoming demand into a feasible delivery plan."
         action={
