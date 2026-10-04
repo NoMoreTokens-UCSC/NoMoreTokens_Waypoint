@@ -1547,14 +1547,24 @@ h3 {
     padding: 16px;
     gap: 12px;
   }
-  .mobile-bottom-nav a {
+  .mobile-bottom-nav a,
+  .mobile-bottom-nav span[role='link'] {
     display: flex;
     flex-direction: column;
     gap: 4px;
     align-items: center;
     font-size: 9px;
     color: #6e737b;
-    padding: 6px;
+    padding: 6px 2px;
+    text-decoration: none;
+    text-align: center;
+    flex: 1;
+    min-width: 0;
+  }
+  .mobile-bottom-nav svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
   }
   .mobile-bottom-nav a.active {
     color: #d9551d;

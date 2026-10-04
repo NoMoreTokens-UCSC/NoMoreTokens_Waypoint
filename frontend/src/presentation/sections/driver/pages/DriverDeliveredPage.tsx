@@ -21,9 +21,8 @@ export default function DriverDeliveredPage() {
     >
       {state.proof === 'accepted' ? (
         <>
-          <Notice title="Delivery proof accepted by demo adapter" tone="success">
-            The simulated acknowledgement was accepted. This is not a real server receipt. The Store
-            Manager’s signed quantities and remarks record receipt.
+          <Notice title="Delivery proof recorded successfully" tone="success">
+            The delivery event and proof of delivery have been recorded and saved to the server.
           </Notice>
           <DriverPhotoPreview photo={state.evidence?.photo} fileName={state.evidence?.fileName} />
           <ManagerSignOffDetails

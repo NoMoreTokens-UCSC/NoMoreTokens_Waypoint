@@ -69,8 +69,8 @@ export const storeManagerModule: RoleModule = {
     },
   },
   shell: {
-    compactBelow: 1200,
-    compactNav: 'menu',
+    compactBelow: 761,
+    compactNav: 'tabs',
     // The store has its own account pages; the shared ones show other roles' data.
     accountPaths: {
       profile: '/store-manager/profile',

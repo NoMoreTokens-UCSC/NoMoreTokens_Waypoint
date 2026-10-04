@@ -5,10 +5,15 @@ import { DriverScreen } from '../templates/DriverScreen'
 import { DriverRouteMap } from '../organisms/DriverRouteMap'
 import { DriverNextStop } from '../organisms/DriverNextStop'
 import { DriverLink } from '../molecules/DriverLink'
+import { DriverButton as Button } from '../atoms/DriverButton'
+import { useApis } from '../../../providers/ApisContext'
+import { useDriverAction } from '../hooks/useDriverAction'
 import { Notice, Panel } from '../../../shared/molecules/Common'
 
 export default function DriverCurrentRoutePage() {
   const state = useDriverStop()
+  const apis = useApis()
+  const action = useDriverAction()
   return (
     <DriverScreen
       title="Current route"
@@ -49,6 +54,16 @@ export default function DriverCurrentRoutePage() {
           </div>
           <DriverRouteSequence state={state} />
           <DriverActions>
+            {!state.data?.route.started && (
+              <Button
+                disabled={action.isPending}
+                onClick={() => {
+                  action.runAndNavigate(() => apis.delivery.startRoute(), '/driver/route', 'Route started')
+                }}
+              >
+                {action.isPending ? 'Starting route…' : 'Start Route (Depart Depot)'}
+              </Button>
+            )}
             <DriverLink to="/driver/route/details" variant="secondary">
               Route details & manifest
             </DriverLink>

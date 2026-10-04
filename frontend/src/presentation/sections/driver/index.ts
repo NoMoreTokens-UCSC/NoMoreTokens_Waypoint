@@ -10,7 +10,7 @@ export const driverModule: RoleModule = {
   icon: Truck,
   basePath: '/driver',
   home: '/driver/home',
-  shell: { compactNav: 'menu', recoveryLink: false },
+  shell: { compactNav: 'tabs', recoveryLink: false },
   search: {
     placeholder: 'Search assigned outlets or orders',
     find: (snapshot, query) => {

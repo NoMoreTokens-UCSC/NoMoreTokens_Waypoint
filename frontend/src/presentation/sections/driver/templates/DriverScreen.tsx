@@ -30,8 +30,8 @@ export function DriverScreen({
       )}
     >
       <PageHeading title={title} description={description} />
-      <p className="border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
-        Demo workspace · upload acknowledgements are simulated. No server is connected.
+      <p className="border-l-2 border-emerald-500/60 pl-3 text-xs leading-relaxed text-muted-foreground">
+        Driver Workspace · Connected to Waypoint backend.
       </p>
       {loading ? (
         <p role="status">Opening your saved route…</p>

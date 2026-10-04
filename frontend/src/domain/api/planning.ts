@@ -17,4 +17,5 @@ export interface PlanningApi {
   publish(): Promise<void>
   /** Releases a loaded vehicle for departure. */
   release(loadId: string): Promise<void>
+  closeIntake?(): Promise<void>
 }

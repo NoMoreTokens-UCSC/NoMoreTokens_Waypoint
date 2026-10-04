@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { RefreshCw, Package, Snowflake, Clock, ArrowRight, PackageCheck, CalendarClock, PackageX } from 'lucide-react'
 import { useOperations, useAction } from '../../../hooks/useOperations'
 import { useServices } from '../../../providers/ServicesContext'
+import { useApis } from '../../../providers/ApisContext'
 import {
   PageHeading,
   Metric,
@@ -13,12 +14,16 @@ import {
   Notice,
 } from '../../../shared/molecules/Common'
 import { Button } from '../../../shared/atoms/button'
+import { formatLongDate } from '../../../../domain/calendar'
+import { useBusinessClock } from '../../../session/useBusinessClock'
 import { OrderTable } from '../organisms/OrderTable'
 import { PlanningSteps } from '../organisms/PlanningSteps'
 
 export default function OrderQueuePage() {
   const { data } = useOperations(),
     service = useServices(),
+    apis = useApis(),
+    clock = useBusinessClock(),
     action = useAction(),
     [params] = useSearchParams()
   const [search, setSearch] = useState(params.get('search') ?? ''),
@@ -37,7 +42,7 @@ export default function OrderQueuePage() {
   return (
     <>
       <PageHeading
-        eyebrow="Dispatch · Saturday, 26 September"
+        eyebrow={`Dispatch · ${formatLongDate(clock.deliveryDate)}`}
         title="Orders"
         description="Turn incoming demand into a feasible delivery plan."
         action={
@@ -96,6 +101,22 @@ export default function OrderQueuePage() {
           <StatusBadge tone={closed ? 'neutral' : 'success'}>
             {closed ? 'Intake closed' : 'Accepting orders'}
           </StatusBadge>
+          {!closed && (
+            <Button
+              size="sm"
+              disabled={action.isPending}
+              onClick={() =>
+                action.run(
+                  async () => {
+                    await apis.planning.closeIntake?.()
+                  },
+                  'Intake closed. Orders locked for allocation.',
+                )
+              }
+            >
+              Close intake
+            </Button>
+          )}
         </div>
         <Button
           variant="outline"

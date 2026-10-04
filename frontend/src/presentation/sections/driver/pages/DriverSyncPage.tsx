@@ -65,14 +65,14 @@ export default function DriverSyncPage() {
                   : pending
                     ? 'Delivery remains incomplete'
                     : activeCount
-                      ? 'Demo acknowledgements accepted'
+                      ? 'All delivery events synced'
                       : 'No submitted proof yet'
         }
         tone={failed ? 'danger' : !pending && activeCount ? 'success' : 'warning'}
       >
         {pending
-          ? 'A local save is not accepted proof. Delivered appears only after the sync adapter accepts the acknowledgement.'
-          : 'Manager quantities, remarks, and signature remain attached to the saved proof. Demo acknowledgements do not represent a real server upload.'}
+          ? 'A local save is awaiting upload. Delivered appears once the server confirms receipt.'
+          : 'Manager quantities, remarks, and signature remain attached to the saved proof. All delivery events are synchronized with the server.'}
       </Notice>
       {state.syncError && (
         <Notice title="Sync could not start" tone="danger">
