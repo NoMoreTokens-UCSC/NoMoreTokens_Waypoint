@@ -212,14 +212,33 @@ docker compose exec -e TEST_DATABASE_URL=postgresql+psycopg://waypoint:waypoint@
 
 Where the built screens differ from the Figma designs we submitted, and why.
 
+### Overall Platform
+- **Authentication:** The Figma design included a "Switch workspace" button in the sidebar. Because we implemented real role-based authentication where each account belongs exclusively to one role, this was replaced with a functional "Log out" button.
+
 ### Store manager
 
+- **Order History:** Added an order history section to the orders page, which was completely absent in the original Figma design.
+- **Automated Order Computation:** The Figma design featured editable weight and volume fields during order creation. We changed this approach so managers only enter case counts, while weight and volume are automatically computed by the system.
 
 ### Dispatcher
 
-### loader 
+- **Analytics:** Added a "Capacity outlook" page with a 10-week demand forecast and weekly volume bar charts. This helps the dispatcher reserve compatible vehicles and plan capacity ahead of peak weeks.
+
+### Loader
+
+- **Mobile-First Approach:** The original design included large desktop-style screens and complex modals. We completely rebuilt the UI into a streamlined, mobile-first web app optimized for handset use on the depot floor.
+- **Sequential Loading Workflow:** Replaced the scattered modal interactions with a strict step-by-step UI. Loaders must explicitly reconcile item counts and tick off mandatory safety checks (refrigeration, condition, restraints) before the camera unlocks for proof capture.
+- **Issue Resolution UI:** Added a dedicated shortfall reporting flow that automatically halts departure readiness and prompts the Dispatcher, replacing the static error screens from the design.
 
 ### Driver
+
+- **Proof of Delivery:** Changed the verification approach from a simple photo upload to requiring a mandatory digital e-signature drawn directly on the device.
+- **Offline Sync:** Upgraded from a static offline concept screen to a fully working UI that queues evidence locally and automatically syncs when online.
+- **Route Map:** Replaced the static map illustration with a live, interactive map displaying real GPS positioning and the day's route lines.
+
+### Admin
+
+- **Entity Management:** Added functional pages for adding new vehicles and outlets to the system, which were not included in the original Figma designs.
 
 ## More documentation
 
