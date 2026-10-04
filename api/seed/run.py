@@ -81,6 +81,7 @@ DEMO_USERS = [
         "username": "store_manager",
         "password": "demo-store-1",
         "full_name": "Dilani Silva",
+        "phone": "+94 77 100 0001",
         "role": "STORE_MANAGER",
         "outlet_id": "OUT001",
         "vehicle_id": None,
@@ -109,6 +110,7 @@ DEMO_USERS = [
         "username": "store_manager2",
         "password": "demo-store-2",
         "full_name": "Chamari Wickrama",
+        "phone": "+94 77 100 0002",
         "role": "STORE_MANAGER",
         "outlet_id": "OUT020",
         "vehicle_id": None,
@@ -386,6 +388,7 @@ def seed_users(db) -> None:
             existing.outlet_id = spec["outlet_id"]
             existing.vehicle_id = vehicle_id
             existing.depot_id = spec["depot_id"]
+            existing.phone = spec.get("phone") or existing.phone
         else:
             user = User(
                 username=spec["username"],
@@ -395,6 +398,7 @@ def seed_users(db) -> None:
                 outlet_id=spec["outlet_id"],
                 vehicle_id=vehicle_id,
                 depot_id=spec["depot_id"],
+                phone=spec.get("phone"),
                 is_active=True,
             )
             db.add(user)

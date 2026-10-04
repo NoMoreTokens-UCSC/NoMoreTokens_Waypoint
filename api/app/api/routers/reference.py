@@ -7,8 +7,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, DbDep
+from app.api.deps import CurrentUser, DbDep, require_role
 from app.models.reference import CalendarDay, Depot, Outlet, Vehicle
+from app.models.user import User
 from app.schemas.reference import CalendarDayOut, DepotOut, OutletOut, VehicleOut
 
 router = APIRouter(prefix="/reference", tags=["reference"])
@@ -44,6 +45,20 @@ def get_outlet(outlet_id: str, db: DbDep, _: CurrentUser):
         from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "NOT_FOUND", "message": "Outlet not found."})
     return outlet
+
+
+@router.get("/store-managers")
+def list_store_managers(db: DbDep, _: object = require_role("DISPATCHER", "DRIVER", "LOADER")):
+    """Who receives at each outlet, so a driver or dispatcher can call ahead. Names and phones only."""
+    managers = (
+        db.query(User)
+        .filter(User.role == "STORE_MANAGER", User.is_active.is_(True), User.outlet_id.isnot(None))
+        .all()
+    )
+    return [
+        {"id": m.id, "full_name": m.full_name, "phone": m.phone, "outlet_id": m.outlet_id}
+        for m in managers
+    ]
 
 
 @router.get("/vehicles", response_model=list[VehicleOut])

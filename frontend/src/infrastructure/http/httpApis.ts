@@ -1657,6 +1657,27 @@ function createHttpTeamApi(): TeamApi {
 
   return {
     async listMembers() {
+      const role = getUser()?.role ?? ''
+      if (role !== 'ADMIN') {
+        // Everyone else may only see who receives at each outlet, and only the operating roles.
+        if (!['DISPATCHER', 'DRIVER', 'LOADER'].includes(role)) return []
+        const managers = await request<
+          Array<{ id: number; full_name: string; phone: string | null; outlet_id: string }>
+        >('/reference/store-managers').catch(() => [])
+        return managers.map(
+          (m): TeamMember => ({
+            id: String(m.id),
+            name: m.full_name,
+            email: '',
+            role: 'store-manager',
+            status: 'Active',
+            onRoute: false,
+            mobile: m.phone ?? undefined,
+            outletId: m.outlet_id,
+            assignment: m.outlet_id,
+          }),
+        )
+      }
       const [people, outlets, vehicles] = await Promise.all([
         users(),
         request<ApiOutlet[]>('/reference/outlets').catch(() => [] as ApiOutlet[]),

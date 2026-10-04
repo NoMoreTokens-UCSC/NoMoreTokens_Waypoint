@@ -156,3 +156,15 @@ def test_user_updates_own_contact(client, dispatcher_user):
     headers = {"Authorization": f"Bearer {token}"}
     resp = client.patch("/api/v1/auth/me", json={"full_name": "New Name", "phone": "0770000001"}, headers=headers)
     assert resp.status_code == 200 and resp.json()["full_name"] == "New Name"
+
+
+def test_driver_can_read_store_manager_contacts_but_not_users(client, driver_user, store_manager_user, db_session):
+    store_manager_user.phone = "+94 77 000 0009"
+    db_session.flush()
+    headers = {"Authorization": f"Bearer {_login(client, 'test_driver')}"}
+    managers = client.get("/api/v1/reference/store-managers", headers=headers)
+    assert managers.status_code == 200
+    assert {"full_name": store_manager_user.full_name, "phone": "+94 77 000 0009"}.items() <= next(
+        m for m in managers.json() if m["outlet_id"] == store_manager_user.outlet_id
+    ).items()
+    assert client.get("/api/v1/admin/users", headers=headers).status_code == 403

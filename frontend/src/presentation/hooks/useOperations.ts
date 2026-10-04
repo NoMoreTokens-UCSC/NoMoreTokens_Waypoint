@@ -50,10 +50,12 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
     const roleUpper = (user?.role || '').toUpperCase()
     const canAccessPlanning = !user || roleUpper === 'DISPATCHER' || roleUpper === 'ADMIN'
 
-    const [planState, vehicles, loads] = await Promise.all([
+    const [planState, vehicles, loads, route] = await Promise.all([
       canAccessPlanning ? apis.planning.getPlan().catch(() => null) : Promise.resolve(null),
       apis.fleet.listVehicles().catch(() => []),
       apis.loading.listLoads().catch(() => []),
+      // Only a driver has a route; whether it has started switches on location updates and deadline alerts.
+      roleUpper === 'DRIVER' ? apis.delivery.getRoute().catch(() => null) : Promise.resolve(null),
     ])
 
     // Roles without planning access still learn from the server whether intake is closed and the plan published.
@@ -89,16 +91,19 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
       vehicles,
       stops,
       loads,
-      settings: planState
-        ? {
-            ...clean.settings,
-            cutoffClosed: planState.status.cutoffClosed,
-            published: planState.status.published,
-            allocationReviewed: planState.status.allocationReviewed,
-          }
-        : intake
-          ? { ...clean.settings, cutoffClosed: intake.cutoffClosed, published: intake.published }
-          : clean.settings,
+      settings: {
+        ...(planState
+          ? {
+              ...clean.settings,
+              cutoffClosed: planState.status.cutoffClosed,
+              published: planState.status.published,
+              allocationReviewed: planState.status.allocationReviewed,
+            }
+          : intake
+            ? { ...clean.settings, cutoffClosed: intake.cutoffClosed, published: intake.published }
+            : clean.settings),
+        ...(route ? { routeStarted: route.started } : {}),
+      },
     }
   } catch {
     return clean
@@ -112,7 +117,8 @@ export function useOperations() {
   return useQuery({
     queryKey: snapshotKey,
     networkMode: 'always',
-    queryFn: () => (getToken() ? getLiveSnapshot(apis, services) : services.repository.getSnapshot()),
+    queryFn: () =>
+      getToken() ? getLiveSnapshot(apis, services) : services.repository.getSnapshot(),
     staleTime: 5000,
   })
 }
@@ -162,10 +168,10 @@ export function useEvidence(id?: string) {
   const apis = useApis()
   const isDirectUrl = Boolean(
     id &&
-      (id.startsWith('blob:') ||
-        id.startsWith('http://') ||
-        id.startsWith('https://') ||
-        id.startsWith('/uploads')),
+    (id.startsWith('blob:') ||
+      id.startsWith('http://') ||
+      id.startsWith('https://') ||
+      id.startsWith('/uploads')),
   )
   const query = useQuery({
     queryKey: [...snapshotKey, 'api', 'evidence', id],
