@@ -26,7 +26,7 @@ export function DeliveryAlerts() {
   return (
     <Panel
       title="Delivery updates"
-      description="Persistent alerts for your outlet. The local adapter stores these on this browser; cross-device delivery requires the backend."
+      description="Alerts for your outlet. Allow notifications on this device to be told when a delivery changes."
     >
       <div className="panel-body flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">

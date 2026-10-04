@@ -112,3 +112,47 @@ def test_create_outlet_and_vehicle(client, admin_headers):
         "/api/v1/admin/vehicles", json={**vehicle, "brand": "Style", "registration": None}, headers=admin_headers
     )
     assert style_reefer.status_code == 422
+
+
+def test_on_route_reassign_and_reason(client, admin_headers, db_session):
+    from app.models.plan import Plan, Trip
+    from app.models.reference import Vehicle
+
+    for vid in ("TVEH1", "TVEH2"):
+        db_session.add(Vehicle(
+            vehicle_id=vid, type="van", temp="ambient", is_refrigerated=False, weight_cap_kg=800,
+            volume_cap_m3=4, fuel_type="diesel", km_per_l=9, weekly_fuel_quota_l=250, depot_code="ADM_DEPOT",
+        ))
+    db_session.flush()
+    base = {"role": "DRIVER", "depot_id": None, "password": "temp-pass-1", "phone": None}
+    first = client.post("/api/v1/admin/users", json={**base, "username": "d1", "full_name": "D One", "email": "d1@example.com", "vehicle_id": "TVEH1"}, headers=admin_headers).json()
+    second = client.post("/api/v1/admin/users", json={**base, "username": "d2", "full_name": "D Two", "email": "d2@example.com", "vehicle_id": "TVEH2"}, headers=admin_headers).json()
+    assert first["on_route"] is False
+
+    plan = Plan(delivery_date=__import__("datetime").date(2024, 4, 10), status="PUBLISHED")
+    db_session.add(plan)
+    db_session.flush()
+    db_session.add(Trip(plan_id=plan.id, vehicle_id="TVEH1", trip_number=1, status="IN_TRANSIT"))
+    db_session.flush()
+    people = {u["username"]: u for u in client.get("/api/v1/admin/users", headers=admin_headers).json()}
+    assert people["d1"]["on_route"] is True and people["d1"]["trip_number"] == 1
+    assert people["d2"]["on_route"] is False
+
+    busy = client.post(f"/api/v1/admin/users/{second['id']}/reassign-trip", json={"to_user_id": first["id"]}, headers=admin_headers)
+    assert busy.status_code == 422
+    ok = client.post(f"/api/v1/admin/users/{first['id']}/reassign-trip", json={"to_user_id": second["id"]}, headers=admin_headers)
+    assert ok.status_code == 204
+    people = {u["username"]: u for u in client.get("/api/v1/admin/users", headers=admin_headers).json()}
+    assert people["d2"]["on_route"] is True and people["d1"]["on_route"] is False
+
+    resp = client.patch(f"/api/v1/admin/users/{people['d2']['id']}", json={"is_active": False, "reason": "left the company"}, headers=admin_headers)
+    assert resp.status_code == 200
+    audit = client.get("/api/v1/admin/audit", headers=admin_headers).json()
+    assert any(row["action"] == "USER_SUSPENDED" and (row["after"] or {}).get("reason") == "left the company" for row in audit)
+
+
+def test_user_updates_own_contact(client, dispatcher_user):
+    token = _login(client, "test_dispatcher")
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = client.patch("/api/v1/auth/me", json={"full_name": "New Name", "phone": "0770000001"}, headers=headers)
+    assert resp.status_code == 200 and resp.json()["full_name"] == "New Name"

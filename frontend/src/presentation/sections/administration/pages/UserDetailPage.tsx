@@ -20,7 +20,7 @@ import {
 } from '../lib/team'
 
 type Dialog = 'role' | 'reset' | 'suspend' | null
-type Way = 'reassign' | 'after' | 'now'
+type Way = 'reassign' | 'now'
 
 /** The trip number from an assignment such as "VEH055 · Trip 1". */
 const tripOf = (member: TeamMember) => /Trip (\d+)/.exec(member.assignment ?? '')?.[1]
@@ -158,7 +158,6 @@ function SuspendDialog({
       other.id !== member.id &&
       other.depot === member.depot,
   )
-  const ends = (stops.data ?? []).at(-1)?.eta
 
   if (!member.onRoute)
     return (
@@ -197,12 +196,7 @@ function SuspendDialog({
     {
       way: 'reassign',
       title: 'Reassign the trip first',
-      detail: `Pick a ${member.depot} driver. The Dispatcher approves.`,
-    },
-    {
-      way: 'after',
-      title: 'Suspend after the trip ends',
-      detail: `Scheduled for about ${ends ?? 'the end of the trip'}. Access stays until then.`,
+      detail: `Pick a ${member.depot} driver to take the trip over.`,
     },
     {
       way: 'now',
@@ -215,14 +209,9 @@ function SuspendDialog({
     if (errors.replacement || errors.reason) return
     action.run(async () => {
       if (way === 'reassign') await apis.team.reassignTrip(member.id, replacement)
-      else if (way === 'after') await apis.team.suspend(member.id, true)
       else await apis.team.suspend(member.id, false, reason)
       toast.success(
-        way === 'reassign'
-          ? 'Trip reassigned'
-          : way === 'after'
-            ? 'Suspension scheduled for after the trip'
-            : `${member.name} was suspended`,
+        way === 'reassign' ? 'Trip reassigned' : `${member.name} was suspended`,
       )
       close()
     })
@@ -231,7 +220,7 @@ function SuspendDialog({
     <div className="ad-dialog">
       <Pill tone="amber">Blocked · driver is on route</Pill>
       <h3 style={{ margin: 0, fontSize: 22, lineHeight: '30px' }}>
-        {member.name.split(' ')[0]} is on Trip {trip ?? '1'} with {cases} cases on board.
+        {member.name.split(' ')[0]} is on Trip {trip ?? '1'}{cases > 0 ? ` with ${cases} cases on board` : ''}.
       </h3>
       <p>
         Suspending now would cut off the route and any proof saved offline. Hand the trip over
@@ -291,11 +280,7 @@ function SuspendDialog({
           disabled={action.isPending}
           onClick={submit}
         >
-          {way === 'reassign'
-            ? 'Reassign trip'
-            : way === 'after'
-              ? 'Schedule suspension'
-              : 'Suspend now'}
+          {way === 'reassign' ? 'Reassign trip' : 'Suspend now'}
         </Btn>
         <Btn variant="grey" onClick={close}>
           Cancel

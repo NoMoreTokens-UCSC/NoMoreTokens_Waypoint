@@ -21,6 +21,9 @@ class AdminUserOut(OrmModel):
     vehicle_id: Optional[str] = None
     depot_id: Optional[str] = None
     created_at: Optional[dt.datetime] = None
+    # A driver whose vehicle is on a trip that has left the depot.
+    on_route: bool = False
+    trip_number: Optional[int] = None
 
 
 class AdminUserCreate(BaseModel):
@@ -46,10 +49,22 @@ class AdminUserUpdate(BaseModel):
     vehicle_id: Optional[str] = None
     depot_id: Optional[str] = None
     is_active: Optional[bool] = None
+    # Why the account is being suspended; kept in the audit log.
+    reason: Optional[str] = None
 
 
 class PasswordReset(BaseModel):
     password: str
+
+
+class TripReassign(BaseModel):
+    to_user_id: int
+
+
+class ContactUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
 
 
 class OutletCreate(BaseModel):

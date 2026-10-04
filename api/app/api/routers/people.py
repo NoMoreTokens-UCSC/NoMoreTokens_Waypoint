@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.api.deps import DbDep, require_role
 from app.core.security import hash_password
 from app.models.audit import AuditLog
+from app.models.plan import Trip
 from app.models.reference import Depot, Outlet, Vehicle
 from app.models.user import ROLES, User
 from app.schemas.admin import (
@@ -18,6 +19,7 @@ from app.schemas.admin import (
     AuditOut,
     OutletCreate,
     PasswordReset,
+    TripReassign,
     VehicleCreate,
 )
 from app.schemas.reference import OutletOut, VehicleOut
@@ -75,9 +77,27 @@ def _check_unique(db, user_id: Optional[int], username=None, email=None, phone=N
 
 # -- People -------------------------------------------------------------------
 
+def _out(db, user: User, trips: dict[str, int] | None = None) -> AdminUserOut:
+    """The account, with whether its vehicle is on a trip that has left the depot."""
+    out = AdminUserOut.model_validate(user)
+    if user.role == "DRIVER" and user.vehicle_id:
+        if trips is None:
+            trips = _trips_in_transit(db)
+        if user.vehicle_id in trips:
+            out.on_route = True
+            out.trip_number = trips[user.vehicle_id]
+    return out
+
+
+def _trips_in_transit(db) -> dict[str, int]:
+    rows = db.query(Trip.vehicle_id, Trip.trip_number).filter(Trip.status == "IN_TRANSIT").all()
+    return {vehicle_id: number for vehicle_id, number in rows}
+
+
 @router.get("/users", response_model=list[AdminUserOut])
 def list_users(db: DbDep, _: object = _ADMIN):
-    return db.query(User).order_by(User.id).all()
+    trips = _trips_in_transit(db)
+    return [_out(db, user, trips) for user in db.query(User).order_by(User.id).all()]
 
 
 @router.post("/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
@@ -108,7 +128,7 @@ def create_user(body: AdminUserCreate, db: DbDep, admin: User = _ADMIN):
     log_action(db, "USER_CREATED", "user", user.id, admin.id, after=_snapshot(user))
     db.commit()
     db.refresh(user)
-    return user
+    return _out(db, user)
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserOut)
@@ -117,6 +137,7 @@ def update_user(user_id: int, body: AdminUserUpdate, db: DbDep, admin: User = _A
     if not user:
         _fail("NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
     changes = body.model_dump(exclude_unset=True)
+    reason = (changes.pop("reason", None) or "").strip()
     if changes.get("is_active") is False and user.id == admin.id:
         _fail("SELF_SUSPEND", "You cannot suspend your own account.")
     if changes.get("email"):
@@ -131,14 +152,38 @@ def update_user(user_id: int, body: AdminUserUpdate, db: DbDep, admin: User = _A
         setattr(user, field, value)
     _check_links(db, user.role, user.outlet_id, user.vehicle_id, user.depot_id)
     action = "USER_UPDATED"
+    after = _snapshot(user)
     if changes.get("is_active") is False:
         action = "USER_SUSPENDED"
+        if reason:
+            after["reason"] = reason
     elif changes.get("is_active") is True and not before["is_active"]:
         action = "USER_REACTIVATED"
-    log_action(db, action, "user", user.id, admin.id, before=before, after=_snapshot(user))
+    log_action(db, action, "user", user.id, admin.id, before=before, after=after)
     db.commit()
     db.refresh(user)
-    return user
+    return _out(db, user)
+
+
+@router.post("/users/{user_id}/reassign-trip", status_code=status.HTTP_204_NO_CONTENT)
+def reassign_trip(user_id: int, body: TripReassign, db: DbDep, admin: User = _ADMIN):
+    """Hands a driver's vehicle, and so the trip on it, to another driver at the same depot."""
+    source = db.get(User, user_id)
+    target = db.get(User, body.to_user_id)
+    if not source or not target or source.id == target.id:
+        _fail("NOT_FOUND", "Choose two different drivers.", status.HTTP_404_NOT_FOUND)
+    if source.role != "DRIVER" or target.role != "DRIVER" or not source.vehicle_id:
+        _fail("NOT_A_DRIVER", "Both people must be drivers, and the first needs a vehicle.")
+    if not target.is_active:
+        _fail("INACTIVE_USER", "That driver is suspended.")
+    trips = _trips_in_transit(db)
+    if target.vehicle_id and target.vehicle_id in trips:
+        _fail("ON_ROUTE", "That driver is already on a trip.")
+    before = {"from": source.username, "to": target.username, "vehicle_id": source.vehicle_id}
+    target.vehicle_id, source.vehicle_id = source.vehicle_id, target.vehicle_id
+    log_action(db, "TRIP_REASSIGNED", "user", source.id, admin.id, before=before,
+               after={"username": source.username, "to": target.username, "vehicle_id": target.vehicle_id})
+    db.commit()
 
 
 @router.post("/users/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)

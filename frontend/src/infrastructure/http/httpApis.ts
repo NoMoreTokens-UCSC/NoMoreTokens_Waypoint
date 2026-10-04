@@ -1588,6 +1588,8 @@ type ApiAdminUser = {
   vehicle_id: string | null
   depot_id: string | null
   created_at?: string | null
+  on_route?: boolean
+  trip_number?: number | null
 }
 
 const workspaceOf: Record<string, Workspace> = {
@@ -1673,10 +1675,13 @@ function createHttpTeamApi(): TeamApi {
           email: u.email ?? '',
           role: workspaceOf[u.role] ?? 'dispatcher',
           status: u.is_active ? 'Active' : 'Suspended',
-          onRoute: false,
+          onRoute: Boolean(u.on_route),
           mobile: u.phone ?? undefined,
           depot,
-          assignment: u.outlet_id ?? u.vehicle_id ?? depot,
+          assignment:
+            u.on_route && u.vehicle_id
+              ? `${u.vehicle_id} · Trip ${u.trip_number ?? 1}`
+              : (u.outlet_id ?? u.vehicle_id ?? depot),
           vehicleId: u.vehicle_id ?? undefined,
           outletId: u.outlet_id ?? undefined,
           accessState: 'Ready',
@@ -1748,8 +1753,13 @@ function createHttpTeamApi(): TeamApi {
         body: JSON.stringify({ password: temporary }),
       })
     },
-    updateContact: (memberId, contact) =>
-      patch(memberId, { full_name: contact.name, email: contact.email, phone: contact.mobile || null }),
+    updateContact: (memberId, contact) => {
+      const body = { full_name: contact.name, email: contact.email, phone: contact.mobile || null }
+      // People change their own details; an administrator changes anyone's.
+      return getUser()?.role === 'ADMIN'
+        ? patch(memberId, body)
+        : request('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }).then(() => undefined)
+    },
     requestAccountChange: unsupported('Account change requests'),
     async changeAssignment(memberId, depot, assignment) {
       const people = await users()
@@ -1763,9 +1773,13 @@ function createHttpTeamApi(): TeamApi {
       }
       return patch(memberId, { depot_id: depot })
     },
-    reassignTrip: unsupported('Reassigning a trip'),
+    reassignTrip: (fromMemberId, toMemberId) =>
+      request(`/admin/users/${fromMemberId}/reassign-trip`, {
+        method: 'POST',
+        body: JSON.stringify({ to_user_id: Number(toMemberId) }),
+      }).then(() => undefined),
     updateRole: (memberId, role) => patch(memberId, { role: apiRoleOf[role] }),
-    suspend: (memberId) => patch(memberId, { is_active: false }),
+    suspend: (memberId, _scheduled, reason) => patch(memberId, { is_active: false, reason }),
   }
 }
 
