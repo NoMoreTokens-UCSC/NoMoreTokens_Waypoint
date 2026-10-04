@@ -84,6 +84,7 @@ export function App() {
                 </>
               )}
               <Route path="/" element={<Navigate to="/welcome" replace />} />
+              <Route path="/index.html" element={<Navigate to="/welcome" replace />} />
               {standaloneRoutes.map(({ path, component: Page }) => (
                 <Route
                   key={path}
