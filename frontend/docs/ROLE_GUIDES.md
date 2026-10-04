@@ -6,15 +6,15 @@ routes and the shared shell work.
 
 ## Where things stand
 
-| Area                                                   | State                                                                                                                                                                                                 |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Routing, module registry, shared shell                 | Done. Every route opens a native page.                                                                                                                                                                |
-| Entry pages (welcome, how it works, login, workspaces) | Done, rebuilt from the Figma frames. Login is a demo (any filled-in credentials).                                                                                                                    |
-| Data contract `src/domain/api` + local adapter         | Done and unit-tested.                                                                                                                                                                                  |
-| Role pages                                             | Work, but are the first native drafts: they do not match Figma and use the old data access.                                                                                                          |
+| Area                                                   | State                                                                                                                                                                                                          |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Routing, module registry, shared shell                 | Done. Every route opens a native page.                                                                                                                                                                         |
+| Entry pages (welcome, how it works, login, workspaces) | Done, rebuilt from the Figma frames. Login is a demo (any filled-in credentials).                                                                                                                              |
+| Data contract `src/domain/api` + local adapter         | Done and unit-tested.                                                                                                                                                                                          |
+| Role pages                                             | Work, but are the first native drafts: they do not match Figma and use the old data access.                                                                                                                    |
 | Pages using `useApis()`                                | **Driver pages use the API contract.** Loader reads/writes now use the API boundary. Dispatcher review, publication, issue resolution and release writes also use APIs. Other role pages still need migration. |
-| Full order-to-receipt flow in the browser              | Dispatcher publication is unblocked. The native Loader-to-release flow has dedicated browser coverage, and Driver route execution can proceed after release.                                          |
-| End-to-end workflow tests                              | Native Driver journeys (including recovery/map/layout checks), route smoke tests, the entry walkthrough, and native Loader workflow specs. Legacy Figma specs remain skipped.                        |
+| Full order-to-receipt flow in the browser              | Dispatcher publication is unblocked. The native Loader-to-release flow has dedicated browser coverage, and Driver route execution can proceed after release.                                                   |
+| End-to-end workflow tests                              | Native Driver journeys (including recovery/map/layout checks), route smoke tests, the entry walkthrough, and native Loader workflow specs. Legacy Figma specs remain skipped.                                  |
 
 ## Definition of done for any page
 
@@ -135,6 +135,7 @@ example for the other roles: copy its structure, not its content.
 | `assets/`     | the route map artwork and the delivery-photo placeholder, copied from the design                                                                                                                                                                           |
 
 **Patterns worth copying**
+
 - `'OUT001'` appears 8 times and the map filters `'VEH055'`: use `useSession().outletId` and the stop's
   vehicle.
 - Use `placeOrders` (chilled and dry confirmed together, as Figma "Create separate orders → Review →
@@ -307,23 +308,73 @@ current gateway and alert transport remain explicitly local; see the Driver repo
 
 ## Administration
 
-**Pages** (`sections/administration/pages/AdminPages.tsx`): `TeamPage`, `RolesPage`,
-`AssignmentsPage`, `AuditPage`.
+**Status: built to the Figma frames** (desktop and phone): Team & access, Add user, Invite sent, User
+detail, Suspend blocked, Roles & access and Audit log. Assignments has no frame; it follows the same
+look. The old renderer file `pages/FigmaAdminPage.tsx` is dead code and the first native version
+(`AdminPages.tsx`) was removed.
 
-**API to use:** `apis.team` (`listMembers`, `listAudit`, `invite`, `inviteByMobile`,
-`completeInvitation`, `resetAccess`, `requestAccountChange`, `changeAssignment`, `reassignTrip`,
-`updateRole`, `suspend`).
+**Where things are** (`sections/administration`): `pages/` (one file per screen: `TeamPage`,
+`AddUserPage`, `InvitedPage`, `UserDetailPage` with its role, reset and suspend dialogs, `RolesPage`,
+`AssignmentsPage`, `AuditPage`), `components/AdminKit.tsx` (page, intro, card, pill, buttons, field),
+`lib/team.ts` (role order and labels, the capability matrix, the "will / will not" lists, data hooks,
+`useCompactLayout`), `admin.css` (styles prefixed `ad-`, desktop table and phone cards).
 
-**Change**
+**API used:** `apis.team` (`listMembers`, `getSummary`, `listActivity`, `listAudit`, `createUser`,
+`resetAccess`, `updateRole`, `changeAssignment`, `reassignTrip`, `suspend`), `apis.fleet.listVehicles` for
+the free vehicles and `apis.delivery` for the driver's stops and unsynced records.
 
-- The page only uses `invite`, `updateMember` and `suspend`. Figma also has invite by mobile, user
-  detail, assignment changes and trip reassignment: all are in the API.
-- "Suspend blocked · driver on route": offer scheduled suspension or trip reassignment.
-- Fixed "Peliyagoda", "VEH055", "Sanjeewa" copy: use the member records.
-- Roles list comes from the registry (`roleModules`); keep it that way.
+**Behaviour worth knowing**
 
-**Figma:** 7 frames (team & access, add user, invite sent, user detail, roles & access, suspend
-blocked, audit log).
+- Totals come from `getSummary` (48 people, 41 active, 5 invited, 2 suspended; 214 audit events): the
+  list shows the people the demo holds, the totals include the rest. A backend returns real counts and
+  pages the list and the log on the server.
+- Lists are paged ten at a time (Team, Assignments, Outlets, Vehicles, Audit log): `lib/paging.ts`
+  (`usePaging`, which returns to page 1 whenever the search or a filter changes) and `Pager` in
+  `AdminKit`. The pager sits in the table footer on desktop and under the cards on a phone, and is hidden when
+  everything fits on one page. Paging is done in the browser over the list the API returns; a backend should
+  page, search and filter on the server (`listMembers`, `listOutlets`, `listVehicles`, `listAudit` would take a
+  page, a size and the filters). Roles & access is a fixed 11-row table and is not paged.
+- Add user: pick the role, the form adapts (vehicle for a driver, dock bay for a loader, outlet for a
+  store manager). On a phone it is two steps. The administrator also sets a **username** (suggested from
+  the name, unique) and a **temporary password** (generated, or typed: 8+ characters with letters and
+  numbers). An **email address** is also required (valid and unique, as the username is). `createUser` creates the account as "Invited"; the next screen shows the username and
+  password once, with copy buttons, for the administrator to give to the person **outside this system**.
+  Nothing is sent. The password is never stored by the demo (not in the team record, the audit log or
+  the browser data) and is wiped from the browser history, so a reload does not bring it back. A backend
+  should hash it, flag it for change at first sign-in, and return nothing but success.
+- Reset access works the same way: a new temporary password is generated (or typed) and shown once to
+  hand over. The login page still accepts any credentials in the demo.
+- Suspending a driver who is on route is blocked: reassign the trip, schedule the suspension after the
+  trip, or suspend now with a reason (the dispatcher is alerted). `suspend(memberId, scheduled?,
+reason?)` enforces this behind the API. The demo panel's "Driver on route" switch shows it.
+- Audit log: search, filter by action and time, and Export CSV of what is shown.
+- Outlets (`/administration/outlets`): every store in the system with its brand, district, depot,
+  delivery window, access (any vehicle, vans only, mall window) and store manager. **Add outlet**
+  (`OutletsApi.createOutlet`) takes the brand, name, district, depot, access and the delivery hours; the
+  system assigns the next id (OUT058 and so on) and builds the outlet's receiving limits from what was
+  entered. The store module reads the same list (`OrdersApi.getOutletProfile`), so a new outlet can order
+  straight away and can be opened from the demo panel's "Store manager signed in as". The demo seeds the
+  outlets the sample orders mention; a backend serves `outlets.csv`. Not built: editing or retiring an
+  outlet.
+- Vehicles (`/administration/vehicles`): the fleet with brand, type (dry-box or refrigerated truck, van or
+  refrigerated van), depot, capacity, status and driver; search plus brand, type and depot filters.
+  **Add vehicle** (`FleetApi.createVehicle`) takes the brand, type and refrigeration, depot, weight and volume
+  capacity (defaults: van 800 kg / 4 m³, truck 2,400 kg / 12 m³) and an optional registration; the system
+  assigns the next id after the highest (VEH088 here, as the sample fleet runs to VEH087) and the vehicle is
+  Available at its depot, so the dispatcher can allocate to it at once. Only a Fresh vehicle can be
+  refrigerated. The sample fleet has no depot field, so `vehicleDepot()` (in `domain/fleet.ts`) reads a
+  Kandy location as the Kandy depot and everything else as Peliyagoda; the driver forms list only unassigned
+  vehicles of the chosen depot. A vehicle's page has an **Add driver** shortcut that starts the form on that
+  vehicle. Not built: editing, retiring or taking a vehicle offline.
+- Add user for a **store manager** picks the outlet from this list (only outlets without a manager), and the
+  depot follows the outlet. An outlet's page has an **Add store manager** shortcut that starts the form on
+  that outlet. `createUser` refuses an unknown outlet or one that already has a manager.
+- Roles & access is a fixed reference table in `lib/team.ts`; real permissions are enforced by the
+  backend.
+- Dialogs close after their action, so toasts are shown from inside the action (a message passed to
+  `useAction().run` is lost when the component that called it unmounts).
+
+**Not built:** per-person offline-sync detail beyond the count, bulk invite, and server-side paging.
 
 ## Shared: entry, account, recovery
 
