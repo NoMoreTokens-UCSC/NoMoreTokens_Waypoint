@@ -9,24 +9,25 @@ export interface Crumb {
   to?: string
 }
 
-export const BreadcrumbContext = createContext<(trail: Crumb[]) => void>(() => {})
+export const BreadcrumbContext = createContext<(trail: Crumb[] | null) => void>(() => {})
 
 /**
  * Replaces the page part of the shell breadcrumb while the calling page is shown, e.g. on a
  * detail page: `useBreadcrumb([{ label: 'Deliveries', to: '/store-manager/deliveries' }, { label: id }])`.
  * Without it the breadcrumb shows the route's `title` from the module definition.
  */
-export function useBreadcrumb(trail: Crumb[]) {
+export function useBreadcrumb(trail: Crumb[] | null) {
   const setTrail = useContext(BreadcrumbContext)
   const key = JSON.stringify(trail)
   useEffect(() => {
-    setTrail(JSON.parse(key) as Crumb[])
+    setTrail(trail === null ? null : (JSON.parse(key) as Crumb[]))
     return () => setTrail([])
-  }, [key, setTrail])
+  }, [key, setTrail, trail])
 }
 
 /** "< Back | Home / Page" for pages inside the workspace shell. */
-export function Breadcrumbs({ home, trail }: { home: string; trail: Crumb[] }) {
+export function Breadcrumbs({ home, trail }: { home: string; trail: Crumb[] | null }) {
+  if (trail === null) return null
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const route = appRoutes.find((candidate) => matchPath(candidate.path, pathname))
