@@ -1,3 +1,4 @@
+import { realBackend } from '../../../session/realBackend'
 import { formatWeekday } from '../../../../domain/calendar'
 import type { BusinessClock } from '../../../session/useBusinessClock'
 import { cutoffLabel } from '../lib/cutoff'
@@ -12,7 +13,8 @@ export function CutoffPanel({ clock }: { clock: BusinessClock }) {
           <>
             <h2>Today’s cutoff has passed</h2>
             <p>
-              {formatWeekday(clock.deliveryDate)}’s intake is locked · Save a draft for{' '}
+              {formatWeekday(clock.deliveryDate)}’s intake is locked ·{' '}
+              {realBackend ? 'Orders now are for' : 'Save a draft for'}{' '}
               {formatWeekday(clock.nextRunDate)}
             </p>
           </>
@@ -27,7 +29,7 @@ export function CutoffPanel({ clock }: { clock: BusinessClock }) {
         )}
       </div>
       <ActionLink small to="/store-manager/orders/new">
-        {clock.cutoffPassed ? 'Keep a draft' : 'Create orders'}
+        {clock.cutoffPassed && !realBackend ? 'Keep a draft' : 'Create orders'}
       </ActionLink>
     </section>
   )

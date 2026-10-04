@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 import { AlertIcon, CheckIcon } from './StoreIcons'
 import { SyncStatus } from './SyncStatus'
-import { quantityText, windowText } from '../lib/orderView'
+import { quantityText, windowText, orderNumber } from '../lib/orderView'
 import '../store.css'
 
 /** Page wrapper: applies the store theme and the Figma vertical rhythm. */
@@ -197,7 +197,7 @@ export function ReplaceNotice({
   return (
     <p className="sm-planned" role="note">
       <Pill tone="amber">
-        {change ? 'Changing' : 'Replaces'} {unsent ? 'your unsent order' : order.id}
+        {change ? 'Changing' : 'Replaces'} {unsent ? 'your unsent order' : orderNumber(order)}
       </Pill>
       <span>
         Currently {quantityText(order)} · window {windowText(order)}.{' '}

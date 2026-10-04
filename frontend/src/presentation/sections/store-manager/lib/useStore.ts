@@ -11,11 +11,12 @@ export function useStoreOutlet() {
 }
 
 /** This outlet's orders, newest data first, split by temperature as the store places them. */
-export function useStoreOrders() {
+export function useStoreOrders(day: 'planning' | 'next' = 'planning') {
   const outletId = useStoreOutlet()
   // Without an outlet nothing is requested: an empty filter would return every outlet's orders.
-  const query = useApiQuery(['orders', outletId], async (apis) =>
-    outletId ? apis.orders.listOrders({ outletId }) : [],
+  // The order forms use the day an order placed now is for; the other pages, the day being planned.
+  const query = useApiQuery(['orders', outletId, day], async (apis) =>
+    outletId ? apis.orders.listOrders({ outletId, day }) : [],
   )
   const outbox = useOutbox(outletId)
   // Changes waiting to be sent already show, marked `pendingSync`.

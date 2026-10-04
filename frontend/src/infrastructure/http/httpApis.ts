@@ -14,7 +14,7 @@ import type { PlanningApi } from '../../domain/api/planning'
 import type { LoadingApi } from '../../domain/api/loading'
 import type { DeliveryApi } from '../../domain/api/delivery'
 import type { FleetApi } from '../../domain/api/fleet'
-import type { Order, OrderStatus, Stop, Trip, Vehicle, Load } from '../../domain/models'
+import type { Order, OrderStatus, Settings, Stop, Trip, Vehicle, Load } from '../../domain/models'
 import { profileFromReference, type OutletProfile } from '../../domain/outlets'
 import { getUser, request, type ApiOutlet } from './apiClient'
 import { WaypointDatabase } from '../persistence/database'
@@ -89,6 +89,7 @@ function mapOrder(o: ApiOrder, published = false): Order {
   const isAllocated = !isDeferred && Boolean(o.vehicle_id)
   return {
     id: String(o.id),
+    reference: o.reference,
     outlet: o.outlet_id,
     outletName: o.outlet_name ?? o.outlet_id,
     brand: (o.brand as Order['brand']) ?? 'Fresh',
@@ -120,7 +121,33 @@ function mapOrder(o: ApiOrder, published = false): Order {
   }
 }
 
-function mapStop(s: ApiStop): Stop {
+/** Each outlet's name, location and receiving window, from the reference data; fetched once and kept. */
+type OutletRef = { name: string; lat?: number; lng?: number; window?: string }
+let outletRefsCache: Promise<Map<string, OutletRef>> | undefined
+function outletReferences(): Promise<Map<string, OutletRef>> {
+  outletRefsCache ??= request<ApiOutlet[]>('/reference/outlets')
+    .then(
+      (outlets) =>
+        new Map(
+          outlets.map((o) => [
+            o.outlet_id,
+            {
+              name: `${o.brand} ${o.district}`,
+              lat: o.lat ?? undefined,
+              lng: o.lng ?? undefined,
+              window: o.window_open_time?.slice(0, 5) ?? undefined,
+            },
+          ]),
+        ),
+    )
+    .catch(() => {
+      outletRefsCache = undefined
+      return new Map<string, OutletRef>()
+    })
+  return outletRefsCache
+}
+
+function mapStop(s: ApiStop, refs?: Map<string, OutletRef>): Stop {
   const statusMap: Record<string, Stop['status']> = {
     PENDING: 'Upcoming',
     ARRIVED: 'Arrived',
@@ -134,12 +161,12 @@ function mapStop(s: ApiStop): Stop {
   return {
     id: String(s.id),
     outlet: s.outlet_id,
-    name: s.outlet_id,
+    name: refs?.get(s.outlet_id)?.name ?? s.outlet_id,
     address: s.district ?? '',
-    window: s.window_open ?? '05:00',
+    window: s.window_open ?? refs?.get(s.outlet_id)?.window ?? '',
     eta: etaText,
-    lat: s.lat ?? 0,
-    lng: s.lng ?? 0,
+    lat: s.lat ?? refs?.get(s.outlet_id)?.lat ?? 0,
+    lng: s.lng ?? refs?.get(s.outlet_id)?.lng ?? 0,
     orderIds: (s.order_ids ?? []).map(String),
     cases: s.total_cases ?? 0,
     status: (statusMap[s.status] ?? 'Upcoming') as Stop['status'],
@@ -243,12 +270,15 @@ interface ApiPlan {
 
 // ── Orders HTTP adapter ────────────────────────────────────────────────────
 
-/** The day orders are being placed for, and whether its plan is published. */
-async function deliveryDay(): Promise<{ date?: string; published?: boolean }> {
-  const intake = await request<{ delivery_date?: string; published?: boolean }>(
-    '/orders/intake-status',
-  ).catch(() => ({}) as { delivery_date?: string; published?: boolean })
-  return { date: intake.delivery_date, published: intake.published }
+/** The day being planned, the day an order placed now is for, and whether the plan is published. */
+async function deliveryDay(): Promise<{ date?: string; next?: string; published?: boolean }> {
+  type Intake = { delivery_date?: string; next_delivery_date?: string; published?: boolean }
+  const intake = await request<Intake>('/orders/intake-status').catch(() => ({}) as Intake)
+  return {
+    date: intake.delivery_date,
+    next: intake.next_delivery_date ?? intake.delivery_date,
+    published: intake.published,
+  }
 }
 
 function createHttpOrdersApi(outletId?: string): OrdersApi {
@@ -263,8 +293,9 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
         filter.outletId ? deliveryDay() : Promise.resolve(undefined),
       ])
       // For one outlet this is the next delivery; its earlier orders come from listHistory.
+      const day = filter.day === 'next' ? intake?.next : intake?.date
       return orders
-        .filter((o) => !intake?.date || o.delivery_date === intake.date)
+        .filter((o) => !day || o.delivery_date === day)
         .map((o) => mapOrder(o, intake?.published))
     },
 
@@ -278,12 +309,14 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
         published: boolean
         now?: string
         delivery_date?: string
-      }>('/orders/intake-status').catch(() => ({ cutoff_closed: false, published: true, now: undefined, delivery_date: undefined }))
+        next_delivery_date?: string
+      }>('/orders/intake-status').catch(() => ({ cutoff_closed: false, published: true, now: undefined, delivery_date: undefined, next_delivery_date: undefined }))
       return {
         cutoffClosed: data.cutoff_closed,
         published: data.published,
         now: data.now,
         deliveryDate: data.delivery_date,
+        nextDeliveryDate: data.next_delivery_date,
       }
     },
 
@@ -306,19 +339,20 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
     async placeOrders(outlet, inputs) {
       // An outlet has one dry and one chilled order per delivery day, so a type it already has is edited.
       const [intake, mine] = await Promise.all([
-        request<{ delivery_date?: string }>('/orders/intake-status').catch(
-          () => ({}) as { delivery_date?: string },
-        ),
+        deliveryDay(),
         request<ApiOrder[]>('/orders').catch(() => [] as ApiOrder[]),
       ])
+      const today = (order: ApiOrder) =>
+        order.outlet_id === outlet &&
+        order.status !== 'CANCELLED' &&
+        (!intake.next || order.delivery_date === intake.next)
+      // Fresh has one order per temperature; Style has one a day. Tech orders as needed, so it adds.
       const existingFor = (temperature: string) =>
         mine.find(
           (order) =>
-            order.outlet_id === outlet &&
-            order.brand === 'Fresh' &&
-            order.temperature_class === temperature &&
-            order.status !== 'CANCELLED' &&
-            (!intake.delivery_date || order.delivery_date === intake.delivery_date),
+            today(order) &&
+            ((order.brand === 'Fresh' && order.temperature_class === temperature) ||
+              order.brand === 'Style'),
         )
       for (const input of inputs) {
         const inp = {
@@ -333,12 +367,9 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
           await request(`/orders/${inp.orderId}`, {
             method: 'PATCH',
             body: JSON.stringify({
-              cases: inp.cases,
               total_cases: inp.cases,
-              total_weight: inp.weight,
-              total_volume: inp.volume,
-              window_open: inp.window,
-              window_close: inp.windowEnd,
+              // Only a Tech store states a weight; for everyone else the server works it out.
+              ...(inp.weightEntered ? { total_weight: inp.weight } : {}),
             }),
           })
         } else {
@@ -347,22 +378,19 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
             body: JSON.stringify({
               outlet_id: outlet,
               temperature_class: inp.temperature === 'Chilled' ? 'CHILLED' : 'AMBIENT',
-              cases: inp.cases,
               total_cases: inp.cases,
-              total_weight: inp.weight,
-              total_volume: inp.volume,
-              window_open: inp.window,
-              window_close: inp.windowEnd,
+              // Only a Tech store states a weight; for everyone else the server works it out.
+              ...(inp.weightEntered ? { total_weight: inp.weight } : {}),
             }),
           })
         }
       }
     },
 
-    async editOrder(orderId, cases, window) {
+    async editOrder(orderId, cases) {
       await request(`/orders/${orderId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ cases, window_open: window }),
+        body: JSON.stringify({ cases }),
       })
     },
 
@@ -687,7 +715,8 @@ function createHttpLoadingApi(): LoadingApi {
       } catch {}
 
       const load = mapTripToLoad(trip, depot, (await vehicleDepots()).get(trip.vehicle_id))
-      const stops: Stop[] = (trip.stops ?? []).map(mapStop)
+      const refs = await outletReferences()
+      const stops: Stop[] = (trip.stops ?? []).map((s) => mapStop(s, refs))
       return {
         load,
         vehicle,
@@ -805,6 +834,7 @@ function createHttpDeliveryApi(): DeliveryApi {
       // Only the driver has a current route; other roles are refused if they ask for it.
       const driver = getUser()?.role === 'DRIVER'
       const resp = driver ? await request<ApiTrip>('/driver/trips/current').catch(() => null) : null
+      const refs = await outletReferences()
       if (!resp) {
         return {
           started: false,
@@ -815,25 +845,26 @@ function createHttpDeliveryApi(): DeliveryApi {
       return {
         started: resp.status === 'IN_TRANSIT' || resp.status === 'COMPLETED',
         revision: 1,
-        stops: (resp.stops ?? []).map(mapStop),
+        stops: (resp.stops ?? []).map((s) => mapStop(s, refs)),
       }
     },
 
     async listStops(filter = {}) {
+      const refs = await outletReferences()
       if (filter.outletId) {
         const stops = await request<ApiStop[]>(`/orders/stops?outlet_id=${filter.outletId}`).catch(() => null)
         if (stops) {
-          return stops.map(mapStop)
+          return stops.map((s) => mapStop(s, refs))
         }
       }
       const resp = await request<ApiTrip>('/driver/trips/current').catch(() => null)
       if (resp?.stops) {
         return resp.stops
-          .map(mapStop)
+          .map((s) => mapStop(s, refs))
           .filter((s) => !filter.outletId || s.outlet === filter.outletId)
       }
       const stops = await request<ApiStop[]>('/orders/stops').catch(() => [] as ApiStop[])
-      return stops.map(mapStop)
+      return stops.map((s) => mapStop(s, refs))
     },
 
     async startRoute() {
@@ -1046,6 +1077,14 @@ function createHttpDeliveryApi(): DeliveryApi {
 
 function createHttpFleetApi(): FleetApi {
   return {
+    async listDepots() {
+      const depots = await request<{ code: string; name: string; lat: number | null; lng: number | null }[]>(
+        '/reference/depots',
+      ).catch(() => [])
+      return depots.flatMap((d) =>
+        d.lat != null && d.lng != null ? [{ code: d.code, name: d.name, lat: d.lat, lng: d.lng }] : [],
+      )
+    },
     async listVehicles() {
       const [vehicles, trips] = await Promise.all([
         request<Array<{
@@ -1108,7 +1147,7 @@ function createHttpFleetApi(): FleetApi {
         weightCapacity: v.weight_cap_kg,
         volumeCapacity: v.volume_cap_m3,
         status: 'Available',
-        location: v.depot_code ?? 'Peliyagoda',
+        location: v.depot_code ?? '',
         lat: v.lat ?? 0,
         lng: v.lng ?? 0,
         updatedMinutes: 0,
@@ -1147,21 +1186,39 @@ function createStubDriverSignalsApi() {
   }
 }
 
+const devicePrefsKey = 'waypoint.account.preferences'
+function devicePreferences(): Partial<Settings> {
+  try {
+    return JSON.parse(localStorage.getItem(devicePrefsKey) ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
 function createStubAccountApi() {
   return {
-    getSettings: async () => ({
+    getSettings: async (): Promise<Settings> => ({
       cutoffClosed: false,
       published: false,
       routeStarted: false,
       routeRevision: 0,
       simulatedOffline: false,
       syncOutcome: 'accepted' as const,
-      profileName: getUser()?.full_name ?? getUser()?.username ?? '',
       profilePhone: '',
       notifications: true,
       compactRows: false,
+      ...devicePreferences(),
+      // The name always follows the signed-in account.
+      profileName: getUser()?.full_name ?? getUser()?.username ?? '',
     }),
-    updateSettings: async () => {},
+    // Preferences have no server side; they stay on this device.
+    updateSettings: async (values: Partial<Settings>) => {
+      try {
+        localStorage.setItem(devicePrefsKey, JSON.stringify({ ...devicePreferences(), ...values }))
+      } catch {
+        // Storage can be unavailable; the preference simply is not remembered.
+      }
+    },
     saveProfilePhoto: async () => {},
   }
 }

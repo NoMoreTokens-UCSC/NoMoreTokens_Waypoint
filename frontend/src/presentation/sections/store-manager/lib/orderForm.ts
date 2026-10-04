@@ -1,16 +1,16 @@
 import { useSyncExternalStore } from 'react'
 import type { Order, StoreOrderInput, Temperature } from '../../../../domain/models'
+import { estimateLoad, unitSizes } from '../../../../domain/orderSizing'
 import { temperatures, windowText } from './orderView'
 import { windowProblem, parseWindow } from './windows'
 
 /** What the person entered for one order, as text so half-typed numbers are kept. */
 export interface FieldValues {
   cases: string
+  /** Worked out from the cases (see `estimateLoad`); shown to the person but never typed. */
   weight: string
   volume: string
   window: string
-  /** True once weight or volume was changed by hand; cases then stop updating them. */
-  adjusted?: boolean
 }
 interface Edits {
   values: Partial<Record<Temperature, FieldValues>>
@@ -45,22 +45,13 @@ const defaultWindow: Record<Temperature, string> = {
   Chilled: '05:30–07:30',
   Ambient: '06:00–08:00',
 }
-/** Typical weight and volume of one case, used until an order or the person says otherwise. */
-const typicalCase: Record<Temperature, { kg: number; m3: number }> = {
-  Chilled: { kg: 20 / 3, m3: 1 / 15 },
-  Ambient: { kg: 10, m3: 0.1 },
-}
 const round = (value: number, places: number) => String(Number(value.toFixed(places)))
 
-/** The weight and volume to suggest for a number of cases. */
-export function estimateLoad(temperature: Temperature, cases: number, basis?: Order) {
-  const per =
-    basis && basis.cases > 0
-      ? { kg: basis.weight / basis.cases, m3: basis.volume / basis.cases }
-      : typicalCase[temperature]
-  return cases > 0
-    ? { weight: round(per.kg * cases, 0), volume: round(per.m3 * cases, 2) }
-    : { weight: '', volume: '' }
+/** The weight and volume that go with a number of cases. */
+export function loadFor(cases: number) {
+  if (!(cases > 0)) return { weight: '', volume: '' }
+  const load = estimateLoad('Fresh', cases)
+  return { weight: round(load.weight, 1), volume: round(load.volume, 3) }
 }
 
 /** The saved order's values, or a blank form with the usual window. */
@@ -68,8 +59,7 @@ export function valuesFromOrder(temperature: Temperature, order?: Order): FieldV
   return order
     ? {
         cases: String(order.cases),
-        weight: String(order.weight),
-        volume: String(order.volume),
+        ...loadFor(order.cases),
         window: windowText(order),
       }
     : { cases: '', weight: '', volume: '', window: defaultWindow[temperature] }
@@ -81,7 +71,7 @@ export interface OrderForm {
   included: Record<Temperature, boolean>
   /** True once the person has changed something since the last confirmation. */
   dirty: boolean
-  change: (temperature: Temperature, field: 'cases' | 'weight' | 'volume', value: string) => void
+  change: (temperature: Temperature, field: 'cases', value: string) => void
   stepCases: (temperature: Temperature, by: number) => void
   setWindow: (temperature: Temperature, window: string) => void
   setIncluded: (temperature: Temperature, included: boolean) => void
@@ -113,14 +103,9 @@ export function useOrderForm(orders: Order[]): OrderForm {
   const update = (temperature: Temperature, next: FieldValues) =>
     write({ ...edits, values: { ...edits.values, [temperature]: next } })
   const setCases = (temperature: Temperature, text: string) => {
-    const value = values[temperature]
     const cases = Number(text)
-    // Until weight and volume are entered by hand they follow the number of cases.
-    const load =
-      value.adjusted || text.trim() === '' || !Number.isFinite(cases)
-        ? {}
-        : estimateLoad(temperature, cases, saved(temperature))
-    update(temperature, { ...value, cases: text, ...load })
+    // Weight and volume always follow the number of cases.
+    update(temperature, { ...values[temperature], cases: text, ...loadFor(Number.isFinite(cases) ? cases : 0) })
   }
   return {
     values,
@@ -128,12 +113,9 @@ export function useOrderForm(orders: Order[]): OrderForm {
     dirty:
       temperatures.some((temperature) => Boolean(current.values[temperature])) ||
       temperatures.some((temperature) => current.skipped[temperature]),
-    change: (temperature, field, value) =>
-      field === 'cases'
-        ? setCases(temperature, value)
-        : update(temperature, { ...values[temperature], [field]: value, adjusted: true }),
+    change: (temperature, _field, value) => setCases(temperature, value),
     stepCases: (temperature, by) => {
-      const next = Math.min(100, Math.max(1, (Number(values[temperature].cases) || 0) + by))
+      const next = Math.min(unitSizes.Fresh.max, Math.max(1, (Number(values[temperature].cases) || 0) + by))
       setCases(temperature, String(next))
     },
     setWindow: (temperature, window) => update(temperature, { ...values[temperature], window }),
@@ -167,6 +149,8 @@ export type FormErrors = Partial<Record<Temperature, Partial<Record<keyof FieldV
 export function parseForm(
   values: Record<Temperature, FieldValues>,
   included: Record<Temperature, boolean>,
+  /** The outlet's fixed window: when given, orders use it and no window is chosen or checked. */
+  fixedWindow?: { start: string; end: string },
 ) {
   const errors: FormErrors = {}
   const inputs: StoreOrderInput[] = []
@@ -175,22 +159,17 @@ export function parseForm(
     const value = values[temperature]
     const problems: Partial<Record<keyof FieldValues, string>> = {}
     const cases = Number(value.cases)
-    const weight = Number(value.weight)
-    const volume = Number(value.volume)
-    if (!Number.isInteger(cases) || cases < 1 || cases > 100)
-      problems.cases = 'Enter 1 to 100 cases.'
-    if (!(weight > 0)) problems.weight = 'Enter the weight in kg.'
-    if (!(volume > 0)) problems.volume = 'Enter the volume in m³.'
-    const windowError = windowProblem(value.window)
+    if (!Number.isInteger(cases) || cases < 1 || cases > unitSizes.Fresh.max)
+      problems.cases = `Enter 1 to ${unitSizes.Fresh.max} cases.`
+    const windowError = fixedWindow ? undefined : windowProblem(value.window)
     if (windowError) problems.window = windowError
     errors[temperature] = problems
-    const window = parseWindow(value.window)
+    const window = fixedWindow ?? parseWindow(value.window)
     if (!Object.keys(problems).length && window)
       inputs.push({
         temperature,
         cases,
-        weight,
-        volume,
+        ...estimateLoad('Fresh', cases),
         window: window.start,
         windowEnd: window.end,
       })
