@@ -660,6 +660,7 @@ h3 {
 }
 .table-scroll {
   overflow: auto;
+  max-height: 500px;
 }
 .data-table {
   width: 100%;
@@ -747,6 +748,9 @@ h3 {
   font-weight: 500;
   padding: 14px 20px;
   border-bottom: 1px solid #eeece9;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .data-table th button {
   display: flex;
@@ -1699,6 +1703,10 @@ h3 {
 .alloc-queue .panel-heading strong {
   font-size: 15px;
 }
+.alloc-queue .panel-body {
+  max-height: 600px;
+  overflow-y: auto;
+}
 .alloc-success-state {
   background: color-mix(in srgb, #22b563 8%, transparent);
   border-radius: 8px;
@@ -1726,6 +1734,8 @@ h3 {
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 18px;
+  max-height: 500px;
+  overflow-y: auto;
 }
 .trip-card-header {
   display: flex;

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   MapContainer,
   CircleMarker,
@@ -9,7 +9,7 @@ import {
   useMap,
 } from 'react-leaflet'
 import { useConnectivity } from '../../hooks/useOperations'
-import type { Stop, Vehicle } from '../../../domain/models'
+import type { Order, Stop, Vehicle } from '../../../domain/models'
 import { RouteMapViewport } from './RouteMapViewport'
 import 'leaflet/dist/leaflet.css'
 
@@ -25,6 +25,8 @@ function FitMapToPoints({ coordinates }: { coordinates: string }) {
 export default function OperationsMap({
   vehicles = [],
   stops = [],
+  orders = [],
+  selectedVehicleId,
   offline = false,
   onVehicleSelect,
   delayedVehicleIds = [],
@@ -35,6 +37,8 @@ export default function OperationsMap({
 }: {
   vehicles?: Vehicle[]
   stops?: Stop[]
+  orders?: Order[]
+  selectedVehicleId?: string | null
   offline?: boolean
   onVehicleSelect?: (vehicle: Vehicle) => void
   delayedVehicleIds?: string[]
@@ -44,10 +48,40 @@ export default function OperationsMap({
   showCaption?: boolean
 }) {
   const connected = useConnectivity()
-  const points: [number, number][] = [
-    [6.953, 79.884],
-    ...stops.map((s) => [s.lat, s.lng] as [number, number]),
-  ]
+  const [hoveredVehicleId, setHoveredVehicleId] = useState<string | null>(null)
+
+  // Determine active vehicle from selection or hover
+  const activeVehicleId = hoveredVehicleId || selectedVehicleId
+  const activeVehicle = activeVehicleId ? vehicles.find((v) => v.id === activeVehicleId) : null
+
+  // Get orders for the active vehicle
+  const activeOrders = activeVehicleId
+    ? orders.filter((o) => o.vehicleId === activeVehicleId)
+    : []
+  const activeOrderIds = new Set(activeOrders.map((o) => o.id))
+
+  // Get stops for the active vehicle, filtered to only remaining/upcoming ones
+  const remainingStops =
+    activeVehicleId && activeVehicle
+      ? stops
+          .filter((s) => s.orderIds.some((id) => activeOrderIds.has(id)))
+          .filter((s) => s.status === 'Upcoming' || s.status === 'Arrived')
+          .sort((a, b) => {
+            // Maintain order from the stops array (which should be sequenced)
+            const aIndex = stops.indexOf(a)
+            const bIndex = stops.indexOf(b)
+            return aIndex - bIndex
+          })
+      : []
+
+  // Build route: from vehicle position → through remaining stops
+  const routePoints: [number, number][] =
+    activeVehicle && remainingStops.length > 0
+      ? [
+          [activeVehicle.lat, activeVehicle.lng],
+          ...remainingStops.map((s) => [s.lat, s.lng] as [number, number]),
+        ]
+      : []
   const orderedVehicles = [...vehicles].sort((a, b) => {
     const aPriority = a.id === 'VEH027' ? 2 : a.status === 'Offline' ? 1 : 0
     const bPriority = b.id === 'VEH027' ? 2 : b.status === 'Offline' ? 1 : 0
@@ -64,14 +98,14 @@ export default function OperationsMap({
       >
         {fitRoute ? (
           <RouteMapViewport
-            coordinates={JSON.stringify([...points, ...vehicles.map((v) => [v.lat, v.lng])])}
+            coordinates={JSON.stringify(routePoints.length > 0 ? routePoints : [[6.974, 79.916]])}
             recenterKey={recenterKey}
           />
         ) : (
           <FitMapToPoints
             coordinates={JSON.stringify([
               ...vehicles.map((vehicle) => [vehicle.lat, vehicle.lng]),
-              ...stops.map((stop) => [stop.lat, stop.lng]),
+              ...remainingStops.map((stop) => [stop.lat, stop.lng]),
             ])}
           />
         )}
@@ -81,15 +115,25 @@ export default function OperationsMap({
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
         )}
-        {stops.length > 0 && (
-          <Polyline positions={points} pathOptions={{ color: '#f26a2e', weight: 4 }} />
+        {routePoints.length > 1 && (
+          <Polyline positions={routePoints} pathOptions={{ color: '#f26a2e', weight: 4 }} />
         )}
         {orderedVehicles.map((v) => (
           <CircleMarker
             key={v.id}
             center={v.id === 'VEH027' ? [v.lat + 0.002, v.lng + 0.002] : [v.lat, v.lng]}
             radius={7}
-            eventHandlers={onVehicleSelect ? { click: () => onVehicleSelect(v) } : undefined}
+            eventHandlers={{
+              click: () => {
+                if (onVehicleSelect) onVehicleSelect(v)
+              },
+              mouseover: () => {
+                if (onVehicleSelect) setHoveredVehicleId(v.id)
+              },
+              mouseout: () => {
+                setHoveredVehicleId(null)
+              },
+            }}
             pathOptions={{
               color: '#fff',
               weight: 2,
@@ -121,7 +165,7 @@ export default function OperationsMap({
             )}
           </CircleMarker>
         ))}
-        {stops.map((s) => (
+        {(activeVehicleId ? remainingStops : stops).map((s) => (
           <CircleMarker
             key={s.id}
             center={[s.lat, s.lng]}
