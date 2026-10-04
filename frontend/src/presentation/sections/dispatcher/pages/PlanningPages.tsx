@@ -1093,7 +1093,6 @@ function ReleaseLoad({ loadId }: { loadId: string }) {
   const errors = departureErrors(data, load),
     cases = load.items.reduce((n, i) => n + i.loaded, 0),
     total = load.items.reduce((n, i) => n + i.expected, 0),
-    revNum = load.revision.toString().padStart(2, '0'),
     deferred = data.orders.filter((o) => o.status === 'Deferred')
   return (
     <>
