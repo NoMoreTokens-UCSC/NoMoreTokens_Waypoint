@@ -16,6 +16,7 @@ import {
   Field,
 } from '../../../shared/molecules/Common'
 import { PlanningSteps } from '../organisms/PlanningSteps'
+import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { allocationErrors, publicationErrors, departureErrors } from '../../../../domain/rules'
 import { toast } from 'sonner'
 
@@ -29,6 +30,8 @@ export function AllocationPage() {
     action = useAction()
   const [vehicleIdx, setVehicleIdx] = useState(0)
   const [constraintError, setConstraintError] = useState<ConstraintError | null>(null)
+  useBreadcrumb(null)
+
   if (!data) return null
 
   const unallocated = data.orders.filter((o) => !o.vehicleId && o.status !== 'Deferred')
@@ -497,6 +500,8 @@ export function DeferralsPage() {
     action = useAction()
   const [selectingFor, setSelectingFor] = useState<string | null>(null)
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
+  useBreadcrumb(null)
+
   if (!data) return null
 
   const deferred = data.orders.filter((o) => o.status === 'Deferred')
@@ -764,6 +769,8 @@ export function ReviewPage() {
     action = useAction()
   const navigate = useNavigate()
   const [showConfirm, setShowConfirm] = useState(false)
+  useBreadcrumb(null)
+
   if (!data) return null
 
   const errors = publicationErrors(data)
@@ -1038,11 +1045,19 @@ function LoadMenu({
 
 export function ReleasePage() {
   const { data } = useOperations()
+  const clock = useBusinessClock()
   const [params, setParams] = useSearchParams()
   const loadId = params.get('loadId') ?? ''
+  const revNum = (data?.settings.routeRevision ?? 3).toString().padStart(2, '0')
+  useBreadcrumb(null)
+
   return (
     <>
-      {!loadId && <PageHeading title="Departure readiness" />}
+      <PageHeading 
+        title="Plan published" 
+        description={`Revision ${revNum} · Published ${formatWeekday(clock.deliveryDate)} at ${clock.now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Colombo' })} · Dispatcher`}
+      />
+      <PlanningSteps current={4} />
       <Panel title="Published loads">
         <div className="panel-body">
           <Field label="Vehicle and trip">
@@ -1082,11 +1097,6 @@ function ReleaseLoad({ loadId }: { loadId: string }) {
     deferred = data.orders.filter((o) => o.status === 'Deferred')
   return (
     <>
-      <PageHeading
-        title="Plan published"
-        description={`Revision ${revNum} · Dispatcher`}
-      />
-      <PlanningSteps current={4} />
       {load.issue && !load.issueResolved && (
         <Notice title="Shortfall requires Dispatcher decision" tone="danger">
           {load.issue}
