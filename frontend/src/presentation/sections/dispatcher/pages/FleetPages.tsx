@@ -12,6 +12,7 @@ import {
   Modal,
   CapacityBar,
   Notice,
+  EmptyState,
 } from '../../../shared/molecules/Common'
 const OperationsMap = lazy(() => import('../../../shared/organisms/OperationsMap'))
 
@@ -22,13 +23,28 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
     [status, setStatus] = useState('All'),
     [selected, setSelected] = useState<string | null>(null),
     [page, setPage] = useState(0)
+
+
   if (!data) return null
+
+  // Build vehicle → orders mapping for the map
+  const vehicleOrders: Record<string, string[]> = {}
+  data.orders.forEach((order) => {
+    if (order.vehicleId) {
+      if (!vehicleOrders[order.vehicleId]) {
+        vehicleOrders[order.vehicleId] = []
+      }
+      vehicleOrders[order.vehicleId].push(order.id)
+    }
+  })
+
   const vehicles = data.vehicles.filter(
     (v) =>
       `${v.id} ${v.location} ${v.brand}`.toLowerCase().includes(search.toLowerCase()) &&
       (status === 'All' || v.status === status),
   )
-  const vehicle = data.vehicles.find((v) => v.id === selected)
+  const selectedId = selected ?? (tracking ? data.vehicles.find((v) => v.status === "En route")?.id ?? null : null)
+  const vehicle = data.vehicles.find((v) => v.id === selectedId)
   const vehicleOrder = data.orders.find((o) => o.vehicleId === vehicle?.id && o.trip === 1)
   const vehicleStop = vehicleOrder
     ? data.stops.find((stop) => stop.orderIds.includes(vehicleOrder.id))
@@ -145,7 +161,7 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
               key={s}
               label={s}
               value={data.vehicles.filter((v) => v.status === s).length}
-              detail={s === 'Offline' ? 'Last reported location' : 'Demo vehicle status'}
+              detail={s === 'Offline' ? 'Last reported location' : 'Current status'}
               icon={<Truck size={16} />}
             />
           ))}
@@ -165,6 +181,8 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
             <OperationsMap
               vehicles={vehicles}
               stops={data.stops}
+              selectedVehicleId={selectedId}
+              vehicleOrders={vehicleOrders}
               offline={data.settings.simulatedOffline}
               onVehicleSelect={(selectedVehicle) => setSelected(selectedVehicle.id)}
               delayedVehicleIds={delayedVehicleIds}
@@ -418,20 +436,35 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
   )
 }
 
+/** Bar height in px. Empty data gives 0, and any non-zero value keeps a visible minimum. */
+function barHeight(value: number, max: number, scale = 180) {
+  if (value <= 0 || max <= 0) return 0
+  return Math.max(8, (value / max) * scale)
+}
+
+type ChartMode = 'status' | 'brand' | 'temperature'
+
 export function AnalyticsPage() {
   const { data } = useOperations()
+  const [chartMode, setChartMode] = useState<ChartMode>('status')
   if (!data) return null
-  const delivered = data.orders.filter((o) => o.status === 'Delivered').length
-  const volumeByWindow = [...new Set(data.orders.map((o) => o.window))]
+  const orders = data.orders
+  const delivered = orders.filter((o) => o.status === 'Delivered').length
+  const totalVolume = orders.reduce((n, o) => n + o.volume, 0)
+  const totalWeight = orders.reduce((n, o) => n + o.weight, 0)
+  const allocated = orders.filter((o) => o.vehicleId).length
+  const reporting = data.vehicles.filter((v) => v.status !== 'Offline').length
+
+  const volumeByWindow = [...new Set(orders.map((o) => o.window))]
     .sort()
     .map((window) => {
-      const orders = data.orders.filter((o) => o.window === window)
+      const inWindow = orders.filter((o) => o.window === window)
       return {
         window,
-        total: orders.reduce((sum, order) => sum + order.volume, 0),
-        chilled: orders
-          .filter((order) => order.temperature === 'Chilled')
-          .reduce((sum, order) => sum + order.volume, 0),
+        total: inWindow.reduce((sum, o) => sum + o.volume, 0),
+        chilled: inWindow
+          .filter((o) => o.temperature === 'Chilled')
+          .reduce((sum, o) => sum + o.volume, 0),
       }
     })
   const peakTotal = volumeByWindow.reduce((peak, item) => (item.total > peak.total ? item : peak), {
@@ -443,6 +476,51 @@ export function AnalyticsPage() {
     (peak, item) => (item.chilled > peak.chilled ? item : peak),
     { window: '—', total: 0, chilled: 0 },
   )
+
+  const brands = [...new Set(orders.map((o) => o.brand))].sort()
+  const maxBrandCount = Math.max(0, ...brands.map((b) => orders.filter((o) => o.brand === b).length))
+
+  type Row = (typeof orders)[number]
+  type Segment = { key: string; label: string; cls: string; match: (o: Row) => boolean }
+  const segmentsByMode: Record<ChartMode, Segment[]> = {
+    status: [
+      {
+        key: 'allocated',
+        label: 'Allocated',
+        cls: 'seg-allocated',
+        match: (o) => o.status !== 'Deferred' && o.status !== 'Delivered' && !!o.vehicleId,
+      },
+      {
+        key: 'unallocated',
+        label: 'Not yet allocated',
+        cls: 'seg-unallocated',
+        match: (o) => o.status !== 'Deferred' && o.status !== 'Delivered' && !o.vehicleId,
+      },
+      { key: 'deferred', label: 'Deferred', cls: 'seg-deferred', match: (o) => o.status === 'Deferred' },
+      { key: 'delivered', label: 'Delivered', cls: 'seg-delivered', match: (o) => o.status === 'Delivered' },
+    ],
+    brand: brands.map((brand) => ({
+      key: brand,
+      label: brand,
+      cls: `seg-${brand.toLowerCase()}`,
+      match: (o: Row) => o.brand === brand,
+    })),
+    temperature: [
+      { key: 'chilled', label: 'Chilled', cls: 'seg-chilled', match: (o) => o.temperature === 'Chilled' },
+      { key: 'ambient', label: 'Ambient', cls: 'seg-ambient', match: (o) => o.temperature === 'Ambient' },
+    ],
+  }
+  const segments = segmentsByMode[chartMode]
+  const stackedByWindow = volumeByWindow.map((item) => ({
+    window: item.window,
+    parts: segments.map((segment) => ({
+      ...segment,
+      value: orders
+        .filter((o) => o.window === item.window && segment.match(o))
+        .reduce((n, o) => n + o.volume, 0),
+    })),
+  }))
+
   return (
     <>
       <PageHeading
@@ -460,14 +538,10 @@ export function AnalyticsPage() {
           value={`${peakChilled.chilled.toFixed(1)} m³`}
           detail={`${peakChilled.window} · chilled subset`}
         />
-        <Metric
-          label="Peak timing"
-          value={peakTotal.window}
-          detail="Highest ordered volume"
-        />
+        <Metric label="Peak timing" value={peakTotal.window} detail="Highest ordered volume" />
         <Metric
           label="Total demand weight"
-          value={`${data.orders.reduce((sum, order) => sum + order.weight, 0).toLocaleString()} kg`}
+          value={`${totalWeight.toLocaleString()} kg`}
           detail="All confirmed orders"
         />
       </div>
@@ -475,51 +549,75 @@ export function AnalyticsPage() {
         <div className="analytics-column min-w-0">
           <Panel title="Ordered volume by delivery window">
             <div className="panel-body">
-              <div className="analytics-legend">
-                <span><i className="analytics-swatch analytics-swatch-total" /> Total</span>
-                <span><i className="analytics-swatch analytics-swatch-chilled" /> Chilled subset</span>
-                <span>All values in m³</span>
-              </div>
-              <div className="window-volume-chart">
-                {volumeByWindow.map((item) => (
-                  <div className="window-volume-group" key={item.window}>
-                    <div className="window-volume-values">
-                      <span
-                        className="window-volume-total"
-                        data-value={item.total.toFixed(1)}
-                        style={{ height: `${Math.max(8, (item.total / peakTotal.total) * 180)}px` }}
-                      />
-                      <span
-                        className="window-volume-chilled"
-                        data-value={item.chilled.toFixed(1)}
-                        style={{ height: `${Math.max(8, (item.chilled / peakTotal.total) * 180)}px` }}
-                      />
-                    </div>
-                    <small>{item.window}</small>
-                  </div>
+              <div className="filter-tabs analytics-toggle" role="group" aria-label="Group volume by">
+                {(
+                  [
+                    ['status', 'Status'],
+                    ['brand', 'Brand'],
+                    ['temperature', 'Temperature'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    className={`filter-tab ${chartMode === mode ? 'selected' : ''}`}
+                    aria-pressed={chartMode === mode}
+                    onClick={() => setChartMode(mode)}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
+              <div className="analytics-legend">
+                {segments.map((segment) => (
+                  <span key={segment.key}>
+                    <i className={`analytics-swatch ${segment.cls}`} /> {segment.label}
+                  </span>
+                ))}
+                <span>All values in m³</span>
+              </div>
+              {volumeByWindow.length === 0 ? (
+                <EmptyState title="No orders yet" description="Volume appears once orders are confirmed." />
+              ) : (
+                <div className="window-stack-chart">
+                  {stackedByWindow.map((item) => (
+                    <div className="window-volume-group" key={item.window}>
+                      <div className="window-stack">
+                        {item.parts.map((part) => (
+                          <span
+                            key={part.key}
+                            className={`window-stack-part ${part.cls}`}
+                            title={`${part.label}: ${part.value.toFixed(1)} m³`}
+                            data-value={part.value.toFixed(1)}
+                            style={{ height: `${barHeight(part.value, peakTotal.total)}px` }}
+                          />
+                        ))}
+                      </div>
+                      <small>{item.window}</small>
+                    </div>
+                  ))}
+                </div>
+              )}
               <Notice title="Plan capacity before the peak" tone="neutral">
                 Include every requested order, including deferred demand. Reserve compatible vehicles
                 and refrigeration; volume alone does not determine vehicle count.
               </Notice>
             </div>
           </Panel>
-          <Panel title="Current run" description="Operational totals from this delivery plan.">
+          <Panel title="Totals" description="Orders, volume and weight across all outlets.">
             <div className="panel-body analytics-run-summary">
               <div>
-                <span>Orders served</span>
-                <strong>{delivered} / {data.orders.length}</strong>
-                <small>Accepted delivery proof only</small>
+                <span>Orders delivered</span>
+                <strong>{delivered} / {orders.length}</strong>
+                <small>Orders with status Delivered</small>
               </div>
               <div>
                 <span>Demand volume</span>
-                <strong>{data.orders.reduce((n, o) => n + o.volume, 0).toFixed(1)} m³</strong>
+                <strong>{totalVolume.toFixed(1)} m³</strong>
                 <small>Confirmed demand across all outlets</small>
               </div>
               <div>
                 <span>Demand weight</span>
-                <strong>{data.orders.reduce((n, o) => n + o.weight, 0).toLocaleString()} kg</strong>
+                <strong>{totalWeight.toLocaleString()} kg</strong>
                 <small>Both limits apply to every trip</small>
               </div>
             </div>
@@ -528,49 +626,39 @@ export function AnalyticsPage() {
         <div className="analytics-column min-w-0">
           <Panel title="Demand by brand" description="Number of orders in this workspace.">
             <div className="panel-body pb-12">
-              <div className="chart-bars">
-                {(['Fresh', 'Style', 'Tech'] as const).map((brand) => {
-                  const count = data.orders.filter((o) => o.brand === brand).length
-                  return (
-                    <div
-                      key={brand}
-                      className="chart-bar"
-                      style={{
-                        height: `${Math.max(10, (count / data.orders.length) * 180)}px`,
-                        background:
-                          brand === 'Fresh' ? '#f26a2e' : brand === 'Style' ? '#8a69ac' : '#5185a2',
-                      }}
-                    >
-                      <small>{count}</small>
-                      <span>{brand}</span>
-                    </div>
-                  )
-                })}
-              </div>
+              {brands.length === 0 ? (
+                <EmptyState title="No orders yet" description="Brand demand appears once orders exist." />
+              ) : (
+                <div className="brand-bars">
+                  {brands.map((brand) => {
+                    const count = orders.filter((o) => o.brand === brand).length
+                    const width = maxBrandCount > 0 ? (count / maxBrandCount) * 100 : 0
+                    return (
+                      <div key={brand} className="brand-bar-row">
+                        <span className="brand-bar-label">{brand}</span>
+                        <div className="brand-bar-track">
+                          <div
+                            className={`brand-bar-fill brand-${brand.toLowerCase()}`}
+                            style={{ width: `${width}%` }}
+                          />
+                        </div>
+                        <strong className="brand-bar-count">{count}</strong>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </Panel>
           <Panel title="Plan health">
-          <div className="panel-body">
-            <CapacityBar
-              label="Allocated orders"
-              used={data.orders.filter((o) => o.vehicleId).length}
-              total={data.orders.length}
-            />
-            <CapacityBar
-              label="Accepted delivery proof"
-              used={delivered}
-              total={data.orders.length}
-            />
-            <CapacityBar
-              label="Reporting vehicles"
-              used={data.vehicles.filter((v) => v.status !== 'Offline').length}
-              total={data.vehicles.length}
-            />
-            <p className="text-xs text-muted-foreground mt-6">
-              This is a single demo run. Historical forecasting and live telemetry require backend
-              integration.
-            </p>
-          </div>
+            <div className="panel-body">
+              <CapacityBar label="Allocated orders" used={allocated} total={orders.length} />
+              <CapacityBar label="Delivered orders" used={delivered} total={orders.length} />
+              <CapacityBar label="Reporting vehicles" used={reporting} total={data.vehicles.length} />
+              <p className="text-xs text-muted-foreground mt-6">
+                Figures cover the orders and vehicles in this workspace.
+              </p>
+            </div>
           </Panel>
         </div>
       </div>

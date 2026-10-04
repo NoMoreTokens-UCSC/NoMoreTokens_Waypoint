@@ -9,7 +9,7 @@ import {
   useMap,
 } from 'react-leaflet'
 import { useConnectivity } from '../../hooks/useOperations'
-import type { Order, Stop, Vehicle } from '../../../domain/models'
+import type { Stop, Vehicle } from '../../../domain/models'
 import { RouteMapViewport } from './RouteMapViewport'
 import 'leaflet/dist/leaflet.css'
 
@@ -25,7 +25,6 @@ function FitMapToPoints({ coordinates }: { coordinates: string }) {
 export default function OperationsMap({
   vehicles = [],
   stops = [],
-  orders = [],
   selectedVehicleId,
   offline = false,
   onVehicleSelect,
@@ -34,10 +33,10 @@ export default function OperationsMap({
   recenterKey = 0,
   selectedStopId,
   showCaption = true,
+  vehicleOrders = {},
 }: {
   vehicles?: Vehicle[]
   stops?: Stop[]
-  orders?: Order[]
   selectedVehicleId?: string | null
   offline?: boolean
   onVehicleSelect?: (vehicle: Vehicle) => void
@@ -46,42 +45,40 @@ export default function OperationsMap({
   recenterKey?: number
   selectedStopId?: string
   showCaption?: boolean
+  vehicleOrders?: Record<string, string[]>
 }) {
   const connected = useConnectivity()
   const [hoveredVehicleId, setHoveredVehicleId] = useState<string | null>(null)
 
   // Determine active vehicle from selection or hover
   const activeVehicleId = hoveredVehicleId || selectedVehicleId
-  const activeVehicle = activeVehicleId ? vehicles.find((v) => v.id === activeVehicleId) : null
 
-  // Get orders for the active vehicle
-  const activeOrders = activeVehicleId
-    ? orders.filter((o) => o.vehicleId === activeVehicleId)
+
+  // One route per vehicle: from its current position through the stops on its orders
+  const routes = vehicles.flatMap((v) => {
+    if (v.status === 'Offline') return []
+    const ids = new Set(vehicleOrders[v.id] ?? [])
+    const vehicleStops = stops
+      .filter((s) => s.orderIds.some((id) => ids.has(id)) && s.status !== 'Delivered')
+      .sort((a, b) => a.eta.localeCompare(b.eta))
+    if (!vehicleStops.length) return []
+    return [
+      {
+        vehicleId: v.id,
+        points: [
+          [v.lat, v.lng],
+          ...vehicleStops.map((s) => [s.lat, s.lng] as [number, number]),
+        ] as [number, number][],
+      },
+    ]
+  })
+
+  // Stops of the active vehicle, used for the dots while a vehicle is selected or hovered
+  const remainingStops = activeVehicleId
+    ? stops.filter((s) =>
+        s.orderIds.some((id) => new Set(vehicleOrders[activeVehicleId] ?? []).has(id)),
+      )
     : []
-  const activeOrderIds = new Set(activeOrders.map((o) => o.id))
-
-  // Get stops for the active vehicle, filtered to only remaining/upcoming ones
-  const remainingStops =
-    activeVehicleId && activeVehicle
-      ? stops
-          .filter((s) => s.orderIds.some((id) => activeOrderIds.has(id)))
-          .filter((s) => s.status === 'Upcoming' || s.status === 'Arrived')
-          .sort((a, b) => {
-            // Maintain order from the stops array (which should be sequenced)
-            const aIndex = stops.indexOf(a)
-            const bIndex = stops.indexOf(b)
-            return aIndex - bIndex
-          })
-      : []
-
-  // Build route: from vehicle position → through remaining stops
-  const routePoints: [number, number][] =
-    activeVehicle && remainingStops.length > 0
-      ? [
-          [activeVehicle.lat, activeVehicle.lng],
-          ...remainingStops.map((s) => [s.lat, s.lng] as [number, number]),
-        ]
-      : []
   const orderedVehicles = [...vehicles].sort((a, b) => {
     const aPriority = a.id === 'VEH027' ? 2 : a.status === 'Offline' ? 1 : 0
     const bPriority = b.id === 'VEH027' ? 2 : b.status === 'Offline' ? 1 : 0
@@ -98,26 +95,37 @@ export default function OperationsMap({
       >
         {fitRoute ? (
           <RouteMapViewport
-            coordinates={JSON.stringify(routePoints.length > 0 ? routePoints : [[6.974, 79.916]])}
+            coordinates={JSON.stringify(
+              routes.length > 0 ? routes.flatMap((r) => r.points) : [[6.974, 79.916]],
+            )}
             recenterKey={recenterKey}
           />
-        ) : (
+        ) : !selectedVehicleId ? (
           <FitMapToPoints
             coordinates={JSON.stringify([
               ...vehicles.map((vehicle) => [vehicle.lat, vehicle.lng]),
-              ...remainingStops.map((stop) => [stop.lat, stop.lng]),
+              ...stops.map((stop) => [stop.lat, stop.lng]),
             ])}
           />
-        )}
+        ) : null}
         {connected && !offline && (
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
         )}
-        {routePoints.length > 1 && (
-          <Polyline positions={routePoints} pathOptions={{ color: '#f26a2e', weight: 4 }} />
-        )}
+        {routes
+          .filter((route) => route.vehicleId === activeVehicleId)
+          .map((route) => (
+            <Polyline
+              key={route.vehicleId}
+              positions={route.points}
+              pathOptions={{
+                color: delayedVehicleIds.includes(route.vehicleId) ? '#c63a2f' : '#f26a2e',
+                weight: 2,
+              }}
+            />
+          ))}
         {orderedVehicles.map((v) => (
           <CircleMarker
             key={v.id}
@@ -169,10 +177,10 @@ export default function OperationsMap({
           <CircleMarker
             key={s.id}
             center={[s.lat, s.lng]}
-            radius={s.id === selectedStopId ? 13 : 10}
+            radius={s.id === selectedStopId ? 6 : 4}
             pathOptions={{
               color: '#fff',
-              weight: 3,
+              weight: 2,
               fillColor:
                 s.status === 'Delivered'
                   ? '#1e8a57'
@@ -180,6 +188,14 @@ export default function OperationsMap({
                     ? '#f26a2e'
                     : '#22252a',
               fillOpacity: 1,
+            }}
+            eventHandlers={{
+              mouseover: () => {
+                if (activeVehicleId && onVehicleSelect) setHoveredVehicleId(activeVehicleId)
+              },
+              mouseout: () => {
+                if (!selectedVehicleId) setHoveredVehicleId(null)
+              },
             }}
           >
             <Popup>
