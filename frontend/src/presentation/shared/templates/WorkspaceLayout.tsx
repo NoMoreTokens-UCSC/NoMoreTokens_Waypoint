@@ -34,7 +34,7 @@ export default function WorkspaceLayout() {
   const [menu, setMenu] = useState(false),
     [confirmLogout, setConfirmLogout] = useState(false),
     [search, setSearch] = useState(''),
-    [trail, setTrail] = useState<Crumb[]>([])
+    [trail, setTrail] = useState<Crumb[] | null>([])
   const workspace = roleModules.find((module) => module.key === session.role)!
   const drafts = useApiQuery(['driver', 'drafts'], (apis) => apis.delivery.listProofDrafts())
   const options = workspace.shell ?? {}
