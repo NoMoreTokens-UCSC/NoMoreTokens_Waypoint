@@ -11,6 +11,8 @@
 import type { Apis } from '../../domain/api'
 import type { OrdersApi, ReceiptIssue } from '../../domain/api/orders'
 import type { PlanningApi } from '../../domain/api/planning'
+import type { DevicePosition } from '../../domain/api/driverSignals'
+import type { AnalyticsApi, DemandWeek, WeekCapacity } from '../../domain/api/analytics'
 import type { LoadingApi } from '../../domain/api/loading'
 import type { DeliveryApi } from '../../domain/api/delivery'
 import type { FleetApi } from '../../domain/api/fleet'
@@ -20,6 +22,21 @@ import { getUser, request, type ApiOutlet } from './apiClient'
 import { WaypointDatabase } from '../persistence/database'
 
 const localDb = new WaypointDatabase()
+
+/** A vehicle whose device has not reported for longer than this is shown as offline. */
+const OFFLINE_AFTER_MINUTES = 15
+
+interface ApiDevicePosition {
+  vehicle_id: string
+  lat: number
+  lng: number
+  accuracy: number
+  recorded_at: string
+}
+
+function minutesSince(iso: string) {
+  return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000))
+}
 
 // ── Status mappers ─────────────────────────────────────────────────────────
 
@@ -288,6 +305,7 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
       const scope = filter.outletId ?? outletId
       if (scope) params.set('outlet_id', scope)
       if (filter.status) params.set('status', filter.status.toUpperCase())
+      if (filter.date) params.set('date', filter.date)
       const [orders, intake] = await Promise.all([
         request<ApiOrder[]>(`/orders?${params}`),
         filter.outletId ? deliveryDay() : Promise.resolve(undefined),
@@ -516,15 +534,17 @@ function createHttpPlanningApi(): PlanningApi {
     async unallocate(orderId) {
       const plans = await request<ApiPlan[]>('/plans?status=DRAFT').catch(() => [] as ApiPlan[])
       const plan = plans[0]
-      if (plan) {
-        try {
-          localStorage.removeItem(`waypoint.plan.reviewed.${plan.id}`)
-        } catch {}
-        await request(`/plans/${plan.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ moves: [{ order_id: Number(orderId), to_trip_id: null }] }),
-        })
+      // Say so rather than reporting success for a removal that never happened.
+      if (!plan) throw new Error('No draft plan to edit. A published plan cannot be changed.')
+      try {
+        localStorage.removeItem(`waypoint.plan.reviewed.${plan.id}`)
+      } catch {
+        // Storage can be blocked; the review flag is re-read from the server anyway.
       }
+      await request(`/plans/${plan.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ moves: [{ order_id: Number(orderId), to_trip_id: null }] }),
+      })
     },
 
     async defer(orderId, reason) {
@@ -535,7 +555,7 @@ function createHttpPlanningApi(): PlanningApi {
           reason_code: toBackendReason(reason),
           explanation: reason,
         }),
-      }).catch(() => {})
+      })
     },
 
     async reviewAllocation() {
@@ -1298,6 +1318,83 @@ function createHttpDeliveryApi(): DeliveryApi {
 
 // ── Fleet HTTP adapter ─────────────────────────────────────────────────────
 
+function createHttpAnalyticsApi(): AnalyticsApi {
+  type ApiDemandWeek = {
+    depot: string
+    brand: string
+    iso_year: number
+    iso_week: number
+    total_m3: number
+    chilled_m3: number
+    is_event_week: boolean
+    in_test_horizon?: boolean
+  }
+  type ApiWeekCapacity = {
+    depot: string
+    iso_year: number
+    iso_week: number
+    total_m3: number
+    chilled_m3: number
+    operating_days: number
+    vehicles_needed: number
+    vehicles_available: number
+    reefers_needed: number
+    reefers_available: number
+    drivers_needed: number
+    drivers_available: number
+    shortfall_vehicles: number
+    shortfall_reefers: number
+  }
+  const mapCapacity = (c: ApiWeekCapacity): WeekCapacity => ({
+    depot: c.depot,
+    isoYear: c.iso_year,
+    isoWeek: c.iso_week,
+    totalM3: c.total_m3,
+    chilledM3: c.chilled_m3,
+    operatingDays: c.operating_days,
+    vehiclesNeeded: c.vehicles_needed,
+    vehiclesAvailable: c.vehicles_available,
+    reefersNeeded: c.reefers_needed,
+    reefersAvailable: c.reefers_available,
+    driversNeeded: c.drivers_needed,
+    driversAvailable: c.drivers_available,
+    shortfallVehicles: c.shortfall_vehicles,
+    shortfallReefers: c.shortfall_reefers,
+  })
+  const mapWeek = (w: ApiDemandWeek): DemandWeek => ({
+    depot: w.depot,
+    brand: w.brand,
+    isoYear: w.iso_year,
+    isoWeek: w.iso_week,
+    totalM3: w.total_m3,
+    chilledM3: w.chilled_m3,
+    isEventWeek: w.is_event_week,
+    inTestHorizon: w.in_test_horizon,
+  })
+  return {
+    async demandForecast() {
+      const body = await request<{
+        method: string
+        history: ApiDemandWeek[]
+        forecast: ApiDemandWeek[]
+        capacity: ApiWeekCapacity[]
+        backtest: { weeks: string[]; wape_percent: number | null; by_depot: Record<string, number | null> }
+      }>('/analytics/demand-forecast')
+      return {
+        method: body.method,
+        history: body.history.map(mapWeek),
+        forecast: body.forecast.map(mapWeek),
+        capacity: body.capacity.map(mapCapacity),
+        backtest: {
+          weeks: body.backtest.weeks,
+          wapePercent: body.backtest.wape_percent,
+          byDepot: body.backtest.by_depot,
+        },
+      }
+    },
+  }
+}
+
 function createHttpFleetApi(): FleetApi {
   return {
     async listDepots() {
@@ -1309,7 +1406,7 @@ function createHttpFleetApi(): FleetApi {
       )
     },
     async listVehicles() {
-      const [vehicles, trips] = await Promise.all([
+      const [vehicles, trips, positions, depots] = await Promise.all([
         request<Array<{
           vehicle_id: string
           type: string
@@ -1323,16 +1420,30 @@ function createHttpFleetApi(): FleetApi {
           lng?: number
         }>>('/reference/vehicles').catch(() => []),
         request<ApiTrip[]>('/loading/trips').catch(() => [] as ApiTrip[]),
+        request<ApiDevicePosition[]>('/driver/positions/latest').catch(() => [] as ApiDevicePosition[]),
+        request<Array<{ code: string; lat: number | null; lng: number | null }>>('/reference/depots').catch(
+          () => [] as Array<{ code: string; lat: number | null; lng: number | null }>,
+        ),
       ])
+      const positionByVehicle = new Map(positions.map((p) => [p.vehicle_id, p]))
+      const depotByCode = new Map(depots.map((d) => [d.code, d]))
 
-      const tripStatusByVehicle = new Map<string, string>()
+      // A vehicle shows its most active trip: en route beats loading, which beats ready.
+      const rank: Record<string, number> = { IN_TRANSIT: 3, LOADING: 2, LOADED: 1 }
+      const label: Record<string, string> = { IN_TRANSIT: 'En route', LOADING: 'Loading', LOADED: 'Ready' }
+      const best = new Map<string, string>()
       for (const t of trips) {
-        if (t.status === 'IN_TRANSIT') tripStatusByVehicle.set(t.vehicle_id, 'En route')
-        else if (t.status === 'LOADING') tripStatusByVehicle.set(t.vehicle_id, 'Loading')
+        const current = best.get(t.vehicle_id)
+        if (rank[t.status] && (!current || rank[t.status] > rank[current])) best.set(t.vehicle_id, t.status)
       }
+      const tripStatusByVehicle = new Map([...best].map(([vehicle, status]) => [vehicle, label[status]]))
 
-      return vehicles.map(
-        (v): Vehicle => ({
+      return vehicles.map((v): Vehicle => {
+        const fix = positionByVehicle.get(v.vehicle_id)
+        const minutesOld = fix ? minutesSince(fix.recorded_at) : undefined
+        // A device that has stopped reporting is shown offline, with its last known position.
+        const offline = minutesOld !== undefined && minutesOld > OFFLINE_AFTER_MINUTES
+        return {
           id: v.vehicle_id,
           brand: 'Fresh',
           brandRestricted: false,
@@ -1340,13 +1451,18 @@ function createHttpFleetApi(): FleetApi {
           reefer: v.is_refrigerated,
           weightCapacity: v.weight_cap_kg,
           volumeCapacity: v.volume_cap_m3,
-          status: (tripStatusByVehicle.get(v.vehicle_id) ?? 'Available') as Vehicle['status'],
+          status: (offline ? 'Offline' : tripStatusByVehicle.get(v.vehicle_id) ?? 'Available') as Vehicle['status'],
           location: v.depot_code ?? 'Peliyagoda',
-          lat: v.lat ?? (v.depot_code === 'Kandy' ? 7.29 : 6.965),
-          lng: v.lng ?? (v.depot_code === 'Kandy' ? 80.63 : 79.885),
-          updatedMinutes: 0,
-        }),
-      )
+          // No device fix: the depot's own position, or NaN when the depot has no coordinates.
+          // NaN keeps the vehicle out of the map rather than drawing it at a made-up point.
+          lat: fix?.lat ?? v.lat ?? depotByCode.get(v.depot_code ?? '')?.lat ?? Number.NaN,
+          lng: fix?.lng ?? v.lng ?? depotByCode.get(v.depot_code ?? '')?.lng ?? Number.NaN,
+          positionSource: fix ? 'device' : undefined,
+          positionUpdatedAt: fix?.recorded_at,
+          positionAccuracy: fix?.accuracy,
+          updatedMinutes: minutesOld ?? 0,
+        }
+      })
     },
 
     async getVehicle(vehicleId) {
@@ -1398,11 +1514,58 @@ function createStubTeamApi() {
   }
 }
 
-function createStubDriverSignalsApi() {
+/** Positions the driver's device could not send yet. Kept on the device, one per vehicle. */
+const PENDING_POSITIONS_KEY = 'waypoint.pendingPositions'
+
+function readPendingPositions(): DevicePosition[] {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_POSITIONS_KEY) || '[]') as DevicePosition[]
+  } catch {
+    return []
+  }
+}
+
+function writePendingPositions(positions: DevicePosition[]) {
+  try {
+    localStorage.setItem(PENDING_POSITIONS_KEY, JSON.stringify(positions))
+  } catch {
+    // Storage can be blocked; the fix is then kept in memory only until the next attempt.
+  }
+}
+
+function toApiPosition(p: DevicePosition) {
+  return {
+    vehicle_id: p.vehicleId,
+    lat: p.lat,
+    lng: p.lng,
+    accuracy: p.accuracy,
+    recorded_at: p.recordedAt,
+  }
+}
+
+async function sendPosition(position: DevicePosition) {
+  await request('/driver/positions', { method: 'POST', body: JSON.stringify(toApiPosition(position)) })
+}
+
+function createHttpDriverSignalsApi() {
   return {
     registerPushSubscription: async () => {},
-    recordPosition: async () => {},
-    pendingPositions: async () => [],
+    async recordPosition(position: DevicePosition) {
+      // Keep only the latest fix per vehicle. Send anything waiting first, then this fix.
+      const waiting = readPendingPositions().filter((p) => p.vehicleId !== position.vehicleId)
+      const remaining: DevicePosition[] = []
+      for (const p of [...waiting, position]) {
+        try {
+          await sendPosition(p)
+        } catch {
+          remaining.push(p)
+        }
+      }
+      writePendingPositions(remaining)
+    },
+    async pendingPositions() {
+      return readPendingPositions()
+    },
     listNotices: async () => [],
     acknowledgeNotice: async () => {},
     checkDeliveryWindows: async () => [],
@@ -1454,12 +1617,13 @@ function createStubAccountApi() {
  */
 export function createHttpApis(outletId?: string): Apis {
   return {
-    driverSignals: createStubDriverSignalsApi() as unknown as Apis['driverSignals'],
+    driverSignals: createHttpDriverSignalsApi() as unknown as Apis['driverSignals'],
     orders: createHttpOrdersApi(outletId),
     planning: createHttpPlanningApi(),
     loading: createHttpLoadingApi(),
     delivery: createHttpDeliveryApi(),
     fleet: createHttpFleetApi(),
+    analytics: createHttpAnalyticsApi(),
     team: createStubTeamApi() as unknown as Apis['team'],
     account: createStubAccountApi() as unknown as Apis['account'],
   }

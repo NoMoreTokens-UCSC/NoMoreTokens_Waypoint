@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.planner.distance import haversine_km, road_distance_km, travel_minutes
+from app.planner.triptime import budget_group, budget_minutes, trip_minutes
 from app.planner.types import (
     PlannerContext,
     PlannerDeferral,
@@ -71,6 +72,10 @@ _TZ = dt.timezone(dt.timedelta(hours=5, minutes=30))
 # Depart time from depot (05:00 local)
 _DEPART_HOUR = 5
 
+# Fresh runs inside the 03:30-08:00 window (booklet); other brands run the trading day.
+_FRESH_DEPART = (3, 30)
+_FRESH_TRIP2_DEPART = (5, 45)
+
 # Maximum consecutive deferrals before a CONSECUTIVE_3 reason is raised
 _MAX_CONSECUTIVE = 3
 
@@ -88,6 +93,9 @@ class _TripState:
     volume_used: float = 0.0
     fuel_used: float = 0.0            # estimated fuel used so far on THIS trip
     stops: dict[str, _StopState] = field(default_factory=dict)  # outlet_id → stop
+    # Set by the first order on the trip; every later order must match both.
+    brand: Optional[str] = None
+    district: Optional[str] = None
 
 
 @dataclass
@@ -105,8 +113,13 @@ def _can_fit(
     vehicle: PlannerVehicle,
     order: PlannerOrder,
     extra_fuel: float,
+    outlet: PlannerOutlet,
 ) -> bool:
-    """Return True if the order fits in the trip's remaining capacity."""
+    """Return True if the order fits the trip: same brand and district, and within capacity."""
+    if state.brand is not None and state.brand != order.brand:
+        return False
+    if state.district is not None and state.district != outlet.district:
+        return False
     if state.weight_used + order.total_weight > vehicle.weight_cap_kg:
         return False
     if state.volume_used + order.total_volume > vehicle.volume_cap_m3:
@@ -117,7 +130,41 @@ def _can_fit(
     return True
 
 
-def _add_order_to_trip(state: _TripState, order: PlannerOrder, extra_fuel: float) -> None:
+def _order_outlet_ids(state: _TripState) -> list[str]:
+    """One entry per order on the trip, as the booklet's time model counts them."""
+    return [stop.outlet_id for stop in state.stops.values() for _ in stop.order_ids]
+
+
+def _within_time_budget(
+    vehicle_trips: dict[int, "_TripState"],
+    candidate: "_TripState",
+    order: PlannerOrder,
+    outlet: PlannerOutlet,
+    ctx: PlannerContext,
+    depot_code: str,
+) -> bool:
+    """True when adding the order keeps the vehicle's day inside the budget for that brand."""
+    if not ctx.district_travel:
+        return True  # reference tables are not mounted; skip the check rather than guess
+    group = budget_group(order.brand)
+    used = 0.0
+    for trip_num, state in vehicle_trips.items():
+        if state is candidate or budget_group(state.brand) != group:
+            continue
+        used += trip_minutes(ctx, depot_code, state.district, state.brand, _order_outlet_ids(state))
+    outlet_ids = _order_outlet_ids(candidate) + [outlet.outlet_id]
+    district = candidate.district or outlet.district
+    brand = candidate.brand or order.brand
+    return used + trip_minutes(ctx, depot_code, district, brand, outlet_ids) <= budget_minutes(brand)
+
+
+def _add_order_to_trip(
+    state: _TripState, order: PlannerOrder, extra_fuel: float, outlet: PlannerOutlet
+) -> None:
+    if state.brand is None:
+        state.brand = order.brand
+    if state.district is None:
+        state.district = outlet.district
     state.weight_used += order.total_weight
     state.volume_used += order.total_volume
     state.fuel_used += extra_fuel
@@ -150,9 +197,14 @@ def _sequence_stops(
     outlets: dict[str, PlannerOutlet],
 ) -> list[str]:
     """
-    Nearest-neighbour heuristic starting from depot.
-    Returns outlet_ids in visit order.
+    Earliest delivery deadline first, with the nearer outlet breaking a tie.
+    Visiting by distance alone misses windows that close early.
     """
+    def deadline(oid: str) -> dt.time:
+        outlet = outlets[oid]
+        close = outlet.mall_window_close if outlet.is_mall else outlet.window_close_time
+        return close or dt.time(23, 59)
+
     remaining = list(outlet_ids)
     route: list[str] = []
     cur_lat, cur_lng = depot_lat, depot_lng
@@ -160,8 +212,9 @@ def _sequence_stops(
     while remaining:
         best_id = min(
             remaining,
-            key=lambda oid: haversine_km(cur_lat, cur_lng,
-                                         outlets[oid].lat, outlets[oid].lng),
+            key=lambda oid: (deadline(oid),
+                             haversine_km(cur_lat, cur_lng,
+                                          outlets[oid].lat, outlets[oid].lng)),
         )
         route.append(best_id)
         remaining.remove(best_id)
@@ -181,16 +234,15 @@ def _compute_etas(
     avg_speed_kmh: float,
     road_factor: float,
     is_monsoon: bool,
+    depart_time: dt.datetime,
 ) -> tuple[list[dt.datetime], float]:
     """
-    Returns (list_of_etas, total_road_km).
+    Returns (list_of_etas, total_road_km), starting from the trip's departure time.
+    A vehicle arriving before an outlet's window opens waits for it.
     Monsoon reduces effective speed by 20%.
     """
     speed = avg_speed_kmh * (0.80 if is_monsoon else 1.0)
-    cur_time = dt.datetime(
-        delivery_date.year, delivery_date.month, delivery_date.day,
-        _DEPART_HOUR, 0, 0, tzinfo=_TZ,
-    )
+    cur_time = depart_time
     cur_lat, cur_lng = depot_lat, depot_lng
     etas: list[dt.datetime] = []
     total_km = 0.0
@@ -200,6 +252,9 @@ def _compute_etas(
         dist_km = road_distance_km(cur_lat, cur_lng, outlet.lat, outlet.lng, road_factor)
         travel_min = travel_minutes(dist_km, speed)
         cur_time += dt.timedelta(minutes=travel_min)
+        opens = outlet.mall_window_open if outlet.is_mall else outlet.window_open_time
+        if opens and cur_time.timetz().replace(tzinfo=_TZ) < opens.replace(tzinfo=_TZ):
+            cur_time = cur_time.replace(hour=opens.hour, minute=opens.minute, second=0, microsecond=0)
         etas.append(cur_time)
         total_km += dist_km
         # Service time
@@ -339,8 +394,10 @@ def allocate(ctx: PlannerContext) -> PlannerPlan:
                         continue
                     state = trip_states[vehicle.vehicle_id][trip_num]
                     extra_fuel = _estimate_fuel(approx_dist, vehicle.km_per_l)
-                    if _can_fit(state, vehicle, order, extra_fuel):
-                        _add_order_to_trip(state, order, extra_fuel)
+                    if _can_fit(state, vehicle, order, extra_fuel, outlet) and _within_time_budget(
+                        trip_states[vehicle.vehicle_id], state, order, outlet, ctx, depot_code
+                    ):
+                        _add_order_to_trip(state, order, extra_fuel, outlet)
                         placed = True
                         break
                 if placed:
@@ -354,8 +411,10 @@ def allocate(ctx: PlannerContext) -> PlannerPlan:
                         # Open trip 1
                         new_state = _TripState(vehicle_id=vehicle.vehicle_id, trip_number=1)
                         extra_fuel = _estimate_fuel(approx_dist, vehicle.km_per_l)
-                        if _can_fit(new_state, vehicle, order, extra_fuel):
-                            _add_order_to_trip(new_state, order, extra_fuel)
+                        if _can_fit(new_state, vehicle, order, extra_fuel, outlet) and _within_time_budget(
+                            trip_states[vehicle.vehicle_id], new_state, order, outlet, ctx, depot_code
+                        ):
+                            _add_order_to_trip(new_state, order, extra_fuel, outlet)
                             trip_states[vehicle.vehicle_id][1] = new_state
                             placed = True
                             break
@@ -363,8 +422,10 @@ def allocate(ctx: PlannerContext) -> PlannerPlan:
                         # Open trip 2
                         new_state = _TripState(vehicle_id=vehicle.vehicle_id, trip_number=2)
                         extra_fuel = _estimate_fuel(approx_dist, vehicle.km_per_l)
-                        if _can_fit(new_state, vehicle, order, extra_fuel):
-                            _add_order_to_trip(new_state, order, extra_fuel)
+                        if _can_fit(new_state, vehicle, order, extra_fuel, outlet) and _within_time_budget(
+                            trip_states[vehicle.vehicle_id], new_state, order, outlet, ctx, depot_code
+                        ):
+                            _add_order_to_trip(new_state, order, extra_fuel, outlet)
                             trip_states[vehicle.vehicle_id][2] = new_state
                             placed = True
                             break
@@ -392,17 +453,16 @@ def allocate(ctx: PlannerContext) -> PlannerPlan:
 
                 # Compute ETAs and distance
                 # Trip 2 departs after estimated return of trip 1 + 30-min turnaround
-                if trip_num == 1:
-                    depart_time = dt.datetime(
-                        ctx.delivery_date.year, ctx.delivery_date.month, ctx.delivery_date.day,
-                        _DEPART_HOUR, 0, 0, tzinfo=_TZ,
-                    )
+                if state.brand == "Fresh":
+                    hour, minute = _FRESH_DEPART if trip_num == 1 else _FRESH_TRIP2_DEPART
+                elif trip_num == 1:
+                    hour, minute = _DEPART_HOUR, 0
                 else:
-                    # Trip 2 departs approximately 4 hours after trip 1 depart
-                    depart_time = dt.datetime(
-                        ctx.delivery_date.year, ctx.delivery_date.month, ctx.delivery_date.day,
-                        _DEPART_HOUR + 4, 30, 0, tzinfo=_TZ,
-                    )
+                    hour, minute = _DEPART_HOUR + 4, 30
+                depart_time = dt.datetime(
+                    ctx.delivery_date.year, ctx.delivery_date.month, ctx.delivery_date.day,
+                    hour, minute, 0, tzinfo=_TZ,
+                )
 
                 etas, total_km = _compute_etas(
                     depot_lat, depot_lng,
@@ -412,6 +472,7 @@ def allocate(ctx: PlannerContext) -> PlannerPlan:
                     avg_speed_kmh=ctx.avg_speed_kmh,
                     road_factor=ctx.road_factor,
                     is_monsoon=ctx.is_monsoon,
+                    depart_time=depart_time,
                 )
 
                 fuel_l = _estimate_fuel(total_km, vehicle.km_per_l)

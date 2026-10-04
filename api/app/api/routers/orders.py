@@ -27,6 +27,7 @@ from app.schemas.order import (
 )
 from app.schemas.plan import StopOut
 from app.services.audit import log_action
+from app.services.calendar import previous_operating_day
 from app.services.order_sizing import MAX_UNITS, TECH_ITEM_KG, estimate_load
 from app.services.state_machine import transition_order
 
@@ -56,14 +57,16 @@ def _intake_closed(db: Session, delivery_date: dt.date) -> bool:
         .count()
     )
     total_count = db.query(Order).filter(Order.delivery_date == delivery_date).count()
-    intake_closed_log = (
-        db.query(AuditLog)
-        .filter(AuditLog.action == "CLOSE_INTAKE", AuditLog.entity_type == "Intake")
-        .first()
+    # A close is recorded for one delivery day, so match the day stored with it.
+    intake_closed_log = any(
+        (log.after_json or {}).get("delivery_date") == str(delivery_date)
+        for log in db.query(AuditLog).filter(
+            AuditLog.action == "CLOSE_INTAKE", AuditLog.entity_type == "Intake"
+        )
     )
     return (
         clock.is_past_cutoff()
-        or intake_closed_log is not None
+        or intake_closed_log
         or (total_count > 0 and unclosed_count == 0)
         or published_plan is not None
     )
@@ -184,6 +187,17 @@ def create_order(
             total_volume = body.total_volume
 
     past_cutoff = clock.is_past_cutoff() or delivery_date != clock.delivery_date()
+    # An outlet skipped on the previous operating day gets priority on its next order.
+    skipped_yesterday = (
+        db.query(Deferral)
+        .join(Order, Deferral.order_id == Order.id)
+        .filter(
+            Order.outlet_id == body.outlet_id,
+            Order.delivery_date == previous_operating_day(db, delivery_date),
+        )
+        .first()
+        is not None
+    )
     order = Order(
         reference=_generate_reference(db, delivery_date),
         outlet_id=body.outlet_id,
@@ -194,7 +208,7 @@ def create_order(
         total_weight=total_weight,
         total_volume=total_volume,
         total_cases=total_cases,
-        priority=body.priority,
+        priority=body.priority or skipped_yesterday,
         placed_at=clock.now(),
         cutoff_missed=past_cutoff,
         placed_by_user_id=current_user.id,
@@ -319,7 +333,7 @@ def list_orders(
         selectinload(Order.receipts),
         selectinload(Order.issues),
         selectinload(Order.delivery_events),
-        selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+        selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel).selectinload(Trip.plan_rel),
     )
 
     # RBAC scoping
@@ -347,7 +361,7 @@ def get_order(order_id: int, db: DbDep, current_user: CurrentUser):
             selectinload(Order.receipts),
             selectinload(Order.issues),
             selectinload(Order.delivery_events),
-            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel).selectinload(Trip.plan_rel),
         ],
     )
     if not order:
@@ -375,7 +389,7 @@ def update_order(
             selectinload(Order.receipts),
             selectinload(Order.issues),
             selectinload(Order.delivery_events),
-            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel).selectinload(Trip.plan_rel),
         ],
     )
     if not order:
@@ -435,7 +449,7 @@ def cancel_order(
             selectinload(Order.receipts),
             selectinload(Order.issues),
             selectinload(Order.delivery_events),
-            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel).selectinload(Trip.plan_rel),
         ],
     )
     if not order:

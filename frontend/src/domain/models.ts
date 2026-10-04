@@ -68,7 +68,8 @@ export interface Vehicle {
   reefer: boolean
   weightCapacity: number
   volumeCapacity: number
-  status: 'Available' | 'Loading' | 'En route' | 'Offline'
+  /** Ready: loaded and released, waiting for the driver to start. */
+  status: 'Available' | 'Loading' | 'Ready' | 'En route' | 'Offline'
   location: string
   lat: number
   lng: number

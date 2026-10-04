@@ -9,6 +9,7 @@ from app.models.receipt import Receipt
 from app.models.issue import Issue
 from app.models.notification import Notification
 from app.models.audit import AuditLog
+from app.models.position import VehiclePosition
 
 __all__ = [
     "Depot", "Outlet", "Vehicle", "CalendarDay", "VehicleWeeklyFuel",
@@ -22,4 +23,5 @@ __all__ = [
     "Issue",
     "Notification",
     "AuditLog",
+    "VehiclePosition",
 ]

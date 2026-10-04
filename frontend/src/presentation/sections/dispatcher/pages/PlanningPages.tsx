@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowRight, CheckCircle2, Circle, WandSparkles, Truck, ShieldCheck } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Circle, ChevronDown, WandSparkles, Truck, ShieldCheck } from 'lucide-react'
 import { useOperations, useAction, useEvidence } from '../../../hooks/useOperations'
 import { useApis } from '../../../providers/ApisContext'
 import { Button } from '../../../shared/atoms/button'
@@ -16,7 +16,8 @@ import {
   Field,
 } from '../../../shared/molecules/Common'
 import { PlanningSteps } from '../organisms/PlanningSteps'
-import { publicationErrors, departureErrors } from '../../../../domain/rules'
+import { allocationErrors, publicationErrors, departureErrors } from '../../../../domain/rules'
+import { toast } from 'sonner'
 
 type ConstraintType = 'VOLUME_CAPACITY' | 'WEIGHT_CAPACITY' | 'TEMPERATURE_MISMATCH' | 'MAX_TRIPS'
 type ConstraintError = { type: ConstraintType; orderId: string; vehicleId: string; trip: number }
@@ -50,6 +51,12 @@ export function AllocationPage() {
 
   const tryAssign = (orderId: string, tripNum: number) => {
     const ord = data.orders.find((o) => o.id === orderId)!
+    // Same rules as publishing (brand, window, temperature, trips, weight, volume), checked before sending.
+    const shared = allocationErrors(ord, vehicle, tripNum, data.orders)
+    if (shared.length) {
+      toast.error(shared[0])
+      return
+    }
     const existing = tripOrders(tripNum)
     const usedTrips = new Set(data.orders.filter((o) => o.vehicleId === vehicle.id).map((o) => o.trip))
 
@@ -92,7 +99,7 @@ export function AllocationPage() {
     const messages: Record<ConstraintType, string> = {
       VOLUME_CAPACITY: `The order requires ${ord.volume} m³. This van has ${(vc - curV).toFixed(1)} m³ remaining. No order was assigned.`,
       WEIGHT_CAPACITY: `The proposed total exceeds the ${WEIGHT_CAP} kg payload by ${curW + ord.weight - WEIGHT_CAP} kg. No order was assigned.`,
-      TEMPERATURE_MISMATCH: `${veh.id} cannot carry chilled goods. Choose a reefer vehicle such as VEH001.`,
+      TEMPERATURE_MISMATCH: `${veh.id} cannot carry chilled goods. Choose a refrigerated vehicle.`,
       MAX_TRIPS: `A third trip cannot be created. Use another compatible vehicle or record a valid deferral.`,
     }
 
@@ -246,7 +253,8 @@ export function AllocationPage() {
             ) : (
               <>
                 <p style={{ fontSize: 13, color: '#6e737b', marginBottom: 12 }}>
-                  Drag an order, or use its Assign button.
+                  Assign an order to the selected vehicle. Capacity and compatibility are
+                  checked before it is assigned.
                 </p>
                 {unallocated.map((o) => (
                   <div key={o.id} className="alloc-order-card">
@@ -269,7 +277,7 @@ export function AllocationPage() {
                       disabled={action.isPending || data.settings.published}
                       onClick={() => tryAssign(o.id, t1.length === 0 ? 1 : 2)}
                     >
-                      {o.priority && t1.length === 0 ? 'Assign to Trip 1' : 'Check available capacity'}
+                      Assign to Trip {t1.length === 0 ? 1 : 2}
                     </Button>
                   </div>
                 ))}
@@ -335,8 +343,15 @@ export function AllocationPage() {
                         Window {o.window}
                       </p>
                     </div>
-                    <Button variant="ghost" size="sm">
-                      View order
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={action.isPending || data.settings.published}
+                      onClick={() =>
+                        action.run(() => apis.planning.unallocate(o.id), `${o.id} returned to the queue`)
+                      }
+                    >
+                      Remove
                     </Button>
                   </div>
                 ))
@@ -395,8 +410,15 @@ export function AllocationPage() {
                         Window {o.window}
                       </p>
                     </div>
-                    <Button variant="ghost" size="sm">
-                      View order
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={action.isPending || data.settings.published}
+                      onClick={() =>
+                        action.run(() => apis.planning.unallocate(o.id), `${o.id} returned to the queue`)
+                      }
+                    >
+                      Remove
                     </Button>
                   </div>
                 ))
@@ -444,18 +466,6 @@ export function AllocationPage() {
             />
             {allocated.length} allocated · {deferred.length} deferred
           </span>
-          <Button variant="outline" size="sm" disabled>
-            2-trip limit
-          </Button>
-          {allocated.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled
-            >
-              Undo assignment
-            </Button>
-          )}
         </div>
         <div>
           {unallocated.length > 0 ? (
@@ -766,7 +776,7 @@ export function ReviewPage() {
     {
       title: 'Intake closed',
       valid: data.settings.cutoffClosed,
-      desc: `16:00 cutoff passed · ${data.orders.length} confirmed orders locked`,
+      desc: `Intake closed · ${data.orders.length} confirmed orders locked`,
     },
     {
       title: 'Vehicle constraints valid',
@@ -951,6 +961,81 @@ export function ReviewPage() {
   )
 }
 
+function loadStatusLabel(load: { released: boolean; completed: boolean; issueResolved: boolean }) {
+  return load.released
+    ? 'Released'
+    : load.completed
+      ? 'Ready for release'
+      : !load.issueResolved
+        ? 'Held'
+        : 'Awaiting loading'
+}
+
+/** Load picker in the app's own style. Closes on choice, outside click or Escape. */
+function LoadMenu({
+  value,
+  loads,
+  onChange,
+}: {
+  value: string
+  loads: Array<{ id: string; vehicleId: string; trip: number; released: boolean; completed: boolean; issueResolved: boolean }>
+  onChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = loads.find((load) => load.id === value)
+  return (
+    <div className="load-menu" onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
+      <button
+        type="button"
+        className="load-menu-button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        onBlur={(e) => {
+          if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) setOpen(false)
+        }}
+      >
+        <span>
+          {selected
+            ? `${selected.vehicleId} · Trip ${selected.trip} · ${loadStatusLabel(selected)}`
+            : 'Select a load'}
+        </span>
+        <ChevronDown size={16} aria-hidden />
+      </button>
+      {open && (
+        <ul className="load-menu-list" role="listbox">
+          <li role="option" aria-selected={!value}>
+            <button
+              type="button"
+              className={`load-menu-option ${!value ? 'selected' : ''}`}
+              onClick={() => {
+                onChange('')
+                setOpen(false)
+              }}
+            >
+              Select a load
+            </button>
+          </li>
+          {loads.map((load) => (
+            <li key={load.id} role="option" aria-selected={load.id === value}>
+              <button
+                type="button"
+                className={`load-menu-option ${load.id === value ? 'selected' : ''}`}
+                onClick={() => {
+                  onChange(load.id)
+                  setOpen(false)
+                }}
+              >
+                {load.vehicleId} · Trip {load.trip} · {loadStatusLabel(load)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function ReleasePage() {
   const { data } = useOperations()
   const [params, setParams] = useSearchParams()
@@ -961,27 +1046,11 @@ export function ReleasePage() {
       <Panel title="Published loads">
         <div className="panel-body">
           <Field label="Vehicle and trip">
-            <select
-              className="w-full border rounded-md p-3"
+            <LoadMenu
               value={loadId}
-              onChange={(event) =>
-                setParams(event.target.value ? { loadId: event.target.value } : {})
-              }
-            >
-              <option value="">Select a load</option>
-              {data?.loads.map((load) => (
-                <option value={load.id} key={load.id}>
-                  {load.vehicleId} · Trip {load.trip} ·{' '}
-                  {load.released
-                    ? 'Released'
-                    : load.completed
-                      ? 'Ready for release'
-                      : !load.issueResolved
-                        ? 'Held'
-                        : 'Awaiting loading'}
-                </option>
-              ))}
-            </select>
+              loads={data?.loads ?? []}
+              onChange={(id) => setParams(id ? { loadId: id } : {})}
+            />
           </Field>
         </div>
       </Panel>
@@ -1015,7 +1084,7 @@ function ReleaseLoad({ loadId }: { loadId: string }) {
     <>
       <PageHeading
         title="Plan published"
-        description={`Revision ${revNum} · Published Friday at 16:12 · Dispatcher`}
+        description={`Revision ${revNum} · Dispatcher`}
       />
       <PlanningSteps current={4} />
       {load.issue && !load.issueResolved && (

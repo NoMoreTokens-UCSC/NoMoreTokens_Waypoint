@@ -35,13 +35,7 @@ lint:
 # Generate OpenAPI JSON
 docs:
 	@echo "Generating OpenAPI JSON..."
-	cd api && python -c "
-from app.main import app
-import json
-with open('../docs/openapi.json', 'w') as f:
-    json.dump(app.openapi(), f, indent=2)
-print('Written to docs/openapi.json')
-"
+	cd api && python -c "from app.main import app; import json; json.dump(app.openapi(), open('../docs/openapi.json', 'w'), indent=2); print('Written to docs/openapi.json')"
 
 # Install Python deps locally (for IDE support without Docker)
 install:

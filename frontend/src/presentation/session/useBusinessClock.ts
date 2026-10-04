@@ -10,7 +10,10 @@ export interface BusinessClock {
   now: Date
   /** Clock time orders close, e.g. "16:00". */
   cutoff: string
+  /** True once the clock has passed the cutoff, whether or not intake was closed. */
   cutoffPassed: boolean
+  /** True when intake has actually been closed for the delivery day. */
+  cutoffClosed: boolean
   minutesToCutoff: number
   /** The day the orders placed now will be delivered. */
   deliveryDate: Date
@@ -41,6 +44,7 @@ export function useBusinessClock(): BusinessClock {
     now,
     cutoff: CUTOFF,
     cutoffPassed: closed || minutes <= 0,
+    cutoffClosed: closed,
     minutesToCutoff: minutes,
     deliveryDate,
     nextRunDate: closed && serverOrderDate ? serverOrderDate : nextOperatingDay(deliveryDate),

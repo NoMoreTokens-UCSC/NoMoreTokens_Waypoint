@@ -10,6 +10,8 @@ export interface OrderFilter {
    * They differ once the cutoff has passed, because late orders wait for the following run.
    */
   day?: 'planning' | 'next'
+  /** One exact delivery day, YYYY-MM-DD. Takes precedence over `day` when both are given. */
+  date?: string
 }
 export interface IntakeStatus {
   /** True after the 4 PM cutoff: new demand becomes a draft for the next run. */

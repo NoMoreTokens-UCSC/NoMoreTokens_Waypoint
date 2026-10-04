@@ -28,7 +28,7 @@ _DISPATCHER = require_role("DISPATCHER")
 def _load_plan(db, plan_id: int) -> Plan:
     plan = db.get(
         Plan, plan_id,
-        options=[selectinload(Plan.trips).selectinload(Trip.stops)]
+        options=[selectinload(Plan.trips).selectinload(Trip.stops).selectinload(Stop.outlet_rel)]
     )
     if not plan:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Plan not found."})
@@ -45,7 +45,7 @@ def list_plans(
     date: Optional[dt.date] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
 ):
-    q = db.query(Plan).options(selectinload(Plan.trips).selectinload(Trip.stops))
+    q = db.query(Plan).options(selectinload(Plan.trips).selectinload(Trip.stops).selectinload(Stop.outlet_rel))
     if date:
         q = q.filter(Plan.delivery_date == date)
     if status_filter:
@@ -213,6 +213,51 @@ def validate_plan_endpoint(
     }
 
 
+def _detach_order_from_plan(db, order_id: int, plan_id: int) -> None:
+    """Remove an order from every stop on this plan, dropping stops left empty.
+
+    Scoped to one plan: an order can appear on superseded plans too, and removing
+    a row from one of those would leave the order in place on the plan being edited.
+    """
+    rows = (
+        db.query(StopOrder)
+        .join(Stop, Stop.id == StopOrder.stop_id)
+        .join(Trip, Trip.id == Stop.trip_id)
+        .filter(StopOrder.order_id == order_id, Trip.plan_id == plan_id)
+        .all()
+    )
+    stop_ids = {row.stop_id for row in rows}
+    for row in rows:
+        db.delete(row)
+    db.flush()
+    for stop_id in stop_ids:
+        stop = db.get(Stop, stop_id)
+        if stop and db.query(StopOrder).filter(StopOrder.stop_id == stop_id).count() == 0:
+            db.delete(stop)
+    db.flush()
+
+
+def _trip_violations(db, trip_id: int, ctx) -> list[str]:
+    """Blocking rule messages for one trip as currently stored: capacity, temperature,
+    van-only access, home depot. Window misses are warnings and do not appear here."""
+    from app.planner.types import PlannerStop, PlannerTrip
+    from app.planner.validate import validate_trip
+
+    trip = db.get(Trip, trip_id)
+    p_trip = PlannerTrip(vehicle_id=trip.vehicle_id, trip_number=trip.trip_number)
+    for stop in db.query(Stop).filter(Stop.trip_id == trip_id).order_by(Stop.sequence).all():
+        order_ids = [so.order_id for so in db.query(StopOrder).filter(StopOrder.stop_id == stop.id).all()]
+        p_trip.stops.append(
+            PlannerStop(
+                outlet_id=stop.outlet_id,
+                order_ids=order_ids,
+                sequence=stop.sequence,
+                planned_eta=stop.planned_eta,
+            )
+        )
+    return [v.message for v in validate_trip(p_trip, ctx) if v.severity == "ERROR"]
+
+
 # ── Edit (manual move) ────────────────────────────────────────────────────────
 
 @router.patch("/{plan_id}", status_code=status.HTTP_200_OK)
@@ -247,6 +292,7 @@ def edit_plan(
 
     ctx = build_context(db, plan.delivery_date)
     moves: list[dict] = body.get("moves", [])
+    touched_trips: set[int] = set()
 
     for move in moves:
         order_id = move.get("order_id")
@@ -263,15 +309,8 @@ def edit_plan(
         if not order:
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
 
-        # Remove from current stop
-        existing = db.query(StopOrder).filter(StopOrder.order_id == order_id).first()
-        if existing:
-            old_stop = db.get(Stop, existing.stop_id)
-            db.delete(existing)
-            db.flush()
-            if old_stop and db.query(StopOrder).filter(StopOrder.stop_id == old_stop.id).count() == 0:
-                db.delete(old_stop)
-                db.flush()
+        # Remove from its current stop on this plan
+        _detach_order_from_plan(db, order_id, plan_id)
 
         # If to_trip_id is None, this is an unallocation move
         if to_trip_id is None:
@@ -281,6 +320,7 @@ def edit_plan(
         target_trip = db.get(Trip, to_trip_id)
         if not target_trip or target_trip.plan_id != plan_id:
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Trip not found."})
+        touched_trips.add(target_trip.id)
 
         # Find or create stop for this outlet on target trip
         existing_stop = next(
@@ -299,6 +339,14 @@ def edit_plan(
 
         db.add(StopOrder(stop_id=existing_stop.id, order_id=order_id))
         order.status = "PLANNED"
+
+    for trip_id in touched_trips:
+        messages = _trip_violations(db, trip_id, ctx)
+        if messages:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "CONSTRAINT_VIOLATIONS", "message": messages[0]},
+            )
 
     log_action(db, "EDIT_PLAN", "Plan", plan_id, actor_user_id=current_user.id,
                after={"moves": len(moves)})
@@ -339,6 +387,20 @@ def publish_plan(
 
     ctx = build_context(db, plan.delivery_date)
 
+    # Every deferral needs a reason, and a priority outlet cannot be left unserved.
+    for d in plan.deferrals:
+        if not d.reason_code:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "DEFERRAL_REASON_REQUIRED", "message": f"Order {d.order_id} needs a deferral reason."},
+            )
+        d_order = db.get(Order, d.order_id)
+        if d_order and d_order.priority:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "PRIORITY_OUTLET_UNSERVED", "message": f"Order {d.order_id} is a priority order and must be served."},
+            )
+
     # Reconstruct for validation
     planner_plan = PlannerPlan(delivery_date=plan.delivery_date)
     for trip in plan.trips:
@@ -371,6 +433,38 @@ def publish_plan(
             },
         )
 
+    # No order may be left unexplained: it is either on a stop or recorded as a deferral.
+    planned_order_ids = {
+        so.order_id
+        for trip in plan.trips
+        for stop in trip.stops
+        for so in db.query(StopOrder).filter(StopOrder.stop_id == stop.id).all()
+    }
+    deferred_order_ids = {d.order_id for d in plan.deferrals}
+    unexplained = (
+        db.query(Order)
+        .filter(
+            Order.delivery_date == plan.delivery_date,
+            Order.status.in_(["PLACED", "CONFIRMED", "QUEUED"]),
+        )
+        .all()
+    )
+    unexplained = [
+        o for o in unexplained if o.id not in planned_order_ids and o.id not in deferred_order_ids
+    ]
+    if unexplained:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "ORDERS_UNRESOLVED",
+                "message": (
+                    f"{len(unexplained)} order(s) are neither allocated nor deferred. "
+                    "Allocate them or record a deferral reason before publishing."
+                ),
+                "details": {"order_ids": [o.id for o in unexplained][:20]},
+            },
+        )
+
     # Supersede previous PUBLISHED plan for same date
     old_published = db.query(Plan).filter(
         Plan.delivery_date == plan.delivery_date,
@@ -398,9 +492,11 @@ def publish_plan(
             order.status = "PLANNED"
             orders_planned += 1
 
-    # Also transition any deferred orders on this plan to DEFERRED
+    # Also transition deferred orders on this plan to DEFERRED, unless they were later allocated to a stop.
     for d in plan.deferrals:
         d_order = db.get(Order, d.order_id)
+        if d_order and d_order.id in all_stop_order_ids:
+            continue
         if d_order and d_order.status != "DEFERRED":
             d_order.status = "DEFERRED"
 
