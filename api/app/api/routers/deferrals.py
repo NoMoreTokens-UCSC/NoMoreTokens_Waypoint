@@ -16,6 +16,7 @@ from app.models.reference import CalendarDay
 from app.schemas.order import DeferralCreate, DeferralHistoryOut
 from app.schemas.plan import DeferralOut
 from app.services.audit import log_action
+from app.api.routers.plans import _detach_order_from_plan
 from app.services.calendar import previous_operating_day
 from app.services.state_machine import transition_order
 
@@ -50,15 +51,8 @@ def create_deferral(
         db.add(plan)
         db.flush()
 
-    # Unallocate from any trip stop if previously assigned
-    existing_so = db.query(StopOrder).filter(StopOrder.order_id == order.id).first()
-    if existing_so:
-        old_stop = db.get(Stop, existing_so.stop_id)
-        db.delete(existing_so)
-        db.flush()
-        if old_stop and db.query(StopOrder).filter(StopOrder.stop_id == old_stop.id).count() == 0:
-            db.delete(old_stop)
-            db.flush()
+    # Unallocate from this plan's trips if the order was already assigned
+    _detach_order_from_plan(db, order.id, plan.id)
 
     # Consecutive means the outlet was also deferred on the previous operating day.
     previous_day = previous_operating_day(db, order.delivery_date)

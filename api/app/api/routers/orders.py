@@ -333,7 +333,7 @@ def list_orders(
         selectinload(Order.receipts),
         selectinload(Order.issues),
         selectinload(Order.delivery_events),
-        selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+        selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel).selectinload(Trip.plan_rel),
     )
 
     # RBAC scoping
@@ -361,7 +361,7 @@ def get_order(order_id: int, db: DbDep, current_user: CurrentUser):
             selectinload(Order.receipts),
             selectinload(Order.issues),
             selectinload(Order.delivery_events),
-            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel).selectinload(Trip.plan_rel),
         ],
     )
     if not order:
@@ -389,7 +389,7 @@ def update_order(
             selectinload(Order.receipts),
             selectinload(Order.issues),
             selectinload(Order.delivery_events),
-            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel).selectinload(Trip.plan_rel),
         ],
     )
     if not order:
@@ -449,7 +449,7 @@ def cancel_order(
             selectinload(Order.receipts),
             selectinload(Order.issues),
             selectinload(Order.delivery_events),
-            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel),
+            selectinload(Order.stop_orders).selectinload(StopOrder.stop_rel).selectinload(Stop.trip_rel).selectinload(Trip.plan_rel),
         ],
     )
     if not order:

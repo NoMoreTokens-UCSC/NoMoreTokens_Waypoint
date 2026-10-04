@@ -253,7 +253,8 @@ export function AllocationPage() {
             ) : (
               <>
                 <p style={{ fontSize: 13, color: '#6e737b', marginBottom: 12 }}>
-                  Check available capacity on an order to assign it to the selected vehicle.
+                  Assign an order to the selected vehicle. Capacity and compatibility are
+                  checked before it is assigned.
                 </p>
                 {unallocated.map((o) => (
                   <div key={o.id} className="alloc-order-card">
@@ -276,7 +277,7 @@ export function AllocationPage() {
                       disabled={action.isPending || data.settings.published}
                       onClick={() => tryAssign(o.id, t1.length === 0 ? 1 : 2)}
                     >
-                      {o.priority && t1.length === 0 ? 'Assign to Trip 1' : 'Check available capacity'}
+                      Assign to Trip {t1.length === 0 ? 1 : 2}
                     </Button>
                   </div>
                 ))}
