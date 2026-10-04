@@ -19,22 +19,36 @@ export function useDriverAutoSync(online: boolean, queue: QueuedAction[]) {
   useEffect(() => {
     if (!online || !pendingKey || syncing || running.current || attempted.current.has(pendingKey))
       return
-    running.current = true
-    attempted.current.add(pendingKey)
-    void apis.delivery
-      .sync(true, { retryFailed: false })
-      .then(() => setSyncError(''))
-      .catch((error: unknown) => {
-        setSyncError(
-          error instanceof Error
-            ? error.message
-            : 'Upload interrupted. Your evidence remains saved.',
-        )
-      })
-      .finally(() => {
-        running.current = false
-        void client.invalidateQueries({ queryKey: snapshotKey })
-      })
+
+    function triggerSync() {
+      if (running.current) return
+      running.current = true
+      attempted.current.add(pendingKey)
+      void apis.delivery
+        .sync(true, { retryFailed: false })
+        .then(() => setSyncError(''))
+        .catch((error: unknown) => {
+          setSyncError(
+            error instanceof Error
+              ? error.message
+              : 'Upload interrupted. Your evidence remains saved.',
+          )
+        })
+        .finally(() => {
+          running.current = false
+          void client.invalidateQueries({ queryKey: snapshotKey })
+          void client.invalidateQueries({ queryKey: ['driver'] })
+        })
+    }
+
+    triggerSync()
+
+    const interval = setInterval(triggerSync, 30_000)
+    window.addEventListener('online', triggerSync)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('online', triggerSync)
+    }
   }, [online, pendingKey, syncing, apis, client])
   return pendingKey ? syncError : ''
 }
