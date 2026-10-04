@@ -1,6 +1,5 @@
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { toast } from 'sonner'
 import type { Workspace } from '../../../domain/models'
 import { getUser } from '../../../infrastructure/http/apiClient'
 
@@ -44,18 +43,8 @@ export function RoleRouteGuard({ allowedRole, children }: RoleRouteGuardProps) {
   const allowedWorkspaces = ROLE_ALLOWED_WORKSPACES[roleUpper] ?? []
   const isAllowed = allowedWorkspaces.includes(allowedRole)
 
-  useEffect(() => {
-    if (!isAllowed) {
-      toast.error('You do not have permission to access that workspace.', {
-        id: 'rbac-access-denied',
-      })
-    }
-  }, [isAllowed])
-
-  if (!isAllowed) {
-    const destination = ROLE_HOME_MAP[roleUpper] ?? '/workspaces'
-    return <Navigate to={destination} replace />
-  }
+  // Another role's workspace is not open to this account: send them to the sign-in page.
+  if (!isAllowed) return <Navigate to="/login" replace />
 
   return <>{children}</>
 }
