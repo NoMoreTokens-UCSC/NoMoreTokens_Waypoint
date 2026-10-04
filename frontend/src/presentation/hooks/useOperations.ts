@@ -43,8 +43,8 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
   const base = await services.repository.getSnapshot()
   const prefs = await apis.account.getSettings().catch(() => undefined)
   const clean = withoutDemoData(base, prefs)
-  // Planning, loading and route data belong to other roles: a store manager's request for them is refused.
-  if (getUser()?.role === 'STORE_MANAGER') return clean
+  // Planning, loading and route data belong to other roles: a store manager's or administrator's request for them is refused.
+  if (['STORE_MANAGER', 'ADMIN'].includes(getUser()?.role ?? '')) return clean
   try {
     const user = getUser()
     const roleUpper = (user?.role || '').toUpperCase()

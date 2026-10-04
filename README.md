@@ -46,6 +46,7 @@ sidebar to switch to another account.
 | Dispatcher | `dispatcher` | `demo-dispatch-1` | Whole network |
 | Loader | `loader` | `demo-loader-1` | Peliyagoda depot |
 | Driver | `driver` | `demo-driver-1` | VEH001 |
+| Administrator | `admin` | `demo-admin-1` | Adds people, outlets and vehicles; reads the audit log |
 | Store manager | `store_manager` | `demo-store-1` | OUT001, a Fresh outlet in Colombo |
 | Driver | `driver2` | `demo-driver-2` | VEH004 |
 | Driver | `driver_kandy` | `demo-driver-kandy` | First Kandy truck |

@@ -149,7 +149,7 @@ def reset_password(user_id: int, body: PasswordReset, db: DbDep, admin: User = _
     if len(body.password) < 8:
         _fail("WEAK_PASSWORD", "The temporary password must be at least 8 characters.")
     user.password_hash = hash_password(body.password)
-    log_action(db, "PASSWORD_RESET", "user", user.id, admin.id)
+    log_action(db, "PASSWORD_RESET", "user", user.id, admin.id, after=_snapshot(user))
     db.commit()
 
 

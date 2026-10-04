@@ -917,6 +917,8 @@ function createHttpDeliveryApi(): DeliveryApi {
     },
 
     async listStops(filter = {}) {
+      // Administrators manage people, not deliveries: there are no stops for them to read.
+      if (getUser()?.role === 'ADMIN') return []
       const refs = await outletReferences()
       if (filter.outletId) {
         const stops = await request<ApiStop[]>(`/orders/stops?outlet_id=${filter.outletId}`).catch(() => null)
@@ -1467,7 +1469,10 @@ function createHttpFleetApi(): FleetApi {
           lat?: number
           lng?: number
         }>>('/reference/vehicles').catch(() => []),
-        request<ApiTrip[]>('/loading/trips').catch(() => [] as ApiTrip[]),
+        // Trips belong to the operating roles; administrators and stores are refused.
+        ['ADMIN', 'STORE_MANAGER'].includes(getUser()?.role ?? '')
+          ? Promise.resolve([] as ApiTrip[])
+          : request<ApiTrip[]>('/loading/trips').catch(() => [] as ApiTrip[]),
         // Only dispatchers and drivers may read vehicle positions; other roles would be refused.
         ['DISPATCHER', 'DRIVER'].includes(getUser()?.role ?? '')
           ? request<ApiDevicePosition[]>('/driver/positions/latest').catch(() => [] as ApiDevicePosition[])
