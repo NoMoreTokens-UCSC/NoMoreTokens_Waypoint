@@ -1,3 +1,5 @@
+import { realBackend } from '../../../session/realBackend'
+import { orderNumber } from '../lib/orderView'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -44,7 +46,7 @@ export default function OrderDetailPage() {
   const order = ([...orders, ...history] as StoreOrder[]).find(
     (candidate) => candidate.id === orderId,
   )
-  useBreadcrumb([{ label: 'Orders', to: '/store-manager/orders' }, { label: orderId ?? 'Order' }])
+  useBreadcrumb([{ label: 'Orders', to: '/store-manager/orders' }, { label: order ? orderNumber(order) : (orderId ?? 'Order') }])
   if (!loaded || !historyLoaded) return null
   if (!order) return <Navigate to="/store-manager/orders" replace />
   const kind = kindOf(order)
@@ -58,17 +60,22 @@ export default function OrderDetailPage() {
   )
   const wasLate = deliveredLate(order)
   // Until the cutoff an order that is still waiting for the plan can be changed or withdrawn.
+  // After the cutoff the planned day is locked, but an order placed for the following run is open.
+  const forLaterRun =
+    realBackend &&
+    !!order.deliveryDate &&
+    new Date(`${order.deliveryDate}T00:00:00+05:30`) > clock.deliveryDate
   const editable =
     live &&
     ['Confirmed', 'Allocated'].includes(order.status) &&
-    !clock.cutoffPassed &&
+    (!clock.cutoffPassed || forLaterRun) &&
     !order.pendingSync
   const locked = live && ['Confirmed', 'Allocated'].includes(order.status) && !editable
   const waiting = live && delivered && order.receipt === 'Pending'
   return (
     <StorePage>
       <PageIntro
-        title={`Order ${order.id}`}
+        title={`Order ${orderNumber(order)}`}
         context={`${kindSlash(order)} · ${deliveryDayLabel(order, clock)}`}
       />
       <section className="sm-panel" aria-label="Order">
@@ -169,7 +176,7 @@ export default function OrderDetailPage() {
       )}
 
       {confirmingCancel && editable && (
-        <Callout tone="danger" title={`Cancel order ${order.id}?`}>
+        <Callout tone="danger" title={`Cancel order ${orderNumber(order)}?`}>
           Dispatch will remove it from the next run and you will have no {kind.short.toLowerCase()}{' '}
           groceries ordered for that day. You can place a new order until the cutoff.
           {order.status === 'Allocated' &&
@@ -208,9 +215,9 @@ export default function OrderDetailPage() {
               onClick={() =>
                 action.send(
                   { kind: 'cancel', orderId: order.id },
-                  `Cancel order ${order.id}`,
+                  `Cancel order ${orderNumber(order)}`,
                   () => {
-                    toast.success(`Order ${order.id} cancelled`)
+                    toast.success(`Order ${orderNumber(order)} cancelled`)
                     navigate('/store-manager/orders')
                   },
                 )

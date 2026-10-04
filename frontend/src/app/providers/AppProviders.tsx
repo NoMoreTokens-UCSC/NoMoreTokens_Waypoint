@@ -6,16 +6,23 @@ import { OperationsService } from '../../application/OperationsService'
 import { WaypointDatabase } from '../../infrastructure/persistence/database'
 import { DexieOperationsRepository } from '../../infrastructure/persistence/DexieOperationsRepository'
 import { DemoSyncGateway } from '../../infrastructure/demo/DemoSyncGateway'
+import { createEmptySeed } from '../../infrastructure/demo/seed'
 import { snapshotKey } from '../../presentation/hooks/useOperations'
 import { ApisContext } from '../../presentation/providers/ApisContext'
-import { createApis } from '../apis'
+import { createSwitchableApis } from '../apis'
+import { authChangedEvent } from '../../infrastructure/http/apiClient'
 
 const database = new WaypointDatabase()
+// With a real backend configured the browser starts empty; the demo's sample data is not loaded.
+const realBackend = !!import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL !== ''
 const service = new OperationsService(
-  new DexieOperationsRepository(database),
+  new DexieOperationsRepository(
+    database,
+    realBackend ? { seed: createEmptySeed, purgeDemo: true } : undefined,
+  ),
   new DemoSyncGateway(),
 )
-const apis = createApis(service)
+const apis = createSwitchableApis(service)
 service.setApis(apis)
 const client = new QueryClient({
   defaultOptions: {
@@ -36,6 +43,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
       error: () => {},
     })
     return () => subscription.unsubscribe()
+  }, [])
+  useEffect(() => {
+    // Whatever was fetched for the previous identity (or the demo) must not show for the next one.
+    const dropCached = () => void client.resetQueries()
+    window.addEventListener(authChangedEvent, dropCached)
+    return () => window.removeEventListener(authChangedEvent, dropCached)
   }, [])
   useEffect(() => {
     // Retry once when the browser regains connectivity. Failed or revised

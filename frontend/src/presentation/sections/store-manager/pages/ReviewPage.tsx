@@ -1,3 +1,5 @@
+import { realBackend } from '../../../session/realBackend'
+import { orderNumber } from '../lib/orderView'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { formatLongDate } from '../../../../domain/calendar'
@@ -17,7 +19,7 @@ import { parseForm, useOrderForm } from '../lib/orderForm'
 import { orderKinds, quantityText, temperatures, totals } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
 import { cutoffLabel } from '../lib/cutoff'
-import { useStoreOrders } from '../lib/useStore'
+import { useStoreOrders, useStoreProfile } from '../lib/useStore'
 
 /** Review & confirm: one last look at the orders before they are recorded as demand. */
 export default function ReviewPage() {
@@ -25,11 +27,12 @@ export default function ReviewPage() {
   const action = useStoreAction()
   const clock = useBusinessClock()
   const online = useOnline()
-  const { orders, outletId, loaded, byTemperature } = useStoreOrders()
+  const { orders, outletId, loaded, byTemperature } = useStoreOrders('next')
+  const { profile } = useStoreProfile()
   const form = useOrderForm(orders)
-  const parsed = parseForm(form.values, form.included)
+  const parsed = parseForm(form.values, form.included, profile?.window)
   if (!loaded) return null
-  if (!parsed.valid || clock.cutoffPassed)
+  if (!parsed.valid || (clock.cutoffPassed && !realBackend))
     return <Navigate to="/store-manager/orders/new" replace />
   const sum = totals(parsed.inputs)
   const confirm = () =>
@@ -42,7 +45,7 @@ export default function ReviewPage() {
       },
     )
   const checkCutoff = () => {
-    if (clock.cutoffPassed) navigate('/store-manager/orders/new')
+    if (clock.cutoffPassed && !realBackend) navigate('/store-manager/orders/new')
     else
       toast(
         `Orders are still open · ${clock.minutesToCutoff} minute${clock.minutesToCutoff === 1 ? '' : 's'} left.`,
@@ -52,7 +55,7 @@ export default function ReviewPage() {
     <StorePage>
       <PageIntro
         title="Review & confirm"
-        context={`${sum.orders === 1 ? '1 Fresh order' : `${sum.orders} separate Fresh orders`} · ${outletId} · ${formatLongDate(clock.deliveryDate)}`}
+        context={`${sum.orders === 1 ? '1 Fresh order' : `${sum.orders} separate Fresh orders`} · ${outletId} · ${formatLongDate(clock.orderDate)}`}
       />
       {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
       <section className="sm-panel" aria-label="Orders to confirm">
@@ -88,7 +91,7 @@ export default function ReviewPage() {
             return (
               <p className="sm-note" key={temperature}>
                 Not included: {kind.title}
-                {existing ? ` · your order ${existing.id} stays as it is.` : '.'}
+                {existing ? ` · your order ${orderNumber(existing)} stays as it is.` : '.'}
               </p>
             )
           })}

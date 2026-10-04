@@ -5,17 +5,12 @@ import { useApiQuery } from '../../../hooks/useApiQuery'
 import { useSession } from '../../../session/useSession'
 import { quantityText } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
+import { useStoreProfile } from '../lib/useStore'
 import type { RoutePhase } from './RouteMap'
 import { VehiclePanel } from './VehiclePanel'
 
 // Leaflet is large, so the map is fetched only when this card is shown.
 const RouteMap = lazy(() => import('./RouteMap'))
-
-/** Depot locations (demo coordinates). A backend returns these with the route. */
-const depots: Record<string, [number, number]> = {
-  Peliyagoda: [6.953, 79.884],
-  Kandy: [7.2906, 80.6337],
-}
 
 const phaseOf = (order: Order): RoutePhase =>
   order.status === 'Delivered'
@@ -62,7 +57,12 @@ export function RouteMapCard({
     : undefined
   const phase = phaseOf(order)
   const [title, detail] = captions[phase](order.vehicleId ?? 'Vehicle', outletId)
-  const depotName = session.depot && depots[session.depot] ? session.depot : 'Peliyagoda'
+  // The depot is the one that serves this outlet.
+  const { profile } = useStoreProfile()
+  const depots = useApiQuery(['depots'], (apis) => apis.fleet.listDepots())
+  const depotCode = profile?.depot ?? session.depot
+  const depotPoint = depots.data?.find((d) => d.code === depotCode)
+  const depotName = depotPoint?.code ?? depotCode ?? ''
   return (
     <section className="sm-map-card" aria-label="Route">
       <div className="sm-map-head">
@@ -72,13 +72,13 @@ export function RouteMapCard({
           <span>{detail}</span>
         </div>
       </div>
-      {stop ? (
+      {stop && depotPoint ? (
         <Suspense fallback={<div className="sm-map sm-map-loading" aria-busy="true" />}>
           <RouteMap
             phase={phase}
             outletId={outletId}
             outlet={[stop.lat, stop.lng]}
-            depot={depots[depotName]}
+            depot={[depotPoint.lat, depotPoint.lng]}
             depotName={depotName}
             vehicleId={order.vehicleId}
             online={online}
@@ -97,8 +97,14 @@ export function RouteMapCard({
             }
           />
         </Suspense>
+      ) : stop && depots.isPending ? (
+        <div className="sm-map sm-map-loading" aria-busy="true" />
       ) : (
-        <p className="sm-map-offline">The location of {outletId} is not on file yet.</p>
+        <p className="sm-map-offline">
+          {stop
+            ? `The depot for ${outletId} is not on file yet.`
+            : `The location of ${outletId} is not on file yet.`}
+        </p>
       )}
       <p className="sm-map-legend">
         {outletId} · {quantityText(order)}

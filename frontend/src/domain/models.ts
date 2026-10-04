@@ -13,11 +13,15 @@ export interface StoreOrderInput {
   windowEnd?: string
   /** Tech only: change this existing order instead of adding another (Tech orders as needed). */
   orderId?: string
+  /** Tech only: `weight` was stated by the store, not worked out from the item count. */
+  weightEntered?: boolean
 }
 export type OrderStatus =
   'Confirmed' | 'Allocated' | 'Deferred' | 'Scheduled' | 'En route' | 'Delivered'
 export interface Order {
   id: string
+  /** The order number people read out and see on paperwork (e.g. ORD-20240410-0001), when the source has one. */
+  reference?: string
   outlet: string
   outletName: string
   brand: 'Fresh' | 'Style' | 'Tech'
@@ -252,4 +256,6 @@ export interface Snapshot {
   activeOutletId?: string
   unlistedAuditCount?: number
   auditReferenceVersion?: number
+  /** Set once the demo's sample data has been replaced by an empty start (real-backend use). */
+  demoPurged?: boolean
 }

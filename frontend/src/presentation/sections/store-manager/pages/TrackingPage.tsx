@@ -1,3 +1,4 @@
+import { orderNumber } from '../lib/orderView'
 import { useSearchParams } from 'react-router-dom'
 import { formatLongDate } from '../../../../domain/calendar'
 import { useAction } from '../../../hooks/useOperations'
@@ -72,7 +73,7 @@ export default function TrackingPage() {
       <StorePendingHandoffs />
       {proof.evidence?.kind === 'delivery' && proof.evidence.managerSignOff && (
         <SignedReceipt
-          orderId={order.id}
+          orderId={orderNumber(order)}
           outletId={outletId}
           evidence={proof.evidence}
           url={proof.url}
@@ -113,7 +114,7 @@ export default function TrackingPage() {
               </div>
             ) : null}
             <p className="sm-order-line">
-              {order.id} · {kindSlash(order)}
+              {orderNumber(order)} · {kindSlash(order)}
             </p>
             {delivered ? (
               <Tile
