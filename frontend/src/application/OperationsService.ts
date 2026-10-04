@@ -1,13 +1,17 @@
 import type { OperationsRepository, SyncGateway } from '../domain/ports'
+import { depotCoordinates, vehicleKind, type NewVehicle } from '../domain/fleet'
+import { profileFromInput, type NewOutlet, type OutletProfile } from '../domain/outlets'
 import type {
   Evidence,
   Load,
   LoadIssueInput,
   MobileInvitation,
+  NewUser,
   QueuedAction,
   Settings,
   Snapshot,
   TeamMember,
+  Vehicle,
   Order,
   StoreOrderInput,
   Workspace,
@@ -210,9 +214,13 @@ export class OperationsService {
             outlet,
             name: orders[0].outletName,
             address: old?.address ?? `${outlet} receiving bay · demo location`,
-            window: `${windowStart}–${orders
-              .map((order) => receivingWindowEnd(order.window, order.windowEnd, order.brand === 'Fresh'))
-              .sort()[0]}`,
+            window: `${windowStart}–${
+              orders
+                .map((order) =>
+                  receivingWindowEnd(order.window, order.windowEnd, order.brand === 'Fresh'),
+                )
+                .sort()[0]
+            }`,
             eta: old?.eta ?? windowStart,
             lat: old?.lat ?? 6.95 + index * 0.008,
             lng: old?.lng ?? 79.9 + index * 0.006,
@@ -1476,12 +1484,189 @@ export class OperationsService {
       )
     })
   }
-  resetAccess(memberId: string) {
+  /** Adds a vehicle to the fleet: next free id, available at its depot. */
+  createVehicle(input: NewVehicle) {
+    let created: Vehicle | undefined
+    return this.repository
+      .update((s) => {
+        assert(['Fresh', 'Style', 'Tech'].includes(input.brand), 'Choose a brand.')
+        assert(input.type === 'Van' || input.type === 'Truck', 'Choose a van or a truck.')
+        assert(
+          !input.reefer || input.brand === 'Fresh',
+          'Only Fresh carries chilled goods, so only a Fresh vehicle can be refrigerated.',
+        )
+        assert(['Peliyagoda', 'Kandy'].includes(input.depot), 'Choose Peliyagoda or Kandy.')
+        assert(
+          Number.isFinite(input.weightCapacity) &&
+            input.weightCapacity >= 100 &&
+            input.weightCapacity <= 20000,
+          'Weight capacity is between 100 and 20,000 kg.',
+        )
+        assert(
+          Number.isFinite(input.volumeCapacity) &&
+            input.volumeCapacity >= 1 &&
+            input.volumeCapacity <= 60,
+          'Volume capacity is between 1 and 60 m³.',
+        )
+        const registration = input.registration?.trim().toUpperCase()
+        if (registration) {
+          assert(
+            /^[A-Z0-9][A-Z0-9 -]{3,11}$/.test(registration),
+            'A registration is 4 to 12 letters, numbers, spaces or dashes.',
+          )
+          assert(
+            !s.vehicles.some((vehicle) => vehicle.registration === registration),
+            'That registration is already on a vehicle.',
+          )
+        }
+        const highest = Math.max(
+          0,
+          ...s.vehicles.map((vehicle) => Number(/^VEH(\d+)$/.exec(vehicle.id)?.[1] ?? 0)),
+        )
+        const at = depotCoordinates[input.depot]
+        created = {
+          id: `VEH${String(highest + 1).padStart(3, '0')}`,
+          brand: input.brand,
+          type: input.type,
+          reefer: input.reefer,
+          weightCapacity: input.weightCapacity,
+          volumeCapacity: input.volumeCapacity,
+          status: 'Available',
+          depot: input.depot,
+          registration: registration || undefined,
+          location: input.depot,
+          lat: at.lat,
+          lng: at.lng,
+          updatedMinutes: 0,
+        }
+        s.vehicles.push(created)
+        log(
+          s,
+          'Vehicle added',
+          `${created.id} · ${vehicleKind(created)} · ${created.brand} · ${created.depot}`,
+        )
+      })
+      .then(() => created!)
+  }
+  /** Adds an outlet with the next free id and the receiving hours the administrator chose. */
+  createOutlet(input: NewOutlet) {
+    let created: OutletProfile | undefined
+    return this.repository
+      .update((s) => {
+        const name = input.name.trim()
+        assert(name.length >= 3, 'Enter the outlet name.')
+        assert(input.district.trim().length >= 2, 'Enter the district.')
+        assert(['Fresh', 'Style', 'Tech'].includes(input.brand), 'Choose a brand.')
+        assert(['Peliyagoda', 'Kandy'].includes(input.depot), 'Choose Peliyagoda or Kandy.')
+        const toMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
+        assert(
+          /^\d{2}:\d{2}$/.test(input.earliest) &&
+            /^\d{2}:\d{2}$/.test(input.latest) &&
+            toMinutes(input.latest) - toMinutes(input.earliest) >= 60,
+          'Allow at least an hour between the earliest and latest delivery.',
+        )
+        s.outlets ??= []
+        assert(
+          !s.outlets.some((outlet) => outlet.name.toLowerCase() === name.toLowerCase()),
+          'An outlet with this name already exists.',
+        )
+        const highest = Math.max(
+          0,
+          ...s.outlets.map((outlet) => Number(/^OUT(\d+)$/.exec(outlet.id)?.[1] ?? 0)),
+        )
+        created = profileFromInput(`OUT${String(highest + 1).padStart(3, '0')}`, input)
+        s.outlets.push(created)
+        s.outlets.sort((a, b) => a.id.localeCompare(b.id))
+        log(
+          s,
+          'Outlet added',
+          `${created.id} · ${created.name} · ${created.brand} · ${created.depot}`,
+        )
+      })
+      .then(() => created!)
+  }
+  /** An account with a username and a temporary password the administrator hands over. */
+  createUser(input: NewUser) {
+    return this.repository.update((s) => {
+      const mobile = input.mobile.replace(/[^\d+]/g, '')
+      const username = input.username.trim().toLowerCase()
+      const email = input.email.trim().toLowerCase()
+      assert(
+        input.name.trim().length > 1 && /^\+947\d{8}$/.test(mobile),
+        'Enter a full name and valid Sri Lankan mobile number.',
+      )
+      assert(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), 'Enter a valid email address.')
+      assert(
+        /^[a-z0-9][a-z0-9._-]{2,29}$/.test(username),
+        'Usernames are 3 to 30 letters, numbers, dots, dashes or underscores.',
+      )
+      assert(
+        input.password.length >= 8 && /[A-Za-z]/.test(input.password) && /\d/.test(input.password),
+        'The password needs at least 8 characters, with letters and numbers.',
+      )
+      assert(['Peliyagoda', 'Kandy'].includes(input.depot), 'Choose Peliyagoda or Kandy.')
+      assert(input.assignment.trim().length > 1, 'Choose an assignment for this role.')
+      if (input.role === 'store-manager') {
+        const outletId = /OUT\d+/.exec(input.assignment)?.[0]
+        assert(
+          outletId && s.outlets?.some((outlet) => outlet.id === outletId),
+          'Choose an outlet from the list.',
+        )
+        assert(
+          !s.members.some(
+            (member) => member.role === 'store-manager' && member.outletId === outletId,
+          ),
+          'That outlet already has a store manager.',
+        )
+      }
+      assert(
+        !s.members.some((member) => member.username === username),
+        'That username is already taken.',
+      )
+      assert(
+        !s.members.some((member) => member.email.toLowerCase() === email),
+        'That email address already belongs to a team member.',
+      )
+      assert(
+        !s.members.some((member) => member.mobile?.replace(/[^\d+]/g, '') === mobile),
+        'This mobile number already belongs to a team member.',
+      )
+      s.members.push({
+        id: id(),
+        name: input.name.trim(),
+        email,
+        mobile: input.mobile.trim(),
+        username,
+        role: input.role,
+        depot: input.depot,
+        assignment: input.assignment.trim(),
+        vehicleId: input.role === 'driver' ? /VEH\d+/.exec(input.assignment)?.[0] : undefined,
+        outletId: input.role === 'store-manager' ? /OUT\d+/.exec(input.assignment)?.[0] : undefined,
+        status: 'Invited',
+        onRoute: false,
+        accessState: 'Invitation pending',
+      })
+      // The password is deliberately not written anywhere.
+      log(s, 'Account created', `${input.name.trim()} · ${input.role} · username ${username}`)
+    })
+  }
+  resetAccess(memberId: string, password?: string) {
     return this.repository.update((s) => {
       const member = s.members.find((member) => member.id === memberId)
       assert(member, 'Team member was not found.')
+      if (password !== undefined)
+        assert(
+          password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password),
+          'The password needs at least 8 characters, with letters and numbers.',
+        )
       member.accessState = 'Recovery requested'
-      log(s, 'Demo access recovery requested', `${member.name} · no message sent`)
+      log(
+        s,
+        password === undefined ? 'Demo access recovery requested' : 'Access reset',
+        password === undefined
+          ? `${member.name} · no message sent`
+          : `${member.name} · new temporary password set, handed over by the administrator`,
+      )
     })
   }
   /** A person's own contact details. Role, outlet and depot are changed by an administrator. */
@@ -1565,20 +1750,26 @@ export class OperationsService {
       log(s, 'Demo role updated', `${member.name} · ${role}`)
     })
   }
-  suspend(memberId: string, scheduled = false) {
+  suspend(memberId: string, scheduled = false, reason?: string) {
     return this.repository.update((s) => {
       const member = s.members.find((m) => m.id === memberId)
       assert(member, 'Team member was not found.')
+      const now = member.onRoute && !scheduled
       assert(
-        !member.onRoute || scheduled,
-        'This driver is on route. Schedule suspension or complete the trip first.',
+        !now || (reason?.trim().length ?? 0) >= 4,
+        'This driver is on route. Hand over the trip, schedule the suspension, or give a reason to suspend now.',
       )
       if (scheduled && member.onRoute) member.suspensionScheduled = true
-      else member.status = 'Suspended'
+      else {
+        member.status = 'Suspended'
+        member.onRoute = false
+      }
       log(
         s,
-        'Demo suspension updated',
-        `${member.name} · ${scheduled ? 'after trip' : 'suspended'}`,
+        now ? 'Suspended mid-route' : 'Demo suspension updated',
+        now
+          ? `${member.name} · ${reason!.trim()} · dispatcher alerted, route has no driver`
+          : `${member.name} · ${scheduled ? 'after trip' : 'suspended'}`,
       )
     })
   }

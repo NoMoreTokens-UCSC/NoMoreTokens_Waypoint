@@ -65,6 +65,31 @@ export function ScenarioPanel({
           onCheckedChange={(v) => action.run(() => service.updateSettings({ simulatedOffline: v }))}
         />
       </div>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <strong className="text-sm">Driver on route</strong>
+          <p className="text-xs text-muted-foreground mt-1">
+            Marks the active driver as on Trip 1 in the team screens
+          </p>
+        </div>
+        <Switch
+          aria-label="Driver on route"
+          checked={
+            data.members.find((member) => member.id === (data.activeDriverId ?? 'USR001'))
+              ?.onRoute ?? false
+          }
+          onCheckedChange={(on) =>
+            action.run(() =>
+              service.repository.update((snapshot) => {
+                const driver = snapshot.members.find(
+                  (member) => member.id === (snapshot.activeDriverId ?? 'USR001'),
+                )
+                if (driver) driver.onRoute = on
+              }),
+            )
+          }
+        />
+      </div>
       <Field label="Demo sync outcome">
         <select
           className="native-select"
@@ -129,7 +154,7 @@ export function ScenarioPanel({
             )
           }}
         >
-          {outletProfiles.map((outlet) => (
+          {(data.outlets ?? outletProfiles).map((outlet) => (
             <option key={outlet.id} value={outlet.id}>
               {outlet.id} · {outlet.name} · {outlet.brand}
             </option>

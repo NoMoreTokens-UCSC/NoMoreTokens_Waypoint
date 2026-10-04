@@ -1,5 +1,4 @@
 import { useLocation } from 'react-router-dom'
-import { profileOf } from '../../domain/outlets'
 import type { Snapshot, TeamMember, Workspace } from '../../domain/models'
 import { useOperations } from '../hooks/useOperations'
 import { roleModules } from '../roles/registry'
@@ -70,7 +69,10 @@ export function useSession(): Session {
   const { data } = useOperations()
   const member = memberFor(data, role)
   // Demo: the store workspace can be opened as another outlet (a different brand).
-  const outlet = role === 'store-manager' ? profileOf(data?.activeOutletId ?? '') : undefined
+  const outlet =
+    role === 'store-manager'
+      ? data?.outlets?.find((candidate) => candidate.id === data.activeOutletId)
+      : undefined
   const label = roleModules.find((module) => module.key === role)!.label
   const name = member?.name ?? label
   return {

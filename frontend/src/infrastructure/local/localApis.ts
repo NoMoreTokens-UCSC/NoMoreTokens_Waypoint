@@ -1,16 +1,9 @@
 import { DriverSignalsService } from '../../application/DriverSignalsService'
 import type { Apis } from '../../domain/api'
-import { profileOf } from '../../domain/outlets'
+import { memberActivityReference } from '../demo/teamReference'
 import { assignedDriverLoad, isAssignedStop } from '../../domain/driverWorkflow'
 import { tripsFromOrders } from '../../domain/trips'
 import type { OperationsService } from '../../application/OperationsService'
-
-/** The local demo models three outlets (one per brand); a backend scopes every outlet. */
-function requireDemoOutlet(outletId: string) {
-  const profile = profileOf(outletId)
-  if (!profile) throw new Error('The local demo places orders for OUT001, OUT016 and OUT019 only.')
-  return profile
-}
 
 /**
  * Implements the API contract in the browser over IndexedDB, through the existing
@@ -19,6 +12,12 @@ function requireDemoOutlet(outletId: string) {
  */
 export function createLocalApis(service: OperationsService): Apis {
   const snapshot = () => service.repository.getSnapshot()
+  /** The outlet's profile, or an error when it is not set up (orders need its brand and hours). */
+  const requireOutlet = async (outletId: string) => {
+    const outlet = (await snapshot()).outlets?.find((candidate) => candidate.id === outletId)
+    if (!outlet) throw new Error(`Outlet ${outletId} is not set up.`)
+    return outlet
+  }
   const signals = new DriverSignalsService(service.repository)
   return {
     driverSignals: {
@@ -28,6 +27,10 @@ export function createLocalApis(service: OperationsService): Apis {
       listNotices: (outletId) => signals.listNotices(outletId),
       acknowledgeNotice: (id) => signals.acknowledgeNotice(id),
       checkDeliveryWindows: (now) => signals.checkDeliveryWindows(now),
+    },
+    outlets: {
+      listOutlets: async () => (await snapshot()).outlets ?? [],
+      createOutlet: (input) => service.createOutlet(input),
     },
     orders: {
       listOrders: async (filter = {}) =>
@@ -40,25 +43,25 @@ export function createLocalApis(service: OperationsService): Apis {
         ((await snapshot()).orderHistory ?? [])
           .filter((order) => !filter.outletId || order.outlet === filter.outletId)
           .sort((a, b) => (b.deliveryDate ?? '').localeCompare(a.deliveryDate ?? '')),
-      getOutletProfile: async (outletId) => requireDemoOutlet(outletId),
+      getOutletProfile: (outletId) => requireOutlet(outletId),
       listDrafts: async () => (await snapshot()).drafts,
       getIntakeStatus: async () => {
         const { cutoffClosed, published } = (await snapshot()).settings
         return { cutoffClosed, published }
       },
       createOrder: async (outletId, temperature, cases, window) => {
-        if (requireDemoOutlet(outletId).id !== 'OUT001')
+        if ((await requireOutlet(outletId)).id !== 'OUT001')
           throw new Error('createOrder models OUT001 only; use placeOrders.')
         await service.createOrder(temperature, cases, window)
       },
       placeOrders: async (outletId, inputs) => {
-        const profile = requireDemoOutlet(outletId)
+        const profile = await requireOutlet(outletId)
         await service.confirmStoreOrders(inputs, profile)
       },
       editOrder: (orderId, cases, window) => service.editOrder(orderId, cases, window),
       saveDraft: (temperature, cases, window) => service.saveDraft(temperature, cases, window),
       saveDrafts: async (outletId, inputs) => {
-        const profile = requireDemoOutlet(outletId)
+        const profile = await requireOutlet(outletId)
         await service.saveStoreDrafts(inputs, profile)
       },
       confirmReceipt: (orderId) => service.confirmReceipt(orderId),
@@ -195,21 +198,57 @@ export function createLocalApis(service: OperationsService): Apis {
       listVehicles: async () => (await snapshot()).vehicles,
       getVehicle: async (vehicleId) =>
         (await snapshot()).vehicles.find((vehicle) => vehicle.id === vehicleId),
+      createVehicle: (input) => service.createVehicle(input),
     },
     team: {
       listMembers: async () => (await snapshot()).members,
       listAudit: async () => (await snapshot()).audit,
+      getSummary: async () => {
+        const { members, unlistedTeamCounts, audit, unlistedAuditCount } = await snapshot()
+        const count = (status: 'Active' | 'Invited' | 'Suspended') =>
+          members.filter((member) => member.status === status).length +
+          (unlistedTeamCounts?.[status] ?? 0)
+        const [active, invited, suspended] = [count('Active'), count('Invited'), count('Suspended')]
+        return {
+          total: active + invited + suspended,
+          active,
+          invited,
+          suspended,
+          auditEvents: audit.length + (unlistedAuditCount ?? 0),
+        }
+      },
+      listActivity: async (memberId) => {
+        const { audit, members } = await snapshot()
+        const own = audit
+          .filter((entry) => entry.recordId === memberId)
+          .map((entry) => ({
+            when:
+              entry.referenceWhen ??
+              new Date(entry.at).toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            title: entry.action,
+            detail: entry.detail,
+          }))
+        return [...own, ...(memberActivityReference[memberId] ?? [])].length
+          ? [...own, ...(memberActivityReference[memberId] ?? [])]
+          : members.some((member) => member.id === memberId)
+            ? []
+            : []
+      },
       invite: (name, email, role) => service.invite(name, email, role),
       inviteByMobile: (invitation) => service.inviteByMobile(invitation),
+      createUser: (user) => service.createUser(user),
       completeInvitation: (memberId) => service.completeInvitation(memberId),
-      resetAccess: (memberId) => service.resetAccess(memberId),
+      resetAccess: (memberId, password) => service.resetAccess(memberId, password),
       updateContact: (memberId, contact) => service.updateMemberContact(memberId, contact),
       requestAccountChange: (memberId, detail) => service.requestAccountChange(memberId, detail),
       changeAssignment: (memberId, depot, assignment) =>
         service.changeAssignment(memberId, depot, assignment),
       reassignTrip: (fromMemberId, toMemberId) => service.reassignTrip(fromMemberId, toMemberId),
       updateRole: (memberId, role) => service.updateMember(memberId, role),
-      suspend: (memberId, scheduled) => service.suspend(memberId, scheduled),
+      suspend: (memberId, scheduled, reason) => service.suspend(memberId, scheduled, reason),
     },
     account: {
       getSettings: async () => (await snapshot()).settings,
