@@ -1,3 +1,4 @@
+import { realBackend } from '../../../session/realBackend'
 import type { Apis } from '../../../../domain/api'
 import type { OutboxRequest } from './outbox'
 
@@ -36,7 +37,7 @@ export async function deliver(
 ): Promise<Delivery> {
   if (request.kind === 'orders') {
     const intake = await apis.orders.getIntakeStatus()
-    if (intake.cutoffClosed || intake.published) {
+    if (!realBackend && (intake.cutoffClosed || intake.published)) {
       await apis.orders.saveDrafts(outletId, request.inputs)
       return {
         status: 'draft',

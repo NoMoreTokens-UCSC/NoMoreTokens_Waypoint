@@ -1,3 +1,4 @@
+import { orderNumber } from '../lib/orderView'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatClock, formatShortDate } from '../../../../domain/calendar'
@@ -45,7 +46,7 @@ export default function NotificationsPage() {
               <li key={order.id}>
                 <div>
                   <strong>
-                    {order.id} is expected {durationText(delay.minutesLate)} after your window
+                    {orderNumber(order)} is expected {durationText(delay.minutesLate)} after your window
                   </strong>
                   <small>
                     Expected {delay.expected} · window ends {delay.windowEnd}
@@ -66,7 +67,7 @@ export default function NotificationsPage() {
             {todo.deferrals.map((order) => (
               <li key={order.id}>
                 <div>
-                  <strong>{order.id} was deferred</strong>
+                  <strong>{orderNumber(order)} was deferred</strong>
                   <small>{order.deferralReason ?? 'Moved to the next run'} · acknowledge it</small>
                 </div>
                 <ActionLink small to="/store-manager/alerts">
@@ -77,7 +78,7 @@ export default function NotificationsPage() {
             {todo.receipts.map((order) => (
               <li key={order.id}>
                 <div>
-                  <strong>{order.id} was delivered</strong>
+                  <strong>{orderNumber(order)} was delivered</strong>
                   <small>Count the goods and confirm receipt or report a problem</small>
                 </div>
                 <ActionLink small to={`/store-manager/deliveries/${order.id}/receipt`}>
@@ -107,7 +108,7 @@ export default function NotificationsPage() {
                         {issueReference(order, report.kind)} · {report.kind} items
                       </strong>
                       <small>
-                        {order.id} · {kindSlash(order)} · {report.affected} of {order.cases} cases ·
+                        {orderNumber(order)} · {kindSlash(order)} · {report.affected} of {order.cases} cases ·
                         reported {formatShortDate(report.recordedAt)}
                       </small>
                     </div>

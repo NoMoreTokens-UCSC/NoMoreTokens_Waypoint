@@ -8,7 +8,7 @@ import { useBreadcrumb } from '../../../shared/templates/Breadcrumbs'
 import { useBusinessClock } from '../../../session/useBusinessClock'
 import { Action, ActionLink, Callout, PageIntro, Pill, StorePage } from '../components/StoreKit'
 import { AlertIcon } from '../components/StoreIcons'
-import { kindSlash } from '../lib/orderView'
+import { kindSlash, orderNumber } from '../lib/orderView'
 import { deferredOrders, useStoreOrders } from '../lib/useStore'
 import { DeliveryAlerts } from '../../../shared/organisms/DeliveryAlerts'
 
@@ -27,7 +27,7 @@ function DeferralCard({ order, outletId }: { order: Order; outletId: string }) {
   return (
     <section
       className={`sm-alert-card${acknowledged ? ' sm-acknowledged' : ''}`}
-      aria-label={`Deferral of ${order.id}`}
+      aria-label={`Deferral of ${orderNumber(order)}`}
     >
       <div className="sm-alert-title">
         {acknowledged ? (
@@ -44,7 +44,7 @@ function DeferralCard({ order, outletId }: { order: Order; outletId: string }) {
         <div className="sm-fact">
           <span>Order</span>
           <strong>
-            {order.id} · {kindSlash(order)}
+            {orderNumber(order)} · {kindSlash(order)}
           </strong>
         </div>
         <div className="sm-fact">
@@ -99,7 +99,7 @@ function DeferralCard({ order, outletId }: { order: Order; outletId: string }) {
             onClick={() =>
               action.send(
                 { kind: 'acknowledge', orderId: order.id },
-                `Acknowledge deferral of ${order.id}`,
+                `Acknowledge deferral of ${orderNumber(order)}`,
                 () => toast.success('Deferral acknowledged'),
               )
             }

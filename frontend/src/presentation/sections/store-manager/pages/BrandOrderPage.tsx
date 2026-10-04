@@ -1,3 +1,4 @@
+import { realBackend } from '../../../session/realBackend'
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { formatLongDate, formatWeekday } from '../../../../domain/calendar'
@@ -7,6 +8,7 @@ import { useBusinessClock } from '../../../session/useBusinessClock'
 import {
   Action,
   Callout,
+  FieldInput,
   OfflineNotice,
   PlannedNotice,
   ReplaceNotice,
@@ -18,19 +20,21 @@ import {
 } from '../components/StoreKit'
 import { WindowPicker } from '../components/WindowPicker'
 import { cutoffLabel } from '../lib/cutoff'
-import { countText, kindOf, quantityText, windowEnd, windowText } from '../lib/orderView'
+import { countText, kindOf, quantityText, windowEnd, windowText, orderNumber } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
 import { useStoreOrders } from '../lib/useStore'
 import { useStoreAction } from '../lib/useStoreAction'
-import { formatWindow, parseWindow, windowProblem } from '../lib/windows'
+import { formatTime12, formatWindow, parseWindow, windowProblem } from '../lib/windows'
+import { estimateLoad, techItemKg, unitSizes } from '../../../../domain/orderSizing'
 
-/** Typical size of one unit, so weight and volume follow the count. Style fills volume before weight. */
-const perUnit = {
-  Style: { kg: 7, m3: 0.18, unit: 'carton', first: 40 },
-  Tech: { kg: 45, m3: 0.55, unit: 'item', first: 1 },
+/** What each brand counts in, and how many to suggest on a first order. */
+const counting = {
+  Style: { unit: 'carton', first: 40 },
+  Tech: { unit: 'item', first: 1 },
 } as const
 
-const clampCount = (text: string) => Math.max(0, Math.min(100, Math.trunc(Number(text) || 0)))
+const clampCount = (text: string, max: number) =>
+  Math.max(0, Math.min(max, Math.trunc(Number(text) || 0)))
 
 /**
  * Create an order for a Style or Tech outlet. Fresh orders daily in two parts; Style orders once a
@@ -52,12 +56,12 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
   const action = useStoreAction()
   const clock = useBusinessClock()
   const online = useOnline()
-  const { orders } = useStoreOrders()
+  const { orders } = useStoreOrders('next')
   const changingId = useSearchParams()[0].get('order')
   // Tech orders stand alone: the form adds a new order, or changes the one picked from the list.
   // Style has one weekly order, which the form replaces.
   const existing = brand === 'Tech' ? orders.find((order) => order.id === changingId) : orders[0]
-  const sizes = perUnit[brand]
+  const sizes = { ...counting[brand], ...unitSizes[brand] }
   const [count, setCount] = useState(String(existing?.cases ?? sizes.first))
   const [window, setWindow] = useState(
     existing
@@ -68,24 +72,41 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
   )
   const [acknowledged, setAcknowledged] = useState(false)
   const [attempted, setAttempted] = useState(false)
-  const units = clampCount(count)
-  const weight = Math.round(units * sizes.kg)
-  const volume = Number((units * sizes.m3).toFixed(2))
-  const windowError = windowProblem(window, profile.receiving)
+  const units = clampCount(count, sizes.max)
+  const { weight: usualWeight, volume } = estimateLoad(brand, units)
+  // Tech items vary a lot, so a store may state the weight; empty means the usual weight.
+  const [weightText, setWeightText] = useState(
+    brand === 'Tech' && existing && existing.weight !== estimateLoad('Tech', existing.cases).weight
+      ? String(existing.weight)
+      : '',
+  )
+  const stated = brand === 'Tech' && weightText.trim() !== '' ? Number(weightText) : undefined
+  const weightLow = techItemKg.min * units
+  const weightHigh = techItemKg.max * units
+  const weightError =
+    stated !== undefined && !(stated >= weightLow && stated <= weightHigh)
+      ? `Between ${weightLow} and ${weightHigh} kg for ${units} item${units === 1 ? '' : 's'}.`
+      : undefined
+  const weight = stated !== undefined && !weightError ? stated : usualWeight
+  // The outlet's own window decides; the picker is only for sources that give outlets none.
+  const fixedWindow = profile.window
+  const windowValue = fixedWindow ? formatWindow(fixedWindow.start, fixedWindow.end) : window
+  const windowError = fixedWindow ? undefined : windowProblem(window, profile.receiving)
   const errors = {
-    count: units < 1 ? `Enter 1 to 100 ${sizes.unit}s.` : undefined,
+    count: units < 1 ? `Enter 1 to ${sizes.max} ${sizes.unit}s.` : undefined,
+    weight: weightError,
     window: windowError,
     care:
       brand === 'Tech' && !acknowledged
         ? 'Confirm that staff will be there to inspect and sign.'
         : undefined,
   }
-  const valid = !errors.count && !errors.window && !errors.care
+  const valid = !errors.count && !errors.weight && !errors.window && !errors.care
   const kind = kindOf({ brand, temperature: 'Ambient' })
   const place = () => {
     setAttempted(true)
     if (!valid) return
-    const parsed = parseWindow(window)!
+    const parsed = parseWindow(windowValue)!
     action.send(
       {
         kind: 'orders',
@@ -98,6 +119,7 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
             window: parsed.start,
             windowEnd: parsed.end,
             orderId: brand === 'Tech' ? existing?.id : undefined,
+            weightEntered: stated !== undefined,
           },
         ],
       },
@@ -109,7 +131,7 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
   const keepDraft = () => {
     setAttempted(true)
     if (!valid) return
-    const parsed = parseWindow(window)!
+    const parsed = parseWindow(windowValue)!
     action.runThen(
       () =>
         apis.orders.saveDrafts(profile.id, [
@@ -129,7 +151,7 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
     <StorePage>
       <PageIntro
         title={brand === 'Style' ? 'Weekly order' : existing ? 'Change order' : 'Create order'}
-        context={`${profile.id} · ${profile.name} · Delivery ${formatLongDate(clock.deliveryDate)}`}
+        context={`${profile.id} · ${profile.name} · Delivery ${formatLongDate(clock.orderDate)}`}
       />
       {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
       <Callout title={`Confirm before ${cutoffLabel(clock.cutoff)}`}>
@@ -153,7 +175,7 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
                   <strong>
                     {order.pendingSync && order.id.startsWith('PENDING')
                       ? 'New order (waiting to send)'
-                      : order.id}
+                      : orderNumber(order)}
                   </strong>
                   <small>
                     {quantityText(order)} · {windowText(order)}
@@ -200,15 +222,32 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
           value={count}
           error={attempted ? errors.count : undefined}
           onChange={(value) => setCount(value.replace(/\D/g, ''))}
-          onStep={(by) => setCount(String(Math.max(0, Math.min(100, units + by))))}
+          onStep={(by) => setCount(String(Math.max(0, Math.min(sizes.max, units + by))))}
         />
-        <WindowPicker
-          label={profile.mall ? 'Mall delivery window' : 'Receiving window'}
-          value={window}
-          limits={profile.receiving}
-          error={attempted ? errors.window : undefined}
-          onChange={setWindow}
-        />
+        {brand === 'Tech' && (
+          <FieldInput
+            label="Weight · kg (optional)"
+            inputMode="decimal"
+            value={weightText}
+            hint={`Leave empty to use the usual ${usualWeight} kg for ${units} item${units === 1 ? '' : 's'}.`}
+            error={attempted ? errors.weight : undefined}
+            onChange={(event) => setWeightText(event.target.value.replace(/[^\d.]/g, ''))}
+          />
+        )}
+        {fixedWindow ? (
+          <p className="sm-note">
+            {profile.mall ? 'Mall delivery window' : 'Receiving window'} ·{' '}
+            {formatTime12(fixedWindow.start)} – {formatTime12(fixedWindow.end)}, set for your outlet
+          </p>
+        ) : (
+          <WindowPicker
+            label={profile.mall ? 'Mall delivery window' : 'Receiving window'}
+            value={window}
+            limits={profile.receiving}
+            error={attempted ? errors.window : undefined}
+            onChange={setWindow}
+          />
+        )}
         {brand === 'Tech' && (
           <label className="sm-confirm-check">
             <input
@@ -234,7 +273,7 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
         </p>
       </section>
       <div className="sm-actions">
-        {clock.cutoffPassed ? (
+        {clock.cutoffPassed && !realBackend ? (
           <>
             <Callout title="Today’s cutoff has passed">
               {formatWeekday(clock.deliveryDate)}’s intake is locked. Keep this order as a draft and
@@ -248,7 +287,7 @@ function BrandOrderForm({ profile }: { profile: OutletProfile }) {
           <Action onClick={place} disabled={action.isPending}>
             {brand === 'Tech'
               ? existing
-                ? `Save changes to ${existing.id}`
+                ? `Save changes to ${orderNumber(existing)}`
                 : orders.length
                   ? `Add ${countText(units, { brand })} order`
                   : `Confirm ${countText(units, { brand })} order`

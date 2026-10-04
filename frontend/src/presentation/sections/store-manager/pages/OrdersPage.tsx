@@ -1,3 +1,4 @@
+import { orderNumber } from '../lib/orderView'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { SearchField } from '../../../shared/molecules/Common'
@@ -45,7 +46,7 @@ function OrderRow({ order }: { order: StoreOrder }) {
           <small>
             {order.pendingSync && order.id.startsWith('PENDING')
               ? 'Reference after sending'
-              : order.id}
+              : orderNumber(order)}
             {order.cancelledAt ? ` · Cancelled ${formatClock(order.cancelledAt)}` : ''}
             {order.deliveredAt ? ` · Delivered ${formatClock(order.deliveredAt)}` : ''}
           </small>

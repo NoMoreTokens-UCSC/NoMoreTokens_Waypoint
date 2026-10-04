@@ -67,8 +67,9 @@ def test_store_manager_place_order(client, store_manager_user, store_manager_tok
     assert data["outlet_id"] == outlet_id
     assert data["brand"] == "Fresh"
     assert data["total_cases"] == 25
-    assert data["total_weight"] == 25 * 12.0
-    assert data["total_volume"] == round(25 * 0.04, 3)
+    # Weight and volume follow from the units (Fresh: 6.9 kg and 0.037 m3 a case).
+    assert data["total_weight"] == 172.5
+    assert data["total_volume"] == 0.925
     assert data["status"] == "PLACED"
 
 
@@ -226,3 +227,122 @@ def test_store_manager_cannot_place_duplicate_order_type(
     client.post(f"/api/v1/orders/{first.json()['id']}/cancel", headers=headers)
     again = client.post("/api/v1/orders", json=payload, headers=headers)
     assert again.status_code == 201, again.text
+
+
+def test_store_manager_cannot_set_order_weight_or_volume(
+    client, store_manager_user, store_manager_token
+):
+    headers = {"Authorization": f"Bearer {store_manager_token}"}
+    outlet_id = store_manager_user.outlet_id
+    resp = client.post(
+        "/api/v1/orders",
+        json={
+            "outlet_id": outlet_id,
+            "temperature_class": "AMBIENT",
+            "cases": 10,
+            "total_weight": 1.0,
+            "total_volume": 0.001,
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    # The figures sent are ignored; the load is worked out from the 10 cases.
+    assert data["total_weight"] == 69.0
+    assert data["total_volume"] == 0.37
+
+    # Changing the quantity recalculates it too.
+    edit = client.patch(
+        f"/api/v1/orders/{data['id']}",
+        json={"cases": 20, "total_weight": 1.0},
+        headers=headers,
+    )
+    assert edit.status_code == 200, edit.text
+    assert edit.json()["total_weight"] == 138.0
+    assert edit.json()["total_volume"] == 0.74
+
+
+def test_style_outlet_has_one_order_a_day_sized_by_cartons(
+    client, store_manager_user, store_manager_token
+):
+    headers = {"Authorization": f"Bearer {store_manager_token}"}
+    payload = {
+        "outlet_id": store_manager_user.outlet_id,
+        "brand": "Style",
+        "temperature_class": "AMBIENT",
+        "cases": 10,
+    }
+    first = client.post("/api/v1/orders", json=payload, headers=headers)
+    assert first.status_code == 201, first.text
+    # Style garments are sized per carton (14.9 kg and 0.24 m3).
+    assert first.json()["total_weight"] == 149.0
+    assert first.json()["total_volume"] == 2.4
+
+    second = client.post("/api/v1/orders", json=payload, headers=headers)
+    assert second.status_code == 409, second.text
+    assert second.json()["detail"]["order_id"] == first.json()["id"]
+
+
+def test_order_rules_for_temperature_quantity_and_tech_weight(
+    client, store_manager_user, store_manager_token
+):
+    headers = {"Authorization": f"Bearer {store_manager_token}"}
+    outlet_id = store_manager_user.outlet_id
+    post = lambda **body: client.post(  # noqa: E731
+        "/api/v1/orders", json={"outlet_id": outlet_id, "cases": 5, **body}, headers=headers
+    )
+
+    # Only Fresh has chilled demand.
+    bad = post(brand="Style", temperature_class="CHILLED")
+    assert bad.status_code == 400 and bad.json()["detail"]["code"] == "INVALID_TEMPERATURE"
+    assert post(temperature_class="FROZEN").status_code == 400
+
+    # An order has at least one unit and no more than the brand's largest.
+    assert post(temperature_class="AMBIENT", cases=0).json()["detail"]["code"] == "INVALID_QUANTITY"
+    too_many = post(temperature_class="AMBIENT", cases=301)
+    assert too_many.status_code == 400 and too_many.json()["detail"]["code"] == "INVALID_QUANTITY"
+    assert post(brand="Tech", temperature_class="AMBIENT", cases=26).status_code == 400
+
+    # A Tech store may state the weight of its items, within what Tech items weigh.
+    heavy = post(brand="Tech", temperature_class="AMBIENT", cases=2, total_weight=600)
+    assert heavy.status_code == 201, heavy.text
+    assert heavy.json()["total_weight"] == 600
+    assert heavy.json()["total_volume"] == 1.42  # still worked out: 2 items at 0.71 m3
+    edit = client.patch(
+        f"/api/v1/orders/{heavy.json()['id']}",
+        json={"cases": 2, "total_weight": 5000},
+        headers=headers,
+    )
+    assert edit.status_code == 400 and edit.json()["detail"]["code"] == "INVALID_WEIGHT"
+    # Anyone else's stated weight is still ignored.
+    fresh = post(temperature_class="AMBIENT", cases=10, total_weight=1)
+    assert fresh.json()["total_weight"] == 69.0
+
+
+def test_orders_after_the_cutoff_wait_for_the_next_operating_day(
+    client, store_manager_user, store_manager_token, monkeypatch
+):
+    from app.core import clock
+
+    headers = {"Authorization": f"Bearer {store_manager_token}"}
+    payload = {"outlet_id": store_manager_user.outlet_id, "temperature_class": "AMBIENT", "cases": 8}
+
+    before = client.get("/api/v1/orders/intake-status", headers=headers).json()
+    assert before["cutoff_closed"] is False
+    assert before["next_delivery_date"] == before["delivery_date"] == "2024-04-10"
+
+    monkeypatch.setattr(clock, "is_past_cutoff", lambda: True)
+    after = client.get("/api/v1/orders/intake-status", headers=headers).json()
+    assert after["cutoff_closed"] is True
+    assert after["delivery_date"] == "2024-04-10"
+    assert after["next_delivery_date"] == "2024-04-11"  # Wednesday's intake is closed; Thursday
+
+    late = client.post("/api/v1/orders", json=payload, headers=headers)
+    assert late.status_code == 201, late.text
+    assert late.json()["delivery_date"] == "2024-04-11"
+    assert late.json()["cutoff_missed"] is True
+
+    # Saturday's run is followed by Monday: Sundays are not delivery days.
+    monkeypatch.setattr(clock, "delivery_date", lambda: __import__("datetime").date(2024, 4, 13))
+    saturday = client.get("/api/v1/orders/intake-status", headers=headers).json()
+    assert saturday["next_delivery_date"] == "2024-04-15"

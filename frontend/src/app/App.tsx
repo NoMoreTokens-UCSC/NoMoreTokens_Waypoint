@@ -4,6 +4,7 @@ import { DriverRuntimeBoundary } from '../presentation/sections/driver/hooks/Dri
 import WorkspaceLayout from '../presentation/shared/templates/WorkspaceLayout'
 import { appRoutes, roleModules, appModules } from '../presentation/roles/registry'
 import { RoleRouteGuard, ROLE_HOME_MAP } from '../presentation/shared/guards/RoleRouteGuard'
+import { SignInGuard } from '../presentation/shared/guards/SignInGuard'
 import { getUser } from '../infrastructure/http/apiClient'
 
 import { Button } from '../presentation/shared/atoms/button'
@@ -31,6 +32,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: boolean 
     )
   }
 }
+// With a real backend there is no demo to open.
+const realBackend = !!import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL !== ''
 // Routes come from each module's definition in presentation/sections/<module>/index.ts.
 const standaloneRoutes = appRoutes.filter((route) => !route.shell)
 const sharedShellRoutes = appModules
@@ -72,11 +75,29 @@ export function App() {
             }
           >
             <Routes>
-              <Route path="/demo/map" element={<DemoMapPage />} />
-              <Route path="/demo" element={<DemoPage />} />
+              {realBackend ? (
+                <Route path="/demo/*" element={<Navigate to="/welcome" replace />} />
+              ) : (
+                <>
+                  <Route path="/demo/map" element={<DemoMapPage />} />
+                  <Route path="/demo" element={<DemoPage />} />
+                </>
+              )}
               <Route path="/" element={<Navigate to="/welcome" replace />} />
               {standaloneRoutes.map(({ path, component: Page }) => (
-                <Route key={path} path={path} element={<Page />} />
+                <Route
+                  key={path}
+                  path={path}
+                  element={
+                    path === '/workspaces' ? (
+                      <SignInGuard>
+                        <Page />
+                      </SignInGuard>
+                    ) : (
+                      <Page />
+                    )
+                  }
+                />
               ))}
               <Route element={<WorkspaceLayout />}>
                 {roleModules.map((module) =>
@@ -95,7 +116,15 @@ export function App() {
                     )),
                 )}
                 {sharedShellRoutes.map(({ path, component: Page }) => (
-                  <Route key={path} path={path} element={<Page />} />
+                  <Route
+                    key={path}
+                    path={path}
+                    element={
+                      <SignInGuard>
+                        <Page />
+                      </SignInGuard>
+                    }
+                  />
                 ))}
                 <Route path="*" element={<NotFoundView />} />
               </Route>
