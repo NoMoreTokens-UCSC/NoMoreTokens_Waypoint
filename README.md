@@ -226,15 +226,14 @@ Where the built screens differ from the Figma designs we submitted, and why.
 
 ### Loader
 
-- **Mobile-First Approach:** The original design included large desktop-style screens and complex modals. We completely rebuilt the UI into a streamlined, mobile-first web app optimized for handset use on the depot floor.
-- **Sequential Loading Workflow:** Replaced the scattered modal interactions with a strict step-by-step UI. Loaders must explicitly reconcile item counts and tick off mandatory safety checks (refrigeration, condition, restraints) before the camera unlocks for proof capture.
-- **Issue Resolution UI:** Added a dedicated shortfall reporting flow that automatically halts departure readiness and prompts the Dispatcher, replacing the static error screens from the design.
+- **Mobile Layout:** Adjusted the desktop-style screens from the design into a mobile-friendly layout, better suited for handset use on the depot floor.
+- **Sequential Workflow:** Simplified the modal interactions into a step-by-step flow, ensuring loaders complete case counts and safety checks before capturing proof.
+- **Issue Resolution:** Replaced static error screens with an interactive shortfall reporting flow that notifies the Dispatcher.
 
 ### Driver
-
-- **Proof of Delivery:** Changed the verification approach from a simple photo upload to requiring a mandatory digital e-signature drawn directly on the device.
-- **Offline Sync:** Upgraded from a static offline concept screen to a fully working UI that queues evidence locally and automatically syncs when online.
-- **Route Map:** Replaced the static map illustration with a live, interactive map displaying real GPS positioning and the day's route lines.
+- **Navigation:** Added a sidebar to maintain design consistency with the other roles across the platform.
+- **Home Dashboard:** Removed the "weekly fuel left" indicator from the card view on the home screen as it was determined to be out of scope.
+- **Profile Management:** Converted the "Edit profile" page into a view-only screen, since only the system administrator has the authority to change profile details.
 
 ### Admin
 
