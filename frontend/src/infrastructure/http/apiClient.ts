@@ -15,16 +15,22 @@ export function getToken(): string | null {
   }
 }
 
+/** Fired when someone signs in or out, so data fetched under the old identity can be dropped. */
+export const authChangedEvent = 'waypoint:auth-changed'
+const announceAuthChange = () => window.dispatchEvent(new Event(authChangedEvent))
+
 export function setToken(token: string): void {
   try {
     localStorage.setItem('waypoint.token', token)
   } catch {}
+  announceAuthChange()
 }
 
 export function clearToken(): void {
   try {
     localStorage.removeItem('waypoint.token')
   } catch {}
+  announceAuthChange()
 }
 
 export function getUser(): ApiUserProfile | null {

@@ -112,6 +112,9 @@ export function statusTone(order: Order) {
       return 'amber'
   }
 }
+/** The order number to show: the reference when there is one, else the order's id. */
+export const orderNumber = (order: Pick<Order, 'id' | 'reference'>) => order.reference ?? order.id
+
 /** A short issue reference, e.g. ORD1042 + Missing → "ISS-1042-M". */
 export const issueReference = (order: Order, kind: 'Missing' | 'Damaged') =>
-  `ISS-${order.id.replace(/^ORD/, '')}-${kind[0]}`
+  `ISS-${orderNumber(order).replace(/^ORD-?/, '')}-${kind[0]}`

@@ -19,6 +19,8 @@ export interface BusinessClock {
   deliveryDate: Date
   /** The first run after `deliveryDate`, used for deferred and drafted orders. */
   nextRunDate: Date
+  /** The day an order placed now is delivered: `deliveryDate`, or the following run after the cutoff. */
+  orderDate: Date
 }
 
 /**
@@ -35,6 +37,9 @@ export function useBusinessClock(): BusinessClock {
   const deliveryDate = intake.data?.deliveryDate
     ? new Date(`${intake.data.deliveryDate}T00:00:00+05:30`)
     : nextOperatingDay(now)
+  const serverOrderDate = intake.data?.nextDeliveryDate
+    ? new Date(`${intake.data.nextDeliveryDate}T00:00:00+05:30`)
+    : undefined
   return {
     now,
     cutoff: CUTOFF,
@@ -42,6 +47,7 @@ export function useBusinessClock(): BusinessClock {
     cutoffClosed: closed,
     minutesToCutoff: minutes,
     deliveryDate,
-    nextRunDate: nextOperatingDay(deliveryDate),
+    nextRunDate: closed && serverOrderDate ? serverOrderDate : nextOperatingDay(deliveryDate),
+    orderDate: serverOrderDate ?? deliveryDate,
   }
 }

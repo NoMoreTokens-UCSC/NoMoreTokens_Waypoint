@@ -66,6 +66,7 @@ export function matchesQuery(order: Order, query: string, clock: BusinessClock) 
   if (!words.length) return true
   const text = [
     order.id,
+    order.reference ?? '',
     order.temperature === 'Chilled' ? 'chilled' : 'dry ambient',
     deliveryDayLabel(order, clock),
     storeStatus(order),

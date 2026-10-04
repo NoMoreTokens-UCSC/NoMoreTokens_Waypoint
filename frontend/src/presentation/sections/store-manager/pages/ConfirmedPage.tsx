@@ -1,7 +1,7 @@
 import { formatClock, formatLongDate } from '../../../../domain/calendar'
 import { ActionLink, Callout, PageIntro, StorePage } from '../components/StoreKit'
 import { ParcelIcon } from '../components/StoreIcons'
-import { kindOf, quantityText, storeStatus, temperatures, windowText } from '../lib/orderView'
+import { kindOf, quantityText, storeStatus, temperatures, windowText, orderNumber } from '../lib/orderView'
 import { useStoreOrders, useStoreProfile } from '../lib/useStore'
 
 /** Orders confirmed: each order has its own reference; allocation is still pending. */
@@ -55,7 +55,7 @@ export default function ConfirmedPage() {
               <p className="sm-details">{quantityText(order)}</p>
               <p className="sm-note">Window {windowText(order)}</p>
               <p className="sm-order-ref">
-                {order.pendingSync ? 'Reference after sending' : order.id} · {storeStatus(order)}
+                {order.pendingSync ? 'Reference after sending' : orderNumber(order)} · {storeStatus(order)}
               </p>
             </section>
           )

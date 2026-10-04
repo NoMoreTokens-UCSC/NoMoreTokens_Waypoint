@@ -57,13 +57,13 @@ export const storeManagerModule: RoleModule = {
       return [...snapshot.orders, ...(snapshot.orderHistory ?? [])]
         .filter((order) => order.outlet === session.outletId)
         .filter((order) =>
-          `${order.id} ${order.temperature} ${order.status} ${order.issue ?? ''}`
+          `${order.id} ${order.reference ?? ''} ${order.temperature} ${order.status} ${order.issue ?? ''}`
             .toLowerCase()
             .includes(text),
         )
         .map((order) => ({
           id: order.id,
-          text: `${order.id} · ${order.temperature === 'Chilled' ? 'Fresh / Chilled' : 'Fresh / Dry'} · ${order.status}`,
+          text: `${order.reference ?? order.id} · ${order.temperature === 'Chilled' ? 'Fresh / Chilled' : 'Fresh / Dry'} · ${order.status}`,
           path: `/store-manager/orders/${order.id}`,
         }))
     },

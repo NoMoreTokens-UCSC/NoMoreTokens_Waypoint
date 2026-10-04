@@ -34,6 +34,44 @@ const demand: [string, string, Order['brand'], string, number, number, Order['te
 /** The demo's "now": Friday 25 September 2026, 15:42 in Sri Lanka. */
 const demoPlacedAt = '2026-09-25T15:42:00+05:30'
 
+/**
+ * What the browser starts with when a real backend is in use: no demo orders, vehicles, team or
+ * history. Only device-level state (preferences, the offline queue) lives here. The reference versions
+ * are set so the demo's one-time data migrations leave it empty.
+ */
+export function createEmptySeed(): Snapshot {
+  return {
+    orders: [],
+    vehicles: [],
+    loads: [],
+    stops: [],
+    members: [],
+    queue: [],
+    drafts: [],
+    audit: [],
+    orderHistory: [],
+    unlistedTeamCounts: { Active: 0, Invited: 0, Suspended: 0 },
+    unlistedAuditCount: 0,
+    designDataVersion: 1,
+    orderHistoryVersion: 1,
+    fleetReferenceVersion: 1,
+    auditReferenceVersion: 1,
+    demoPurged: true,
+    settings: {
+      cutoffClosed: false,
+      published: false,
+      routeStarted: false,
+      routeRevision: 0,
+      simulatedOffline: false,
+      syncOutcome: 'accepted',
+      profileName: '',
+      profilePhone: '',
+      notifications: true,
+      compactRows: false,
+    },
+  }
+}
+
 export function createSeed(): Snapshot {
   const orders: Order[] = demand.map(
     ([id, outlet, brand, window, volume, weight, temperature]) => ({

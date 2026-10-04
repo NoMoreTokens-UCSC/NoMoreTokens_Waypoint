@@ -1,3 +1,4 @@
+import { orderNumber } from '../lib/orderView'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useStoreAction } from '../lib/useStoreAction'
@@ -53,7 +54,7 @@ export default function IssuePage() {
           description: draft.description.trim(),
         },
       },
-      `Report ${draft.kind.toLowerCase()} items on ${order.id}`,
+      `Report ${draft.kind.toLowerCase()} items on ${orderNumber(order)}`,
       () => navigate(`${base}/issue/submitted`),
     )
   }
@@ -61,7 +62,7 @@ export default function IssuePage() {
     <StorePage>
       <PageIntro
         title="Report a delivery issue"
-        context={`${order.id} · ${kindSlash(order)} · ${countText(order.cases, order)} expected`}
+        context={`${orderNumber(order)} · ${kindSlash(order)} · ${countText(order.cases, order)} expected`}
       />
       <section className="sm-panel" aria-label="Issue report">
         <h2 className="sm-h22">What needs attention?</h2>

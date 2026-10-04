@@ -5,7 +5,12 @@ export type OrderDraft = Snapshot['drafts'][number]
 export interface OrderFilter {
   outletId?: string
   status?: OrderStatus
-  /** Delivery day, YYYY-MM-DD. */
+  /**
+   * Which day's orders: the delivery being planned (default), or the day an order placed now is for.
+   * They differ once the cutoff has passed, because late orders wait for the following run.
+   */
+  day?: 'planning' | 'next'
+  /** One exact delivery day, YYYY-MM-DD. Takes precedence over `day` when both are given. */
   date?: string
 }
 export interface IntakeStatus {
@@ -15,8 +20,10 @@ export interface IntakeStatus {
   published: boolean
   /** The server's current time (ISO), when the backend supplies it. Demo adapters leave it out. */
   now?: string
-  /** The day orders placed now are delivered (YYYY-MM-DD), when the backend supplies it. */
+  /** The delivery day being planned (YYYY-MM-DD), when the backend supplies it. */
   deliveryDate?: string
+  /** The day an order placed now is delivered; after the cutoff, the following run. */
+  nextDeliveryDate?: string
 }
 export interface ReceiptIssue {
   kind: 'Missing' | 'Damaged'

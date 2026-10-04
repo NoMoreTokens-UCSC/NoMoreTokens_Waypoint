@@ -25,6 +25,12 @@ function withoutDemoData(base: Snapshot): Snapshot {
     members: [],
     activeOutletId: user?.outlet_id ?? undefined,
     activeDriverId: user ? String(user.id) : undefined,
+    settings: {
+      ...base.settings,
+      simulatedOffline: false,
+      profileName: user?.full_name ?? '',
+      profilePhone: '',
+    },
   }
 }
 
@@ -78,14 +84,14 @@ async function getLiveSnapshot(apis: Apis, services: OperationsService): Promise
       loads,
       settings: planState
         ? {
-            ...base.settings,
+            ...withoutDemoData(base).settings,
             cutoffClosed: planState.status.cutoffClosed,
             published: planState.status.published,
             allocationReviewed: planState.status.allocationReviewed,
           }
         : intake
-          ? { ...base.settings, cutoffClosed: intake.cutoffClosed, published: intake.published }
-          : base.settings,
+          ? { ...withoutDemoData(base).settings, cutoffClosed: intake.cutoffClosed, published: intake.published }
+          : withoutDemoData(base).settings,
     }
   } catch {
     return withoutDemoData(base)
