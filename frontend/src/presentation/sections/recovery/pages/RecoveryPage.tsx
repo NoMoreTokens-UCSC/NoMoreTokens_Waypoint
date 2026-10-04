@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { CloudUpload, Wifi, WifiOff, ArrowRight, CheckCircle2, Eye } from 'lucide-react'
 import { useOperations, useAction, useConnectivity } from '../../../hooks/useOperations'
 import { useServices } from '../../../providers/ServicesContext'
+import { useApis } from '../../../providers/ApisContext'
 import { Button } from '../../../shared/atoms/button'
 import {
   PageHeading,
@@ -21,6 +22,7 @@ import { useActiveRole } from '../../../session/useSession'
 export default function RecoveryPage() {
   const { data } = useOperations(),
     service = useServices(),
+    apis = useApis(),
     action = useAction(),
     online = useConnectivity(),
     role = useActiveRole()
@@ -48,13 +50,20 @@ export default function RecoveryPage() {
             }
             onClick={() =>
               action.run(
-                () => service.sync(online),
-                'Demo sync finished. Review the record outcomes below.',
+                async () => {
+                  try {
+                    await apis.delivery.sync(online, { retryFailed: true })
+                  } catch {
+                    // Fall back to service sync in mock mode
+                  }
+                  await service.sync(online)
+                },
+                'Sync finished. Review the record outcomes below.',
               )
             }
           >
             <CloudUpload size={16} />
-            {action.isPending ? 'Syncing…' : 'Sync demo records'}
+            {action.isPending ? 'Syncing…' : 'Sync records'}
           </Button>
         }
       />
