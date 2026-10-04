@@ -58,6 +58,8 @@ export interface Order {
 export interface Vehicle {
   id: string
   brand: Order['brand']
+  /** False when the source does not tie vehicles to a brand (the backend), so any brand may use it. */
+  brandRestricted?: boolean
   type: 'Van' | 'Truck'
   reefer: boolean
   weightCapacity: number
@@ -82,7 +84,19 @@ export interface Load {
   acknowledgedRevision?: number
   revisionChanges?: string[]
   issueDetails?: LoadIssueInput
-  items: { outlet: string; name: string; expected: number; loaded: number; stop: number }[]
+  items: {
+    outlet: string
+    name: string
+    expected: number
+    loaded: number
+    stop: number
+    /** From the outlet's reference data, when the backend supplies it. */
+    district?: string
+    lat?: number
+    lng?: number
+    window?: string
+    eta?: string
+  }[]
   checks: { refrigeration: boolean; condition: boolean; restraints: boolean }
   issue?: string
   issueResolved: boolean

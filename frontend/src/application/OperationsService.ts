@@ -25,6 +25,8 @@ import { addDeliveryNotice } from './DriverSignalsService'
 import { assignedDriverLoad, driverDepartureErrors, isAssignedStop } from '../domain/driverWorkflow'
 import { recordRouteEvent } from '../domain/routeHistory'
 import type { DeliveryProof } from '../domain/api/delivery'
+import type { Apis } from '../domain/api'
+import { getToken } from '../infrastructure/http/apiClient'
 
 const id = () => crypto.randomUUID()
 function assert(condition: unknown, message: string): asserts condition {
@@ -54,11 +56,18 @@ function checkPhoto(file: Blob) {
 
 export class OperationsService {
   private syncing = false
+  private apis?: Apis
   constructor(
     public readonly repository: OperationsRepository,
     private gateway: SyncGateway,
   ) {}
+  setApis(apis: Apis) {
+    this.apis = apis
+  }
   allocate(orderId: string, vehicleId: string, trip: number) {
+    if (this.apis && Boolean(getToken())) {
+      return this.apis.planning.allocate(orderId, vehicleId, trip)
+    }
     return this.repository.update((s) => {
       assert(!s.settings.published, 'The plan is published. Allocation is locked.')
       const order = s.orders.find((o) => o.id === orderId),
@@ -72,6 +81,9 @@ export class OperationsService {
     })
   }
   unallocate(orderId: string) {
+    if (this.apis && Boolean(getToken())) {
+      return this.apis.planning.unallocate(orderId)
+    }
     return this.repository.update((s) => {
       assert(!s.settings.published, 'The published plan is locked.')
       const order = s.orders.find((order) => order.id === orderId)
@@ -87,6 +99,9 @@ export class OperationsService {
     })
   }
   autoAllocate() {
+    if (this.apis && Boolean(getToken())) {
+      return this.apis.planning.autoAllocate()
+    }
     return this.repository.update((s) => {
       assert(!s.settings.published, 'The published plan is locked.')
       s.settings.allocationReviewed = false
@@ -125,6 +140,9 @@ export class OperationsService {
     })
   }
   defer(orderId: string, reason: string) {
+    if (this.apis && Boolean(getToken())) {
+      return this.apis.planning.defer(orderId, reason)
+    }
     return this.repository.update((s) => {
       assert(!s.settings.published, 'The published plan is locked.')
       const order = s.orders.find((o) => o.id === orderId)
@@ -158,6 +176,9 @@ export class OperationsService {
     })
   }
   publish() {
+    if (this.apis && Boolean(getToken())) {
+      return this.apis.planning.publish()
+    }
     return this.repository.update((s) => {
       assert(!s.settings.published, 'This plan is already published.')
       const errors = publicationErrors(s)
@@ -451,6 +472,9 @@ export class OperationsService {
     })
   }
   release(loadId: string) {
+    if (this.apis && Boolean(getToken())) {
+      return this.apis.planning.release(loadId)
+    }
     return this.repository.update((s) => {
       const load = requireLoad(s, loadId),
         errors = departureErrors(s, load)

@@ -26,7 +26,6 @@
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **02** 
 
@@ -69,7 +68,6 @@ Waypoint Group (Pvt) Ltd is a fictional Sri Lankan retail group with three brand
 
 The network serves 120 outlets through a distribution center in Peliyagoda and a regional hub in Kandy. Its 60 vehicles include 12 refrigerated trucks, 40 dry-box trucks, and eight small vans for outlets that larger vehicles cannot reach. Four of the vans are refrigerated, giving the fleet 16 vehicles that can carry chilled goods. Each vehicle operates from its assigned depot. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **03** 
 
@@ -109,7 +107,6 @@ Dispatchers plan deliveries using spreadsheets and their network knowledge. They
 
 - **Field connectivity is unreliable.** The solution must support work without a connection and reconcile records when connectivity returns. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **04** 
 
@@ -153,7 +150,6 @@ Mobile coverage can drop across hill country, the Kandy corridor, and rural dist
 
 Work away from the depot must remain usable offline. Records must reconcile when the connection returns. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **05** 
 
@@ -167,13 +163,13 @@ Design the system around the conditions each person works in and the information
 
 ##### **Dispatcher** 
 
-##### **Loader** 
-
 Works at a large screen in the Peliyagoda planning office with stable connectivity. Builds the daily plan using a spreadsheet and knowledge of outlet restrictions and vehicle capabilities. 
 
 Needs visibility into delivery progress and problems after vehicles leave the depot. 
 
 Needs to explain deferral decisions and identify outlets that have already been skipped. 
+
+##### **Loader** 
 
 Works at the Peliyagoda or Kandy warehouse dock using a shared tablet or terminal. Printed loading lists can become outdated when plans change. 
 
@@ -183,19 +179,18 @@ Needs to flag missing or damaged items before a vehicle leaves.
 
 ##### **Driver** 
 
-##### **Store manager** 
-
 Works on the road using a personal phone. Currently relies on a paper run sheet and phone calls for changes. Design interactions for use when safely stopped. 
 
-Works at the outlet counter using a desktop or phone. Places orders by phone or message without confirmation that they received or scheduled them. 
-
 Needs to record delivery outcomes and proof of delivery so disputes do not depend on memory. Needs to record work offline when coverage drops and synchronize it when connectivity returns. 
+
+##### **Store manager** 
+
+Works at the outlet counter using a desktop or phone. Places orders by phone or message without confirmation that they received or scheduled them. 
 
 Needs an expected arrival time to schedule staff to receive goods. 
 
 Needs clear notice when an order is deferred, plus a way to confirm receipt and report issues. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **06** 
 
@@ -237,7 +232,6 @@ Additional Datathon files and their key columns are documented later in this bri
 
 ##### **Click Here to Access the Datasets** 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **07** 
 
@@ -279,7 +273,6 @@ Design at least one screen for a situation in which the normal workflow breaks d
 
 - **Style guide, optional.** 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **09** 
 
@@ -308,7 +301,6 @@ Submit by **Tuesday, September 29, 2026, at 11:59 PM** Sri Lanka time (Day 5). J
 
 Deadline for submissions: **Tuesday, September 29, 2026, at 11:59 PM** ↗ **Submission Form:** <u>https://forms.gle/H6dqUZP6pXdGC8Go8</u> 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **10** 
 
@@ -352,7 +344,6 @@ Add a numbered walkthrough to your README that a judge can follow across all fou
 
 **Demo video.** Submit an unlisted YouTube video lasting five to eight minutes. Show all four roles completing the walkthrough, followed by a brief explanation of the code and architecture. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **12** 
 
@@ -384,7 +375,6 @@ Deadline for submissions: **Sunday, October 4, 2026, at 11:59 PM**
 
 ↗ **Submission Form:** <u>https://forms.gle/WurHAKjbq2XEZQhbA</u> 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **13** 
 
@@ -422,7 +412,6 @@ Account for the following when defining your labels:
 
 - At prediction time, planned departure, travel duration, and arrival are available for each delivery. Actual journey and handling times are available only in the training route records. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **15** 
 
@@ -477,7 +466,6 @@ Predict two values for every depot, brand, and week combination.
 
 You only need to predict these volumes. You do not need to convert them into vehicle or driver requirements. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **16** 
 
@@ -528,7 +516,6 @@ Complete `Submission Templates/submission_task2a.csv` . Preserve the supplied `r
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **17** 
 
@@ -573,7 +560,6 @@ Use `General Data/district_travel.csv` and `General Data/service_allowance.csv` 
 
 Complete `Submission Templates/submission_task2b.csv` . Keep `scenario` , `order_ref` , and `outlet_id` unchanged. Complete `decision` , `vehicle_id` , and `trip_id` for every row as specified below. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **18** 
 
@@ -620,7 +606,6 @@ The three answer columns contain placeholders in the supplied template. Replace 
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **19** 
 
@@ -656,7 +641,6 @@ Each trip leaves the depot, travels to one district, and delivers its orders the
 
 - **Step 3 Handling time:** For each order, look up `service_allowance_min` in `service_allowance.csv` using the trip’s brand and the outlet’s `dock_type` . Add the allowances for all stops. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **20** 
 
@@ -706,7 +690,6 @@ For example, a second Fresh trip to Colombo with four street-access stops takes 
 
 Submit a write-up of approximately one page or less. Show the calculations behind your allocation and explain why you deferred specific orders. Your analysis should show the calculations behind your allocation, identify what limited service on this day, and explain which deferrals were unavoidable and which were your choice, and what they cost. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **21** 
 
@@ -756,7 +739,6 @@ Challenge Booklet · Tech-Triathlon 2026
 
 - **AI tool disclosure.** Explain which work was AI-assisted, which was not, and how you used the tools. 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **22** 
 
@@ -785,7 +767,6 @@ Submit by **Friday, October 9, 2026, at 11:59 PM** Sri Lanka time (Day 15).
 
 Deadline for submissions: **Friday, October 9, 2026, at 11:59 PM** ↗ **Submission Form:** <u>https://forms.gle/CcPPmttWdQgHvUdi6</u> 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **23** 
 
@@ -822,7 +803,6 @@ Durations are measured in minutes. Columns ending in `_duration_min` contain dur
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **24** 
 
@@ -862,7 +842,6 @@ Use the exact filenames below. Keep all supplied identifiers and rows unchanged.
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **25** 
 
@@ -894,7 +873,6 @@ Challenge Booklet · Tech-Triathlon 2026
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **26** 
 
@@ -930,7 +908,6 @@ Challenge Booklet · Tech-Triathlon 2026
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **27** 
 
@@ -972,7 +949,6 @@ Challenge Booklet · Tech-Triathlon 2026
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **28** 
 
@@ -1014,7 +990,6 @@ Challenge Booklet · Tech-Triathlon 2026
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **29** 
 
@@ -1058,7 +1033,6 @@ Challenge Booklet · Tech-Triathlon 2026
 
 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **30** 
 
@@ -1110,7 +1084,6 @@ task2b_peak_day_fleet.csv
 
 **Click Here to Access the Datasets** 
 
-Challenge Booklet · Tech-Triathlon 2026 
 
 **31** 
 

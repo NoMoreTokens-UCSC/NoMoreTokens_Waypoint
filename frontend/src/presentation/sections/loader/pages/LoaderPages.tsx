@@ -166,6 +166,7 @@ export function LoaderWorkspacePage({ proofOnly = false }: { proofOnly?: boolean
   const heading = (
     <PageHeading title={proofOnly ? 'Loading photograph & handoff' : 'Loading workspace'} />
   )
+  if (!loadId) return <Navigate to="/loader/queue" replace />
   if (query.isPending)
     return (
       <div className="loader-page">

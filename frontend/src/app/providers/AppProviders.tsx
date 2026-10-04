@@ -16,6 +16,7 @@ const service = new OperationsService(
   new DemoSyncGateway(),
 )
 const apis = createApis(service)
+service.setApis(apis)
 const client = new QueryClient({
   defaultOptions: {
     queries: { networkMode: 'always', retry: 1, refetchOnWindowFocus: true },
