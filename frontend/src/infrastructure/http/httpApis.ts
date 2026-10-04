@@ -15,8 +15,8 @@ import type { LoadingApi } from '../../domain/api/loading'
 import type { DeliveryApi } from '../../domain/api/delivery'
 import type { FleetApi } from '../../domain/api/fleet'
 import type { Order, OrderStatus, Stop, Trip, Vehicle, Load } from '../../domain/models'
-import { outletProfiles, profileOf, type OutletProfile } from '../../domain/outlets'
-import { getUser, request } from './apiClient'
+import { profileFromReference, type OutletProfile } from '../../domain/outlets'
+import { getUser, request, type ApiOutlet } from './apiClient'
 import { WaypointDatabase } from '../persistence/database'
 
 const localDb = new WaypointDatabase()
@@ -411,7 +411,7 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
     },
 
     async getOutletProfile(id: string): Promise<OutletProfile> {
-      return profileOf(id) ?? outletProfiles[0]!
+      return profileFromReference(await request<ApiOutlet>(`/reference/outlets/${id}`))
     },
 
     async cancelOrder(orderId) {
@@ -540,7 +540,19 @@ function createHttpPlanningApi(): PlanningApi {
 
 // ── Loading HTTP adapter ───────────────────────────────────────────────────
 
-function mapTripToLoad(trip: ApiTrip, depot?: string): Load {
+/** Which depot each vehicle works from, from the reference data; fetched once and kept. */
+let vehicleDepotsCache: Promise<Map<string, string>> | undefined
+function vehicleDepots(): Promise<Map<string, string>> {
+  vehicleDepotsCache ??= request<{ vehicle_id: string; depot_code: string }[]>('/reference/vehicles')
+    .then((vehicles) => new Map(vehicles.map((v) => [v.vehicle_id, v.depot_code])))
+    .catch(() => {
+      vehicleDepotsCache = undefined
+      return new Map<string, string>()
+    })
+  return vehicleDepotsCache
+}
+
+function mapTripToLoad(trip: ApiTrip, depot?: string, vehicleDepot?: string): Load {
   let localData: {
     loadedCounts?: Record<string, number>
     checks?: { refrigeration: boolean; condition: boolean; restraints: boolean }
@@ -560,14 +572,21 @@ function mapTripToLoad(trip: ApiTrip, depot?: string): Load {
   // Items ordered by reverse sequence for rear-to-front loading
   const items = stops
     .map((s, idx) => {
-      const expected = s.total_cases && s.total_cases > 0 ? s.total_cases : 15
+      const expected = s.total_cases ?? 0
       const loadedCount = localData.loadedCounts?.[s.outlet_id] ?? (isLoaded ? expected : 0)
       return {
         outlet: s.outlet_id,
-        name: s.outlet_id,
+        name: s.district ? `${s.outlet_id} · ${s.district}` : s.outlet_id,
         expected,
         loaded: loadedCount,
         stop: s.sequence ?? idx + 1,
+        district: s.district,
+        lat: s.lat,
+        lng: s.lng,
+        window: s.window_open?.slice(0, 5),
+        eta: s.planned_eta
+          ? new Date(s.planned_eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : undefined,
       }
     })
     .sort((a, b) => b.stop - a.stop)
@@ -582,7 +601,7 @@ function mapTripToLoad(trip: ApiTrip, depot?: string): Load {
       trip: trip.trip_number,
       revision: 1,
       bay: `Bay ${(trip.trip_number % 8) + 1}`,
-      depot: depot ?? 'Peliyagoda',
+      depot: depot ?? vehicleDepot,
       departureTime: trip.planned_depart
         ? new Date(trip.planned_depart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : undefined,
@@ -607,17 +626,22 @@ function createHttpLoadingApi(): LoadingApi {
       const params = new URLSearchParams()
       if (filter.depot) params.set('depot', filter.depot)
       const query = params.toString() ? `?${params}` : ''
-      const trips = await request<ApiTrip[]>(`/loading/trips${query}`).catch(() => [] as ApiTrip[])
-      return trips.map((t) => mapTripToLoad(t, filter.depot))
+      const [trips, depots] = await Promise.all([
+        request<ApiTrip[]>(`/loading/trips${query}`).catch(() => [] as ApiTrip[]),
+        vehicleDepots(),
+      ])
+      return trips.map((t) => mapTripToLoad(t, filter.depot, depots.get(t.vehicle_id)))
     },
 
     async getLoad(loadId) {
+      if (!loadId) return undefined
       const trip = await request<ApiTrip>(`/loading/trips/${loadId}`).catch(() => null)
       if (!trip) return undefined
-      return mapTripToLoad(trip)
+      return mapTripToLoad(trip, undefined, (await vehicleDepots()).get(trip.vehicle_id))
     },
 
     async getWorkspace(loadId, depot) {
+      if (!loadId) return undefined
       const trip = await request<ApiTrip>(`/loading/trips/${loadId}`).catch(() => null)
       if (!trip) return undefined
 
@@ -626,11 +650,11 @@ function createHttpLoadingApi(): LoadingApi {
         brand: 'Fresh',
         brandRestricted: false,
         type: 'Truck',
-        reefer: true,
-        weightCapacity: 5000,
-        volumeCapacity: 25,
+        reefer: false,
+        weightCapacity: 0,
+        volumeCapacity: 0,
         status: 'Loading',
-        location: depot ?? 'Peliyagoda',
+        location: depot ?? '',
         lat: 6.96,
         lng: 79.90,
         updatedMinutes: 0,
@@ -662,15 +686,15 @@ function createHttpLoadingApi(): LoadingApi {
         }
       } catch {}
 
-      const load = mapTripToLoad(trip, depot)
+      const load = mapTripToLoad(trip, depot, (await vehicleDepots()).get(trip.vehicle_id))
       const stops: Stop[] = (trip.stops ?? []).map(mapStop)
       return {
         load,
         vehicle,
         published: true,
         stops,
-        weight: trip.planned_weight ?? 1200,
-        volume: trip.planned_volume ?? 8.5,
+        weight: trip.planned_weight ?? 0,
+        volume: trip.planned_volume ?? 0,
       }
     },
 
@@ -1132,7 +1156,7 @@ function createStubAccountApi() {
       routeRevision: 0,
       simulatedOffline: false,
       syncOutcome: 'accepted' as const,
-      profileName: 'Demo User',
+      profileName: getUser()?.full_name ?? getUser()?.username ?? '',
       profilePhone: '',
       notifications: true,
       compactRows: false,

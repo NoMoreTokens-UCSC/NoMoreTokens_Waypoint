@@ -77,5 +77,90 @@ export const outletProfiles: OutletProfile[] = [
   },
 ]
 
+/** Receiving limits and ordering schedule that follow from an outlet's brand and whether it is in a mall. */
+const brandRules: Record<
+  OutletProfile['brand'],
+  Omit<OutletProfile, 'id' | 'name' | 'district' | 'depot' | 'mall'>
+> = {
+  Fresh: {
+    brand: 'Fresh',
+    receiving: {
+      earliest: '04:00',
+      latest: '08:00',
+      shortest: 60,
+      step: 30,
+      reason: 'Fresh goods must arrive before the store opens at 8:00 AM.',
+    },
+    schedule: 'Dry groceries every operating day; chilled on the days you need them',
+  },
+  Style: {
+    brand: 'Style',
+    receiving: {
+      earliest: '05:30',
+      latest: '09:00',
+      shortest: 60,
+      step: 30,
+      reason: 'Deliveries are received between 5:30 AM and 9:00 AM.',
+    },
+    schedule: 'One weekly order for your scheduled delivery day, larger ahead of seasonal peaks',
+  },
+  Tech: {
+    brand: 'Tech',
+    receiving: {
+      earliest: '07:00',
+      latest: '17:00',
+      shortest: 60,
+      step: 30,
+      reason: 'Appliances are received during trading hours, 7:00 AM to 5:00 PM.',
+    },
+    schedule: 'As needed, often a single large item',
+  },
+}
+
+const hhmm = (time?: string | null) => (time ? time.slice(0, 5) : undefined)
+const clock12 = (time: string) => {
+  const [hours, minutes] = time.split(':').map(Number)
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`
+}
+
+/** An outlet's profile from the reference data a backend serves (`outlets.csv`). */
+export function profileFromReference(outlet: {
+  outlet_id: string
+  brand: string
+  district: string
+  depot_code: string
+  is_mall: boolean
+  mall_window_open?: string | null
+  mall_window_close?: string | null
+  window_open_time?: string | null
+  window_close_time?: string | null
+}): OutletProfile {
+  const brand = (
+    ['Fresh', 'Style', 'Tech'].includes(outlet.brand) ? outlet.brand : 'Fresh'
+  ) as OutletProfile['brand']
+  const rules = brandRules[brand]
+  const mallOpen = hhmm(outlet.mall_window_open)
+  const mallClose = hhmm(outlet.mall_window_close)
+  const receiving =
+    outlet.is_mall && mallOpen && mallClose
+      ? {
+          ...rules.receiving,
+          earliest: mallOpen,
+          latest: mallClose,
+          reason: `The mall only accepts deliveries between ${clock12(mallOpen)} and ${clock12(mallClose)}.`,
+        }
+      : rules.receiving
+  return {
+    id: outlet.outlet_id,
+    name: `${brand} ${outlet.district}`,
+    brand,
+    district: outlet.district,
+    depot: outlet.depot_code,
+    mall: outlet.is_mall,
+    receiving,
+    schedule: rules.schedule,
+  }
+}
+
 export const profileOf = (outletId: string) =>
   outletProfiles.find((profile) => profile.id === outletId)
