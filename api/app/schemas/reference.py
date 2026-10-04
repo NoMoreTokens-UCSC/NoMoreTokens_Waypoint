@@ -16,6 +16,7 @@ class DepotOut(OrmModel):
 
 class OutletOut(OrmModel):
     outlet_id: str
+    name: Optional[str] = None
     brand: str
     district: str
     depot_code: str
@@ -36,6 +37,7 @@ class VehicleOut(OrmModel):
     type: str
     temp: str
     is_refrigerated: bool
+    registration: Optional[str] = None
     weight_cap_kg: float
     volume_cap_m3: float
     fuel_type: str

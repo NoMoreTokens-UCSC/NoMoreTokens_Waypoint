@@ -311,10 +311,241 @@ describe('local API adapters', () => {
       apis.orders.placeOrders('OUT019', [{ ...item, orderId: 'ORD0000' }]),
     ).rejects.toThrow(/no longer open/)
   })
-  it('refuses outlets the local demo does not model', async () => {
-    await expect(apis.orders.createOrder('OUT002', 'Chilled', 10, '05:30')).rejects.toThrow(
-      /OUT016 and OUT019 only/,
+  it('summarises the team including people the list does not page in', async () => {
+    const summary = await apis.team.getSummary()
+    expect(summary).toMatchObject({ total: 48, active: 41, invited: 5, suspended: 2 })
+    expect(summary.auditEvents).toBeGreaterThan(200)
+  })
+  it('lists a person’s recent activity, newest first', async () => {
+    const driver = await apis.team.listActivity('USR001')
+    expect(driver[0]).toMatchObject({ when: '05:41', title: 'Submitted delivery proof' })
+    expect(driver).toHaveLength(5)
+    expect(await apis.team.listActivity('USR999')).toEqual([])
+  })
+  it('creates an account with a username and keeps no password', async () => {
+    const user = {
+      name: 'Dilani Rajapaksa',
+      mobile: '+94 77 555 0101',
+      role: 'loader' as const,
+      depot: 'Peliyagoda',
+      assignment: 'Dock bay 04',
+      email: 'dilani@example.test',
+      username: 'dilani.rajapaksa',
+      password: 'Kp7mQx2RtWn4',
+    }
+    await apis.team.createUser(user)
+    const created = (await apis.team.listMembers()).find(
+      (member) => member.username === user.username,
     )
+    expect(created).toMatchObject({ status: 'Invited', role: 'loader', assignment: 'Dock bay 04' })
+    // Nothing the demo keeps (people, audit, the whole workspace) contains the password.
+    const snapshot = await repository.getSnapshot()
+    expect(JSON.stringify(snapshot)).not.toContain(user.password)
+    expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Account created' })
+    await expect(
+      apis.team.createUser({ ...user, mobile: '+94 77 555 0102', email: 'other@example.test' }),
+    ).rejects.toThrow(/username is already taken/)
+    await expect(
+      apis.team.createUser({ ...user, username: 'dilani.two', mobile: '+94 77 555 0104' }),
+    ).rejects.toThrow(/email address already belongs/)
+    await expect(
+      apis.team.createUser({
+        ...user,
+        username: 'dilani.three',
+        mobile: '+94 77 555 0105',
+        email: 'NIMAL@example.test',
+      }),
+    ).rejects.toThrow(/email address already belongs/)
+    await expect(
+      apis.team.createUser({
+        ...user,
+        username: 'dilani.four',
+        mobile: '+94 77 555 0106',
+        email: 'not-an-email',
+      }),
+    ).rejects.toThrow(/valid email/)
+    await expect(
+      apis.team.createUser({
+        ...user,
+        username: 'second.user',
+        password: 'short',
+        email: 'second@example.test',
+      }),
+    ).rejects.toThrow(/at least 8 characters/)
+    await expect(
+      apis.team.createUser({
+        ...user,
+        username: 'Bad Name!',
+        mobile: '+94 77 555 0103',
+        email: 'bad@example.test',
+      }),
+    ).rejects.toThrow(/Usernames are/)
+  })
+  it('resets access with a valid temporary password and records it without the password', async () => {
+    await apis.team.resetAccess('USR004', 'Wq4nLm8Zxk2P')
+    const snapshot = await repository.getSnapshot()
+    expect(JSON.stringify(snapshot)).not.toContain('Wq4nLm8Zxk2P')
+    expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Access reset' })
+    await expect(apis.team.resetAccess('USR004', 'nodigits')).rejects.toThrow(
+      /at least 8 characters/,
+    )
+  })
+  const newOutlet = {
+    name: 'Fresh Ja-Ela',
+    brand: 'Fresh' as const,
+    district: 'Ja-Ela',
+    depot: 'Peliyagoda',
+    parking: 'normal' as const,
+    earliest: '04:00',
+    latest: '08:00',
+  }
+  it('adds an outlet with the next id, and orders can use it', async () => {
+    const before = await apis.outlets.listOutlets()
+    const highest = Math.max(...before.map((outlet) => Number(outlet.id.slice(3))))
+    const created = await apis.outlets.createOutlet(newOutlet)
+    expect(created.id).toBe(`OUT${String(highest + 1).padStart(3, '0')}`)
+    expect(created).toMatchObject({ brand: 'Fresh', mall: false, district: 'Ja-Ela' })
+    expect(created.receiving.reason).toBe(
+      'Fresh goods must arrive before the store opens at 8:00 AM.',
+    )
+    expect((await apis.outlets.listOutlets()).map((outlet) => outlet.id)).toContain(created.id)
+    expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Outlet added' })
+    // The order screens read the outlet's brand and hours from the same list.
+    expect(await apis.orders.getOutletProfile(created.id)).toMatchObject({ name: 'Fresh Ja-Ela' })
+    await expect(apis.outlets.createOutlet(newOutlet)).rejects.toThrow(/already exists/)
+    await expect(
+      apis.outlets.createOutlet({ ...newOutlet, name: 'Fresh Ragama', latest: '04:30' }),
+    ).rejects.toThrow(/at least an hour/)
+    await expect(apis.outlets.createOutlet({ ...newOutlet, name: 'X' })).rejects.toThrow(
+      /outlet name/,
+    )
+  })
+  it('a mall outlet keeps its own delivery window', async () => {
+    const mall = await apis.outlets.createOutlet({
+      ...newOutlet,
+      name: 'Style Odel',
+      brand: 'Style',
+      parking: 'mall_dock',
+      earliest: '06:00',
+      latest: '09:30',
+    })
+    expect(mall).toMatchObject({ mall: true, parking: 'mall_dock' })
+    expect(mall.receiving.reason).toBe(
+      'The mall only accepts deliveries between 6:00 AM and 9:30 AM.',
+    )
+  })
+  it('assigns a store manager only to an existing outlet that has none', async () => {
+    const outlet = await apis.outlets.createOutlet(newOutlet)
+    const manager = {
+      name: 'Ayesha Fernando',
+      mobile: '+94 77 555 0111',
+      role: 'store-manager' as const,
+      depot: 'Peliyagoda',
+      assignment: `${outlet.id} · Fresh`,
+      email: 'ayesha@example.test',
+      username: 'ayesha.fernando',
+      password: 'Kp7mQx2RtWn4',
+    }
+    await apis.team.createUser(manager)
+    const created = (await apis.team.listMembers()).find(
+      (member) => member.username === 'ayesha.fernando',
+    )
+    expect(created?.outletId).toBe(outlet.id)
+    await expect(
+      apis.team.createUser({
+        ...manager,
+        name: 'Second Manager',
+        mobile: '+94 77 555 0112',
+        username: 'second.manager',
+        email: 'second.manager@example.test',
+      }),
+    ).rejects.toThrow(/already has a store manager/)
+    await expect(
+      apis.team.createUser({
+        ...manager,
+        mobile: '+94 77 555 0113',
+        username: 'third.manager',
+        email: 'third.manager@example.test',
+        assignment: 'OUT999 · Fresh',
+      }),
+    ).rejects.toThrow(/Choose an outlet from the list/)
+  })
+  const newVehicle = {
+    brand: 'Fresh' as const,
+    type: 'Van' as const,
+    reefer: true,
+    depot: 'Kandy',
+    weightCapacity: 800,
+    volumeCapacity: 4,
+    registration: 'WP-1234',
+  }
+  it('adds a vehicle with the next id, available at its depot', async () => {
+    const before = await apis.fleet.listVehicles()
+    const highest = Math.max(...before.map((vehicle) => Number(vehicle.id.slice(3))))
+    const created = await apis.fleet.createVehicle(newVehicle)
+    expect(created).toMatchObject({
+      id: `VEH${String(highest + 1).padStart(3, '0')}`,
+      status: 'Available',
+      depot: 'Kandy',
+      reefer: true,
+      registration: 'WP-1234',
+    })
+    expect((await apis.fleet.listVehicles()).length).toBe(before.length + 1)
+    expect((await apis.fleet.getVehicle(created.id))?.location).toBe('Kandy')
+    expect((await apis.team.listAudit())[0]).toMatchObject({ action: 'Vehicle added' })
+    await expect(apis.fleet.createVehicle(newVehicle)).rejects.toThrow(/registration is already/)
+  })
+  it('refuses a refrigerated non-Fresh vehicle and capacities outside the range', async () => {
+    await expect(
+      apis.fleet.createVehicle({ ...newVehicle, brand: 'Tech', registration: undefined }),
+    ).rejects.toThrow(/only a Fresh vehicle can be refrigerated/)
+    await expect(
+      apis.fleet.createVehicle({ ...newVehicle, weightCapacity: 50, registration: undefined }),
+    ).rejects.toThrow(/Weight capacity/)
+    await expect(
+      apis.fleet.createVehicle({ ...newVehicle, volumeCapacity: 100, registration: undefined }),
+    ).rejects.toThrow(/Volume capacity/)
+    await expect(apis.fleet.createVehicle({ ...newVehicle, registration: '!!' })).rejects.toThrow(
+      /registration is 4 to 12/,
+    )
+  })
+  it('lets a driver be assigned to a vehicle that was just added', async () => {
+    const vehicle = await apis.fleet.createVehicle({ ...newVehicle, registration: undefined })
+    await apis.team.createUser({
+      name: 'Ruwan Jayasuriya',
+      mobile: '+94 77 555 0121',
+      role: 'driver',
+      depot: 'Kandy',
+      assignment: vehicle.id,
+      email: 'ruwan.j@example.test',
+      username: 'ruwan.jayasuriya',
+      password: 'Kp7mQx2RtWn4',
+    })
+    const driver = (await apis.team.listMembers()).find(
+      (member) => member.username === 'ruwan.jayasuriya',
+    )
+    expect(driver?.vehicleId).toBe(vehicle.id)
+  })
+  it('suspends an on-route driver only after a schedule or with a reason', async () => {
+    await repository.update((snapshot) => {
+      snapshot.members.find((member) => member.id === 'USR001')!.onRoute = true
+    })
+    const driver = async () =>
+      (await apis.team.listMembers()).find((member) => member.id === 'USR001')!
+    await expect(apis.team.suspend('USR001')).rejects.toThrow(/on route/)
+    await expect(apis.team.suspend('USR001', false, 'no')).rejects.toThrow(/on route/)
+    await apis.team.suspend('USR001', true)
+    expect(await driver()).toMatchObject({ suspensionScheduled: true, status: 'Active' })
+    await apis.team.suspend('USR001', false, 'Vehicle broke down on the Kandy road')
+    expect(await driver()).toMatchObject({ status: 'Suspended', onRoute: false })
+    const audit = await apis.team.listAudit()
+    expect(audit.some((entry) => entry.action === 'Suspended mid-route')).toBe(true)
+  })
+  it('refuses outlets that are not set up', async () => {
+    await expect(apis.orders.createOrder('OUT999', 'Chilled', 10, '05:30')).rejects.toThrow(
+      /Outlet OUT999 is not set up/,
+    )
+    await expect(apis.orders.getOutletProfile('OUT999')).rejects.toThrow(/not set up/)
   })
   it('applies the 08:00 deadline to Fresh without blocking the Style mall window', async () => {
     const input = {

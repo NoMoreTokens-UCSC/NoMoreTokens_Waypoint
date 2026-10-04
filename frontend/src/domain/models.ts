@@ -1,3 +1,4 @@
+import type { OutletProfile } from './outlets'
 import type { DeliveryNotice, DevicePosition, WebPushRegistration } from './api/driverSignals'
 import type { ManagerSignOff } from './deliveryVerification'
 
@@ -70,6 +71,10 @@ export interface Vehicle {
   volumeCapacity: number
   /** Ready: loaded and released, waiting for the driver to start. */
   status: 'Available' | 'Loading' | 'Ready' | 'En route' | 'Offline'
+  /** The depot the vehicle works from. Absent in the sample fleet; see `vehicleDepot`. */
+  depot?: string
+  /** Number plate. */
+  registration?: string
   location: string
   lat: number
   lng: number
@@ -186,6 +191,41 @@ export interface TeamMember {
   outletId?: string
   accessState?: 'Ready' | 'Invitation pending' | 'Recovery requested'
   invitationExpiresAt?: string
+  /** Shown in the team list: "Just now", "05:10", "3 days ago". Blank until the person signs in. */
+  lastActive?: string
+  /** The name this person signs in with. The password is never kept; see `NewUser`. */
+  username?: string
+  /** "24 September": when the person accepted their invitation. */
+  joined?: string
+  /** "05:44 · near Peliyagoda": the last place or time the person was seen working. */
+  lastSeen?: string
+}
+/** One line of a person's recent activity, newest first. */
+export interface MemberActivity {
+  /** "05:41" or "24 Sep". */
+  when: string
+  title: string
+  detail: string
+}
+/** Headline numbers for the team and audit pages (the lists show only the people on screen). */
+export interface TeamSummary {
+  total: number
+  active: number
+  invited: number
+  suspended: number
+  auditEvents: number
+}
+/**
+ * A new account. The administrator chooses (or generates) the username and a temporary password and
+ * hands them to the person outside this system. The password is checked and passed on to whatever
+ * stores credentials; the demo keeps only the username.
+ */
+export interface NewUser extends MobileInvitation {
+  /** Required, and unique across the team. */
+  email: string
+  /** Required, and unique across the team. */
+  username: string
+  password: string
 }
 export interface MobileInvitation {
   name: string
@@ -249,6 +289,10 @@ export interface Snapshot {
   /** Earlier orders, kept apart from the live orders so planning screens are unaffected. */
   orderHistory?: Order[]
   orderHistoryVersion?: number
+  /** Every outlet in the system; administrators add to it and store managers are assigned from it. */
+  outlets?: OutletProfile[]
+  outletsVersion?: number
+  teamDetailVersion?: number
   unlistedTeamCounts?: { Active: number; Invited: number; Suspended: number }
   fleetReferenceVersion?: number
   designDataVersion?: number

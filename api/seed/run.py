@@ -66,6 +66,16 @@ DEMO_USERS = [
         "vehicle_id": "VEH001",
         "depot_id": None,
     },
+    # administrator: manages people, outlets and vehicles
+    {
+        "username": "admin",
+        "password": "demo-admin-1",
+        "full_name": "Amara Jayawardena",
+        "role": "ADMIN",
+        "outlet_id": None,
+        "vehicle_id": None,
+        "depot_id": None,
+    },
     # store manager linked to OUT001 (Fresh, Colombo, van_only)
     {
         "username": "store_manager",

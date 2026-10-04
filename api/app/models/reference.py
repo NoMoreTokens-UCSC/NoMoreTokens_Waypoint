@@ -44,6 +44,7 @@ class Outlet(Base):
 
     # PK is the outlet_id string from CSV (e.g. 'OUT001')
     outlet_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     brand: Mapped[str] = mapped_column(String(10))
     district: Mapped[str] = mapped_column(String(50))
     depot_code: Mapped[str] = mapped_column(String(50), ForeignKey("depots.code"))
@@ -82,6 +83,7 @@ class Vehicle(Base):
     type: Mapped[str] = mapped_column(String(10))          # 'truck' | 'van'
     temp: Mapped[str] = mapped_column(String(20))          # raw CSV value: 'reefer' | 'ambient'
     is_refrigerated: Mapped[bool] = mapped_column(Boolean, default=False)  # derived from temp
+    registration: Mapped[Optional[str]] = mapped_column(String(20), unique=True, nullable=True)
 
     weight_cap_kg: Mapped[float] = mapped_column(Float)
     volume_cap_m3: Mapped[float] = mapped_column(Float)

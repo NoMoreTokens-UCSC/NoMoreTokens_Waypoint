@@ -16,7 +16,21 @@ import type { AnalyticsApi, DemandWeek, WeekCapacity } from '../../domain/api/an
 import type { LoadingApi } from '../../domain/api/loading'
 import type { DeliveryApi } from '../../domain/api/delivery'
 import type { FleetApi } from '../../domain/api/fleet'
-import type { Order, OrderStatus, Settings, Stop, Trip, Vehicle, Load } from '../../domain/models'
+import type { OutletsApi } from '../../domain/api/outlets'
+import type { TeamApi } from '../../domain/api/team'
+import type {
+  AuditEntry,
+  Load,
+  MemberActivity,
+  Order,
+  OrderStatus,
+  Settings,
+  Stop,
+  TeamMember,
+  Trip,
+  Vehicle,
+  Workspace,
+} from '../../domain/models'
 import { profileFromReference, type OutletProfile } from '../../domain/outlets'
 import { getUser, request, type ApiOutlet } from './apiClient'
 import { WaypointDatabase } from '../persistence/database'
@@ -153,7 +167,7 @@ function outletReferences(): Promise<Map<string, OutletRef>> {
           outlets.map((o) => [
             o.outlet_id,
             {
-              name: `${o.brand} ${o.district}`,
+              name: o.name || `${o.brand} ${o.district}`,
               lat: o.lat ?? undefined,
               lng: o.lng ?? undefined,
               window:
@@ -1448,6 +1462,7 @@ function createHttpFleetApi(): FleetApi {
           volume_cap_m3: number
           brand?: string
           depot_code?: string
+          registration?: string | null
           status?: string
           lat?: number
           lng?: number
@@ -1489,6 +1504,8 @@ function createHttpFleetApi(): FleetApi {
           volumeCapacity: v.volume_cap_m3,
           status: (offline ? 'Offline' : tripStatusByVehicle.get(v.vehicle_id) ?? 'Available') as Vehicle['status'],
           location: v.depot_code ?? 'Peliyagoda',
+          depot: v.depot_code,
+          registration: v.registration ?? undefined,
           // No device fix: the depot's own position, or NaN when the depot has no coordinates.
           // NaN keeps the vehicle out of the map rather than drawing it at a made-up point.
           lat: fix?.lat ?? v.lat ?? depotByCode.get(v.depot_code ?? '')?.lat ?? Number.NaN,
@@ -1501,6 +1518,24 @@ function createHttpFleetApi(): FleetApi {
       })
     },
 
+    async createVehicle(input) {
+      const created = await request<{ vehicle_id: string }>('/admin/vehicles', {
+        method: 'POST',
+        body: JSON.stringify({
+          brand: input.brand,
+          type: input.type === 'Van' ? 'van' : 'truck',
+          is_refrigerated: input.reefer,
+          depot_code: input.depot,
+          weight_cap_kg: input.weightCapacity,
+          volume_cap_m3: input.volumeCapacity,
+          registration: input.registration || null,
+        }),
+      })
+      const vehicle = await this.getVehicle(created.vehicle_id)
+      if (!vehicle) throw new Error('The vehicle was added but could not be read back.')
+      return { ...vehicle, brand: input.brand }
+    },
+
     async getVehicle(vehicleId) {
       const v = await request<{
         vehicle_id: string
@@ -1509,6 +1544,7 @@ function createHttpFleetApi(): FleetApi {
         weight_cap_kg: number
         volume_cap_m3: number
         depot_code?: string
+        registration?: string | null
         lat?: number
         lng?: number
       }>(`/reference/vehicles/${vehicleId}`).catch(() => null)
@@ -1523,6 +1559,8 @@ function createHttpFleetApi(): FleetApi {
         volumeCapacity: v.volume_cap_m3,
         status: 'Available',
         location: v.depot_code ?? '',
+        depot: v.depot_code,
+        registration: v.registration ?? undefined,
         lat: v.lat ?? 0,
         lng: v.lng ?? 0,
         updatedMinutes: 0,
@@ -1531,24 +1569,227 @@ function createHttpFleetApi(): FleetApi {
   }
 }
 
-// ── Stub adapters for team/account (remain local until Phase n) ─────────────
+// ── Administration: people, outlets and the audit trail ─────────────────────
 
-function createStubTeamApi() {
+type ApiAdminUser = {
+  id: number
+  username: string
+  full_name: string
+  email: string | null
+  phone: string | null
+  role: string
+  is_active: boolean
+  outlet_id: string | null
+  vehicle_id: string | null
+  depot_id: string | null
+  created_at?: string | null
+}
+
+const workspaceOf: Record<string, Workspace> = {
+  DISPATCHER: 'dispatcher',
+  LOADER: 'loader',
+  DRIVER: 'driver',
+  STORE_MANAGER: 'store-manager',
+  ADMIN: 'administration',
+}
+const apiRoleOf: Record<Workspace, string> = {
+  dispatcher: 'DISPATCHER',
+  loader: 'LOADER',
+  driver: 'DRIVER',
+  'store-manager': 'STORE_MANAGER',
+  administration: 'ADMIN',
+}
+
+/** "05:41" for today, otherwise "24 Sep". */
+function whenLabel(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ''
+  return at.toDateString() === new Date().toDateString()
+    ? at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    : at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+const auditTitles: Record<string, string> = {
+  USER_CREATED: 'Account created',
+  USER_UPDATED: 'Account changed',
+  USER_SUSPENDED: 'Account suspended',
+  USER_REACTIVATED: 'Account reactivated',
+  PASSWORD_RESET: 'Temporary password set',
+  OUTLET_CREATED: 'Outlet added',
+  VEHICLE_CREATED: 'Vehicle added',
+}
+
+type ApiAuditRow = {
+  id: number
+  at: string
+  action: string
+  entity_type: string
+  entity_id: string
+  actor: string | null
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+}
+
+function auditDetail(row: ApiAuditRow): string {
+  const after = row.after ?? {}
+  const who = typeof after.username === 'string' ? after.username : ''
+  const what = typeof after.name === 'string' ? after.name : ''
+  const label = `${row.entity_type} ${row.entity_id}`
+  return [who || what || label, typeof after.role === 'string' ? after.role : ''].filter(Boolean).join(' · ')
+}
+
+function createHttpTeamApi(): TeamApi {
+  const unsupported = (what: string) => async (): Promise<never> => {
+    throw new Error(`${what} is not available yet. Create the account with a temporary password instead.`)
+  }
+
+  const users = () => request<ApiAdminUser[]>('/admin/users')
+  const audit = () => request<ApiAuditRow[]>('/admin/audit?limit=500')
+  const patch = (memberId: string, body: Record<string, unknown>) =>
+    request(`/admin/users/${memberId}`, { method: 'PATCH', body: JSON.stringify(body) }).then(() => undefined)
+
   return {
-    listMembers: async () => [],
-    listAudit: async () => [],
-    invite: async () => {},
-    inviteByMobile: async () => {},
-    completeInvitation: async () => {},
-    resetAccess: async () => {},
-    updateContact: async () => {},
-    requestAccountChange: async () => {},
-    changeAssignment: async () => {},
-    reassignTrip: async () => {},
-    updateRole: async () => {},
-    suspend: async () => {},
+    async listMembers() {
+      const [people, outlets, vehicles] = await Promise.all([
+        users(),
+        request<ApiOutlet[]>('/reference/outlets').catch(() => [] as ApiOutlet[]),
+        request<Array<{ vehicle_id: string; depot_code: string }>>('/reference/vehicles').catch(() => []),
+      ])
+      const outletDepot = new Map(outlets.map((o) => [o.outlet_id, o.depot_code]))
+      const vehicleDepot = new Map(vehicles.map((v) => [v.vehicle_id, v.depot_code]))
+      return people.map((u): TeamMember => {
+        const depot =
+          u.depot_id ??
+          (u.outlet_id ? outletDepot.get(u.outlet_id) : undefined) ??
+          (u.vehicle_id ? vehicleDepot.get(u.vehicle_id) : undefined)
+        return {
+          id: String(u.id),
+          name: u.full_name,
+          email: u.email ?? '',
+          role: workspaceOf[u.role] ?? 'dispatcher',
+          status: u.is_active ? 'Active' : 'Suspended',
+          onRoute: false,
+          mobile: u.phone ?? undefined,
+          depot,
+          assignment: u.outlet_id ?? u.vehicle_id ?? depot,
+          vehicleId: u.vehicle_id ?? undefined,
+          outletId: u.outlet_id ?? undefined,
+          accessState: 'Ready',
+          username: u.username,
+          joined: u.created_at
+            ? new Date(u.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+            : undefined,
+        }
+      })
+    },
+    async listAudit() {
+      const rows = await audit()
+      return rows.map(
+        (row): AuditEntry => ({
+          id: String(row.id),
+          at: row.at,
+          action: auditTitles[row.action] ?? row.action,
+          detail: auditDetail(row),
+          actor: row.actor ?? 'System',
+          recordId: row.entity_type === 'user' ? row.entity_id : undefined,
+          recordName: typeof row.after?.username === 'string' ? row.after.username : undefined,
+        }),
+      )
+    },
+    async getSummary() {
+      const [people, rows] = await Promise.all([users(), audit()])
+      const active = people.filter((u) => u.is_active).length
+      return {
+        total: people.length,
+        active,
+        invited: 0,
+        suspended: people.length - active,
+        auditEvents: rows.length,
+      }
+    },
+    async listActivity(memberId): Promise<MemberActivity[]> {
+      const rows = await audit()
+      return rows
+        .filter((row) => row.entity_type === 'user' && row.entity_id === memberId)
+        .map((row) => ({
+          when: whenLabel(row.at),
+          title: auditTitles[row.action] ?? row.action,
+          detail: auditDetail(row),
+        }))
+    },
+    invite: unsupported('Invitations by email'),
+    inviteByMobile: unsupported('Invitations by mobile'),
+    async createUser(user) {
+      await request('/admin/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: user.username,
+          password: user.password,
+          full_name: user.name,
+          email: user.email,
+          phone: user.mobile || null,
+          role: apiRoleOf[user.role],
+          outlet_id: user.role === 'store-manager' ? /OUT\d+/.exec(user.assignment)?.[0] : null,
+          vehicle_id: user.role === 'driver' ? /VEH\d+/.exec(user.assignment)?.[0] : null,
+          depot_id: user.role === 'loader' || user.role === 'dispatcher' ? user.depot : null,
+        }),
+      })
+    },
+    completeInvitation: unsupported('Completing an invitation'),
+    async resetAccess(memberId, password) {
+      const temporary = password ?? `Wp-${Math.random().toString(36).slice(2, 10)}`
+      await request(`/admin/users/${memberId}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password: temporary }),
+      })
+    },
+    updateContact: (memberId, contact) =>
+      patch(memberId, { full_name: contact.name, email: contact.email, phone: contact.mobile || null }),
+    requestAccountChange: unsupported('Account change requests'),
+    async changeAssignment(memberId, depot, assignment) {
+      const people = await users()
+      const person = people.find((u) => String(u.id) === memberId)
+      if (!person) throw new Error('That person was not found.')
+      if (person.role === 'STORE_MANAGER') {
+        return patch(memberId, { outlet_id: /OUT\d+/.exec(assignment)?.[0] ?? assignment.trim() })
+      }
+      if (person.role === 'DRIVER') {
+        return patch(memberId, { vehicle_id: /VEH\d+/.exec(assignment)?.[0] ?? assignment.trim() })
+      }
+      return patch(memberId, { depot_id: depot })
+    },
+    reassignTrip: unsupported('Reassigning a trip'),
+    updateRole: (memberId, role) => patch(memberId, { role: apiRoleOf[role] }),
+    suspend: (memberId) => patch(memberId, { is_active: false }),
   }
 }
+
+function createHttpOutletsApi(): OutletsApi {
+  return {
+    async listOutlets() {
+      const outlets = await request<ApiOutlet[]>('/reference/outlets')
+      return outlets.map(profileFromReference).sort((a, b) => a.id.localeCompare(b.id))
+    },
+    async createOutlet(input) {
+      const created = await request<ApiOutlet>('/admin/outlets', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: input.name,
+          brand: input.brand,
+          district: input.district,
+          depot_code: input.depot,
+          parking_constraint: input.parking === 'van_only' ? 'van_only' : null,
+          window_open_time: `${input.earliest}:00`,
+          window_close_time: `${input.latest}:00`,
+        }),
+      })
+      outletRefsCache = undefined
+      return profileFromReference(created)
+    },
+  }
+}
+
+// ── Account preferences (kept on the device) ────────────────────────────────
 
 /** Positions the driver's device could not send yet. Kept on the device, one per vehicle. */
 const PENDING_POSITIONS_KEY = 'waypoint.pendingPositions'
@@ -1660,7 +1901,8 @@ export function createHttpApis(outletId?: string): Apis {
     delivery: createHttpDeliveryApi(),
     fleet: createHttpFleetApi(),
     analytics: createHttpAnalyticsApi(),
-    team: createStubTeamApi() as unknown as Apis['team'],
+    team: createHttpTeamApi(),
+    outlets: createHttpOutletsApi(),
     account: createStubAccountApi() as unknown as Apis['account'],
   }
 }

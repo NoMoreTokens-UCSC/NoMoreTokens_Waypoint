@@ -3,6 +3,12 @@ import { sourceAudit } from './auditReference'
 import type { Order, Snapshot, Vehicle } from '../../domain/models'
 import { sourceTeam, unlistedTeamCounts } from './teamReference'
 import { outletOrderHistory } from './orderHistory'
+import {
+  defaultWindow,
+  outletProfiles,
+  profileFromInput,
+  type OutletProfile,
+} from '../../domain/outlets'
 
 const demand: [string, string, Order['brand'], string, number, number, Order['temperature']][] = [
   ['ORD1042', 'OUT001', 'Fresh', '05:30', 1.2, 120, 'Chilled'],
@@ -72,6 +78,29 @@ export function createEmptySeed(): Snapshot {
   }
 }
 
+/** Every outlet the demo orders mention: the detailed ones, and the rest with their brand's usual hours. */
+function seedOutlets(orders: Order[]): OutletProfile[] {
+  const outlets = outletProfiles.map((outlet) => ({
+    ...outlet,
+    receiving: { ...outlet.receiving },
+  }))
+  for (const order of orders) {
+    if (outlets.some((outlet) => outlet.id === order.outlet)) continue
+    const hours = defaultWindow(order.brand)
+    outlets.push(
+      profileFromInput(order.outlet, {
+        name: order.outletName,
+        brand: order.brand,
+        district: '',
+        depot: 'Peliyagoda',
+        parking: 'normal',
+        ...hours,
+      }),
+    )
+  }
+  return outlets.sort((a, b) => a.id.localeCompare(b.id))
+}
+
 export function createSeed(): Snapshot {
   const orders: Order[] = demand.map(
     ([id, outlet, brand, window, volume, weight, temperature]) => ({
@@ -98,6 +127,8 @@ export function createSeed(): Snapshot {
   const vehicles: Vehicle[] = sourceFleet.map((vehicle) => ({ ...vehicle }))
   return {
     orders,
+    outlets: seedOutlets(orders),
+    outletsVersion: 1,
     vehicles,
     loads: [
       {
@@ -155,6 +186,7 @@ export function createSeed(): Snapshot {
     members: sourceTeam.map((member) => ({ ...member })),
     unlistedTeamCounts: { ...unlistedTeamCounts },
     designDataVersion: 1,
+    teamDetailVersion: 1,
     orderHistory: outletOrderHistory.map((order) => ({ ...order })),
     orderHistoryVersion: 1,
     activeDriverId: 'USR001',

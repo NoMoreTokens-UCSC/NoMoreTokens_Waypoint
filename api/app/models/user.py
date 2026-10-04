@@ -17,14 +17,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
-ROLES = ("DISPATCHER", "LOADER", "DRIVER", "STORE_MANAGER")
+ROLES = ("DISPATCHER", "LOADER", "DRIVER", "STORE_MANAGER", "ADMIN")
 
 
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('DISPATCHER','LOADER','DRIVER','STORE_MANAGER')",
+            "role IN ('DISPATCHER','LOADER','DRIVER','STORE_MANAGER','ADMIN')",
             name="role",
         ),
     )
@@ -35,6 +35,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     full_name: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(20))
+    phone: Mapped[Optional[str]] = mapped_column(String(30), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Role-specific links (nullable)

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
-from app.api.routers import auth, orders, plans, deferrals, loading, driver, reference, health, admin, analytics
+from app.api.routers import auth, orders, plans, deferrals, loading, driver, reference, health, admin, analytics, people
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("waypoint")
@@ -55,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(loading.router, prefix=prefix)           # /api/v1/loading/...
     app.include_router(driver.router, prefix=prefix)            # /api/v1/driver/...
     app.include_router(admin.router, prefix=prefix)             # /api/v1/admin/...
+    app.include_router(people.router, prefix=prefix)            # /api/v1/admin/users, outlets, vehicles, audit
     app.include_router(analytics.router, prefix=prefix)         # /api/v1/analytics/...
 
     # --- Upload serving (dev only; use nginx in prod) ---

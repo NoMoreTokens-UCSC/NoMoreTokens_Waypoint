@@ -145,6 +145,7 @@ export function logout(): void {
 
 export interface ApiOutlet {
   outlet_id: string
+  name?: string | null
   brand: string
   district: string
   depot_code: string
@@ -171,6 +172,7 @@ export interface ApiVehicle {
   km_per_l: number
   weekly_fuel_quota_l: number
   depot_code: string
+  registration?: string | null
 }
 
 export interface ApiDepot {
