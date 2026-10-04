@@ -10,6 +10,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
+from app.models.position import VehiclePosition
+from app.schemas.position import PositionIn, PositionOut
 from app.api.deps import CurrentUser, DbDep, require_role
 from app.core.config import get_settings
 from app.models.delivery import DeliveryEvent
@@ -279,3 +281,44 @@ async def upload_pod(
     with open(dest, "wb") as f:
         f.write(content)
     return {"path": f"/uploads/{filename}"}
+
+
+# ── Live location ─────────────────────────────────────────────────────────────
+
+@router.post("/positions", status_code=status.HTTP_201_CREATED)
+def record_position(body: PositionIn, db: DbDep, current_user: CurrentUser, _: None = _DRIVER):
+    """Store one GPS fix from the driver's device for the vehicle they are assigned to."""
+    if current_user.vehicle_id and body.vehicle_id != current_user.vehicle_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "You can only report your assigned vehicle."},
+        )
+    if not (-90 <= body.lat <= 90 and -180 <= body.lng <= 180) or body.accuracy < 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "BAD_POSITION", "message": "The GPS position is invalid."},
+        )
+    db.add(
+        VehiclePosition(
+            vehicle_id=body.vehicle_id,
+            user_id=current_user.id,
+            lat=body.lat,
+            lng=body.lng,
+            accuracy=body.accuracy,
+            recorded_at=body.recorded_at,
+        )
+    )
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/positions/latest", response_model=list[PositionOut])
+def latest_positions(db: DbDep, current_user: CurrentUser, _: None = _DRIVER):
+    """The most recent fix for each vehicle that has reported one."""
+    rows = (
+        db.query(VehiclePosition)
+        .distinct(VehiclePosition.vehicle_id)
+        .order_by(VehiclePosition.vehicle_id, VehiclePosition.recorded_at.desc())
+        .all()
+    )
+    return rows

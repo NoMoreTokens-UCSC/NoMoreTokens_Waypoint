@@ -90,6 +90,10 @@ export function createLocalApis(service: OperationsService): Apis {
       reviewAllocation: () => service.reviewAllocation(),
       publish: () => service.publish(),
       release: (loadId) => service.release(loadId),
+      closeIntake: () =>
+        service.repository.update((snapshot) => {
+          snapshot.settings.cutoffClosed = true
+        }),
     },
     loading: {
       listLoads: async (filter = {}) =>
@@ -190,6 +194,16 @@ export function createLocalApis(service: OperationsService): Apis {
       listQueue: async () => (await snapshot()).queue,
       sync: (isOnline, options) => service.sync(isOnline, options?.retryFailed ?? true),
       reviewQueuedRecord: (actionId) => service.reviewQueuedRecord(actionId),
+    },
+    analytics: {
+      // The local demo has no history, so the forecast is only available from the backend.
+      demandForecast: async () => ({
+        method: 'Demand forecast needs the backend analytics service.',
+        history: [],
+        forecast: [],
+        capacity: [],
+        backtest: { weeks: [], wapePercent: null, byDepot: {} },
+      }),
     },
     fleet: {
       listVehicles: async () => (await snapshot()).vehicles,

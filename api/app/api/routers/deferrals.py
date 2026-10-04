@@ -16,6 +16,7 @@ from app.models.reference import CalendarDay
 from app.schemas.order import DeferralCreate, DeferralHistoryOut
 from app.schemas.plan import DeferralOut
 from app.services.audit import log_action
+from app.services.calendar import previous_operating_day
 from app.services.state_machine import transition_order
 
 router = APIRouter(prefix="/deferrals", tags=["deferrals"])
@@ -59,14 +60,15 @@ def create_deferral(
             db.delete(old_stop)
             db.flush()
 
-    # Calculate consecutive count for this outlet
+    # Consecutive means the outlet was also deferred on the previous operating day.
+    previous_day = previous_operating_day(db, order.delivery_date)
     last_deferral = (
         db.query(Deferral)
         .join(Order, Deferral.order_id == Order.id)
-        .filter(Order.outlet_id == order.outlet_id)
+        .filter(Order.outlet_id == order.outlet_id, Order.delivery_date == previous_day)
         .order_by(Deferral.decided_at.desc())
         .first()
-    )
+    ) if previous_day else None
     consec = (last_deferral.consecutive_count + 1) if last_deferral else 1
 
     # Check consecutive limit rule BR-07

@@ -5,6 +5,8 @@ export type OrderDraft = Snapshot['drafts'][number]
 export interface OrderFilter {
   outletId?: string
   status?: OrderStatus
+  /** Delivery day, YYYY-MM-DD. */
+  date?: string
 }
 export interface IntakeStatus {
   /** True after the 4 PM cutoff: new demand becomes a draft for the next run. */

@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { RefreshCw, Package, Snowflake, Clock, ArrowRight, PackageCheck, CalendarClock, PackageX } from 'lucide-react'
-import { useOperations, useAction } from '../../../hooks/useOperations'
-import { useServices } from '../../../providers/ServicesContext'
+import { useAction } from '../../../hooks/useOperations'
+import { useApiQuery } from '../../../hooks/useApiQuery'
 import { useApis } from '../../../providers/ApisContext'
 import {
   PageHeading,
@@ -20,25 +20,39 @@ import { OrderTable } from '../organisms/OrderTable'
 import { PlanningSteps } from '../organisms/PlanningSteps'
 
 export default function OrderQueuePage() {
-  const { data } = useOperations(),
-    service = useServices(),
-    apis = useApis(),
+  const apis = useApis(),
     clock = useBusinessClock(),
     action = useAction(),
     [params] = useSearchParams()
   const [search, setSearch] = useState(params.get('search') ?? ''),
     [status, setStatus] = useState('All'),
     [selected, setSelected] = useState<string | null>(null)
-  if (!data) return null
-  const orders = data.orders.filter(
+  // The delivery day in Sri Lanka time, so the queue matches the plan being worked on.
+  const deliveryDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(clock.deliveryDate)
+  // The queue comes from the orders API, so the page never scans the whole workspace.
+  const queue = useApiQuery(['orders', 'queue', deliveryDay], (api) => api.orders.listOrders({ date: deliveryDay }))
+  const all = queue.data ?? []
+  const account = useApiQuery(['account', 'settings'], (api) => api.account.getSettings())
+  if (queue.isPending) return null
+  if (queue.isError) {
+    return (
+      <>
+        <PageHeading title="Orders" description="Turn incoming demand into a feasible delivery plan." />
+        <Notice title="The order queue could not be loaded" tone="danger">
+          Check the connection to the server, then refresh the page.
+        </Notice>
+      </>
+    )
+  }
+  const orders = all.filter(
     (o) =>
       `${o.id} ${o.outlet} ${o.outletName}`.toLowerCase().includes(search.toLowerCase()) &&
       (status === 'All' || o.status === status),
   )
-  const order = data.orders.find((o) => o.id === selected),
-    closed = data.settings.cutoffClosed,
-    deferred = data.orders.filter((o) => o.status === 'Deferred').length,
-    unassigned = data.orders.filter((o) => !o.vehicleId && o.status !== 'Deferred').length
+  const order = all.find((o) => o.id === selected),
+    closed = clock.cutoffClosed,
+    deferred = all.filter((o) => o.status === 'Deferred').length,
+    unassigned = all.filter((o) => !o.vehicleId && o.status !== 'Deferred').length
   return (
     <>
       <PageHeading
@@ -58,14 +72,14 @@ export default function OrderQueuePage() {
       <div className="metrics four">
         <Metric
           label={closed ? 'Confirmed' : 'Incoming'}
-          value={data.orders.length}
+          value={all.length}
           detail={closed ? 'Fixed after cutoff' : 'Total confirmed orders'}
           icon={closed ? <PackageCheck size={17} /> : <Package size={17} />}
         />
         {!closed && (
           <Metric
             label="Chilled"
-            value={data.orders.filter((o) => o.temperature === 'Chilled').length}
+            value={all.filter((o) => o.temperature === 'Chilled').length}
             detail="Chilled orders require a reefer"
             icon={<Snowflake size={17} />}
           />
@@ -82,7 +96,7 @@ export default function OrderQueuePage() {
         {closed && (
           <Metric
             label="Chilled"
-            value={data.orders.filter((o) => o.temperature === 'Chilled').length}
+            value={all.filter((o) => o.temperature === 'Chilled').length}
             detail="Chilled orders require a reefer"
             icon={<Snowflake size={17} />}
           />
@@ -90,8 +104,8 @@ export default function OrderQueuePage() {
         {!closed && (
           <Metric
             label="Cutoff"
-            value="18 min"
-            detail="15:42 · Orders can still change"
+            value="Open"
+            detail="Orders can change until intake closes"
             icon={<Clock size={17} />}
           />
         )}
@@ -108,7 +122,7 @@ export default function OrderQueuePage() {
               onClick={() =>
                 action.run(
                   async () => {
-                    await apis.planning.closeIntake?.()
+                    await apis.planning.closeIntake()
                   },
                   'Intake closed. Orders locked for allocation.',
                 )
@@ -122,7 +136,7 @@ export default function OrderQueuePage() {
           variant="outline"
           size="sm"
           disabled={action.isPending}
-          onClick={() => action.run(() => service.repository.getSnapshot(), 'Queue refreshed')}
+          onClick={() => action.run(() => queue.refetch(), 'Queue refreshed')}
         >
           <RefreshCw size={14} />
           Refresh queue
@@ -139,7 +153,7 @@ export default function OrderQueuePage() {
               >
                 {s}{' '}
                 <span className="ml-1 text-[10px] opacity-60">
-                  {s === 'All' ? data.orders.length : data.orders.filter((o) => o.status === s).length}
+                  {s === 'All' ? all.length : all.filter((o) => o.status === s).length}
                 </span>
               </button>
             ))}
@@ -150,13 +164,13 @@ export default function OrderQueuePage() {
         </div>
         <OrderTable
           orders={orders}
-          compact={data.settings.compactRows}
+          compact={account.data?.compactRows ?? false}
           onSelect={(o) => setSelected(o.id)}
         />
       </Panel>
       {!closed && (
-        <Notice title="Publishing becomes available after the 16:00 cutoff." tone="neutral">
-          Use Demo scenarios to explore the closed-intake state.
+        <Notice title="Publishing becomes available after intake closes." tone="neutral">
+          Close intake when the order window ends. Allocation can start from then.
         </Notice>
       )}
       <Modal

@@ -5,6 +5,15 @@ Each rule is a separate function; all return a list of Violation (empty = pass).
 """
 from __future__ import annotations
 
+import datetime as dt
+from zoneinfo import ZoneInfo
+
+from app.planner.triptime import (
+    FRESH_BUDGET_MIN,
+    OTHER_BUDGET_MIN,
+    budget_group,
+    trip_minutes,
+)
 from app.planner.types import (
     PlannerContext,
     PlannerTrip,
@@ -12,6 +21,15 @@ from app.planner.types import (
     Violation,
 )
 
+
+_LOCAL_TZ = ZoneInfo("Asia/Colombo")
+
+
+def _local_time(moment: dt.datetime) -> dt.time:
+    """Outlet windows are in Sri Lanka time; stored ETAs are UTC when timezone-aware."""
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(_LOCAL_TZ)
+    return moment.time()
 
 def _check_weight(trip: PlannerTrip, ctx: PlannerContext) -> list[Violation]:
     """WEIGHT: total order weight on trip must not exceed vehicle capacity."""
@@ -125,7 +143,7 @@ def _check_window(trip: PlannerTrip, ctx: PlannerContext) -> list[Violation]:
         outlet = ctx.outlets.get(stop.outlet_id)
         if not outlet or not stop.planned_eta:
             continue
-        eta_time = stop.planned_eta.time()
+        eta_time = _local_time(stop.planned_eta)
         if outlet.is_mall and outlet.mall_window_open and outlet.mall_window_close:
             if not (outlet.mall_window_open <= eta_time <= outlet.mall_window_close):
                 violations.append(Violation(
@@ -196,6 +214,113 @@ def _check_not_operating(plan: PlannerPlan, ctx: PlannerContext) -> list[Violati
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
+def _check_brand_district(trip: PlannerTrip, ctx: PlannerContext) -> list[Violation]:
+    """BRAND_DISTRICT: all orders on one vehicle and trip share a brand and a district."""
+    order_brand = {o.order_id: o.brand for o in ctx.orders}
+    brands: set[str] = set()
+    districts: set[str] = set()
+    for stop in trip.stops:
+        outlet = ctx.outlets.get(stop.outlet_id)
+        if outlet:
+            districts.add(outlet.district)
+        for order_id in stop.order_ids:
+            brand = order_brand.get(order_id) or (outlet.brand if outlet else None)
+            if brand:
+                brands.add(brand)
+    violations: list[Violation] = []
+    if len(brands) > 1:
+        violations.append(
+            Violation(
+                rule="BRAND_DISTRICT",
+                trip_vehicle_id=trip.vehicle_id,
+                stop_outlet_id=None,
+                order_id=None,
+                message=f"Trip {trip.vehicle_id}/{trip.trip_number} mixes brands: {', '.join(sorted(brands))}",
+            )
+        )
+    if len(districts) > 1:
+        violations.append(
+            Violation(
+                rule="BRAND_DISTRICT",
+                trip_vehicle_id=trip.vehicle_id,
+                stop_outlet_id=None,
+                order_id=None,
+                message=f"Trip {trip.vehicle_id}/{trip.trip_number} mixes districts: {', '.join(sorted(districts))}",
+            )
+        )
+    return violations
+
+
+def _check_whole_orders(plan: PlannerPlan, ctx: PlannerContext) -> list[Violation]:
+    """WHOLE_ORDER: an order belongs to exactly one vehicle and trip; it is never split."""
+    seen: dict[int, str] = {}
+    violations: list[Violation] = []
+    for trip in plan.trips:
+        where = f"{trip.vehicle_id}/{trip.trip_number}"
+        for stop in trip.stops:
+            for order_id in stop.order_ids:
+                if order_id in seen and seen[order_id] != where:
+                    violations.append(
+                        Violation(
+                            rule="WHOLE_ORDER",
+                            trip_vehicle_id=trip.vehicle_id,
+                            stop_outlet_id=stop.outlet_id,
+                            order_id=order_id,
+                            message=f"Order {order_id} is split across {seen[order_id]} and {where}",
+                        )
+                    )
+                else:
+                    seen[order_id] = where
+    return violations
+
+
+def _check_trip_time(plan: PlannerPlan, ctx: PlannerContext) -> list[Violation]:
+    """TRIP_TIME: a vehicle's daily minutes stay inside the budget for each brand group.
+
+    Fresh has its own budget; Style and Tech share one. Skipped when the reference
+    travel tables are not available.
+    """
+    if not ctx.district_travel:
+        return []
+    order_brand = {o.order_id: o.brand for o in ctx.orders}
+    # (vehicle_id, budget group) -> minutes used
+    used: dict[tuple[str, str], float] = {}
+    for trip in plan.trips:
+        vehicle = ctx.vehicles.get(trip.vehicle_id)
+        if not vehicle:
+            continue
+        outlet_ids = [stop.outlet_id for stop in trip.stops for _ in stop.order_ids]
+        if not outlet_ids:
+            continue
+        first_outlet = ctx.outlets.get(trip.stops[0].outlet_id)
+        district = first_outlet.district if first_outlet else None
+        brand = next(
+            (order_brand[oid] for stop in trip.stops for oid in stop.order_ids if oid in order_brand),
+            first_outlet.brand if first_outlet else None,
+        )
+        minutes = trip_minutes(ctx, vehicle.depot_code, district, brand, outlet_ids)
+        key = (trip.vehicle_id, budget_group(brand))
+        used[key] = used.get(key, 0.0) + minutes
+
+    violations: list[Violation] = []
+    for (vehicle_id, group), minutes in sorted(used.items()):
+        budget = FRESH_BUDGET_MIN if group == "Fresh" else OTHER_BUDGET_MIN
+        if minutes > budget:
+            violations.append(
+                Violation(
+                    rule="TRIP_TIME",
+                    trip_vehicle_id=vehicle_id,
+                    stop_outlet_id=None,
+                    order_id=None,
+                    message=(
+                        f"Vehicle {vehicle_id} uses {minutes:.0f} of {budget:.0f} "
+                        f"{group} minutes for the day"
+                    ),
+                )
+            )
+    return violations
+
+
 def validate_trip(trip: PlannerTrip, ctx: PlannerContext) -> list[Violation]:
     violations: list[Violation] = []
     violations.extend(_check_weight(trip, ctx))
@@ -204,12 +329,15 @@ def validate_trip(trip: PlannerTrip, ctx: PlannerContext) -> list[Violation]:
     violations.extend(_check_van_only(trip, ctx))
     violations.extend(_check_depot(trip, ctx))
     violations.extend(_check_window(trip, ctx))
+    violations.extend(_check_brand_district(trip, ctx))
     return violations
 
 
 def validate_plan(plan: PlannerPlan, ctx: PlannerContext) -> list[Violation]:
     violations: list[Violation] = []
     violations.extend(_check_max_trips(plan, ctx))
+    violations.extend(_check_whole_orders(plan, ctx))
+    violations.extend(_check_trip_time(plan, ctx))
     violations.extend(_check_fuel(plan, ctx))
     violations.extend(_check_not_operating(plan, ctx))
     for trip in plan.trips:
