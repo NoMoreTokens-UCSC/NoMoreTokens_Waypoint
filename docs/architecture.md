@@ -21,7 +21,7 @@ flowchart LR
     Contract --> Http
     Contract --> Local
     Roles --> Offline
-    Browser --- SW
+    Offline --- SW
   end
 
   subgraph API["FastAPI backend"]
