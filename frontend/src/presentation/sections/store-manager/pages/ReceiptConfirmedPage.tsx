@@ -1,3 +1,4 @@
+import { orderNumber } from '../lib/orderView'
 import { useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { formatLongDate } from '../../../../domain/calendar'
@@ -25,7 +26,7 @@ export default function ReceiptConfirmedPage() {
     <StorePage>
       <PageIntro
         title="Receipt confirmed"
-        context={`${order.id} · ${outletId}${at ? ` · ${formatLongDate(at)} · ${clock12(at)}` : ''}`}
+        context={`${orderNumber(order)} · ${outletId}${at ? ` · ${formatLongDate(at)} · ${clock12(at)}` : ''}`}
       />
       <section className="sm-panel sm-result" aria-label="Receipt">
         <Pill>Receipt confirmed</Pill>
@@ -43,7 +44,7 @@ export default function ReceiptConfirmedPage() {
           </Callout>
         )}
         <Callout tone="success" title="Acknowledgment saved">
-          The receipt record is linked to {order.id} and its driver delivery photograph.
+          The receipt record is linked to {orderNumber(order)} and its driver delivery photograph.
         </Callout>
         <div className="sm-actions">
           <Action variant="outline" onClick={() => setPhoto(true)}>
@@ -58,7 +59,7 @@ export default function ReceiptConfirmedPage() {
       <ProofDialog
         open={photo}
         onClose={() => setPhoto(false)}
-        orderId={order.id}
+        orderId={orderNumber(order)}
         outletId={outletId}
         url={proof.url}
         capturedAt={proof.capturedAt}

@@ -24,6 +24,11 @@ export interface OutletProfile {
   mall: boolean
   /** How often this brand orders: Style weekly for a scheduled day, Tech as needed. */
   schedule: string
+  /**
+   * The outlet's own delivery window ("HH:MM"), fixed in the outlet data (a mall's access window for
+   * mall outlets). Orders do not carry a window of their own. Unset where the source has none.
+   */
+  window?: { start: string; end: string }
 }
 
 export const outletProfiles: OutletProfile[] = [
@@ -150,6 +155,10 @@ export function profileFromReference(outlet: {
           reason: `The mall only accepts deliveries between ${clock12(mallOpen)} and ${clock12(mallClose)}.`,
         }
       : rules.receiving
+  const openAt = hhmm(outlet.window_open_time)
+  const closeAt = hhmm(outlet.window_close_time)
+  const start = outlet.is_mall && mallOpen && mallClose ? mallOpen : openAt
+  const end = outlet.is_mall && mallOpen && mallClose ? mallClose : closeAt
   return {
     id: outlet.outlet_id,
     name: `${brand} ${outlet.district}`,
@@ -159,6 +168,7 @@ export function profileFromReference(outlet: {
     mall: outlet.is_mall,
     receiving,
     schedule: rules.schedule,
+    window: start && end ? { start, end } : undefined,
   }
 }
 

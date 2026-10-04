@@ -192,6 +192,11 @@ export function createLocalApis(service: OperationsService): Apis {
       reviewQueuedRecord: (actionId) => service.reviewQueuedRecord(actionId),
     },
     fleet: {
+      // The demo's two depots; a backend serves these from its reference data.
+      listDepots: async () => [
+        { code: 'Peliyagoda', name: 'Peliyagoda Distribution Centre', lat: 6.953, lng: 79.884 },
+        { code: 'Kandy', name: 'Kandy Distribution Centre', lat: 7.2906, lng: 80.6337 },
+      ],
       listVehicles: async () => (await snapshot()).vehicles,
       getVehicle: async (vehicleId) =>
         (await snapshot()).vehicles.find((vehicle) => vehicle.id === vehicleId),

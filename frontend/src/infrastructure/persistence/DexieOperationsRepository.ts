@@ -10,11 +10,23 @@ import { outletOrderHistory } from '../demo/orderHistory'
 
 export class DexieOperationsRepository implements OperationsRepository {
   private ready: Promise<void> | undefined
-  constructor(private db: WaypointDatabase) {}
+  /**
+   * `seed` is what a fresh browser starts with (the demo's sample data by default). `purgeDemo` replaces
+   * sample data that an earlier demo session left in this browser, once, for use with a real backend.
+   */
+  constructor(
+    private db: WaypointDatabase,
+    private options: { seed?: () => Snapshot; purgeDemo?: boolean } = {},
+  ) {}
+  private seed() {
+    return (this.options.seed ?? createSeed)()
+  }
   private initialize() {
     this.ready ??= this.db.transaction('rw', this.db.snapshots, this.db.queue, async () => {
-      if (!(await this.db.snapshots.get('workspace'))) {
-        const { queue, ...data } = createSeed()
+      const stored = await this.db.snapshots.get('workspace')
+      if (!stored || (this.options.purgeDemo && !stored.data.demoPurged)) {
+        const { queue, ...data } = this.seed()
+        if (stored) await this.db.queue.clear()
         await this.db.snapshots.put({ id: 'workspace', data })
         if (queue.length) await this.db.queue.bulkPut(queue)
       }
@@ -205,7 +217,7 @@ export class DexieOperationsRepository implements OperationsRepository {
         await this.db.queue.clear()
         await this.db.evidence.clear()
         await this.db.driverProofDrafts.clear()
-        const { queue: _queue, ...data } = createSeed()
+        const { queue: _queue, ...data } = this.seed()
         void _queue
         await this.db.snapshots.put({ id: 'workspace', data })
       },

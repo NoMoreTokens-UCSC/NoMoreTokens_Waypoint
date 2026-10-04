@@ -1,3 +1,4 @@
+import { orderNumber } from '../lib/orderView'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { formatLongDate } from '../../../../domain/calendar'
 import { clock12 } from '../lib/timeText'
@@ -38,7 +39,7 @@ export default function ReceiptPage() {
     <StorePage>
       <PageIntro
         title="Confirm receipt"
-        context={`${order.id} · ${outletId}${deliveredAt ? ` · Delivered ${formatLongDate(deliveredAt)} at ${clock12(deliveredAt)}` : ''}`}
+        context={`${orderNumber(order)} · ${outletId}${deliveredAt ? ` · Delivered ${formatLongDate(deliveredAt)} at ${clock12(deliveredAt)}` : ''}`}
       />
       <Callout tone="success" title="Delivery recorded by the driver">
         A delivery photo is attached. Count and inspect the goods before confirming receipt.
@@ -61,7 +62,7 @@ export default function ReceiptPage() {
               onClick={() =>
                 action.send(
                   { kind: 'receipt', orderId: order.id },
-                  `Confirm receipt of ${order.id}`,
+                  `Confirm receipt of ${orderNumber(order)}`,
                   () => navigate(`${base}/receipt/confirmed`),
                 )
               }
@@ -75,9 +76,9 @@ export default function ReceiptPage() {
         </section>
         <section className="sm-card sm-photo" aria-label="Delivery photograph">
           <h2>Delivery photograph</h2>
-          <ProofImage url={proof.url} alt={`Delivery photograph for ${order.id}`} />
+          <ProofImage url={proof.url} alt={`Delivery photograph for ${orderNumber(order)}`} />
           <p className="sm-photo-caption">
-            {order.id}
+            {orderNumber(order)}
             {captured ? ` · Captured ${clock12(captured)}` : ''}
             <br />
             Submitted by the driver{order.vehicleId ? ` · Vehicle ${order.vehicleId}` : ''}

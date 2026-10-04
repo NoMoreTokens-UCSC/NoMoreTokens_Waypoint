@@ -1,3 +1,4 @@
+import { orderNumber } from '../lib/orderView'
 import { useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { formatLongDate } from '../../../../domain/calendar'
@@ -26,7 +27,7 @@ export default function IssueSubmittedPage() {
     <StorePage>
       <PageIntro
         title="Issue submitted"
-        context={`${order.id} · ${outletId} · ${formatLongDate(report.recordedAt)} · ${clock12(report.recordedAt)}`}
+        context={`${orderNumber(order)} · ${outletId} · ${formatLongDate(report.recordedAt)} · ${clock12(report.recordedAt)}`}
       />
       <section className="sm-panel sm-result" aria-label="Issue">
         <Pill tone="amber">Open · Awaiting review</Pill>
@@ -65,7 +66,7 @@ export default function IssueSubmittedPage() {
       <ProofDialog
         open={photo}
         onClose={() => setPhoto(false)}
-        orderId={order.id}
+        orderId={orderNumber(order)}
         outletId={outletId}
         url={proof.url}
         capturedAt={proof.capturedAt}
