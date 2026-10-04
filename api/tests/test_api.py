@@ -203,6 +203,70 @@ class TestDriverSync:
         assert resp2.json()[0]["accepted"] is True
         assert resp2.json()[0].get("message") == "duplicate"
 
+    def test_sync_partial_failure(self, client, driver_token, db_session):
+        from app.models.plan import Plan, Trip, Stop
+        from app.models.reference import Depot, Outlet, Vehicle
+        import datetime as dt
+
+        depot = Depot(code="PF_DEPOT", name="PF Depot", lat=7.0, lng=80.0)
+        db_session.add(depot)
+        db_session.flush()
+
+        outlet = Outlet(
+            outlet_id="PF001", brand="Fresh", district="Colombo",
+            depot_code="PF_DEPOT", dock_type="street", van_only=False, is_mall=False,
+        )
+        db_session.add(outlet)
+
+        vehicle = Vehicle(
+            vehicle_id="VPF001", type="van", temp="ambient",
+            is_refrigerated=False, weight_cap_kg=1000, volume_cap_m3=5,
+            fuel_type="diesel", km_per_l=10, weekly_fuel_quota_l=200,
+            depot_code="PF_DEPOT",
+        )
+        db_session.add(vehicle)
+        db_session.flush()
+
+        plan = Plan(delivery_date=dt.date(2024, 4, 11), status="PUBLISHED")
+        db_session.add(plan)
+        db_session.flush()
+
+        trip = Trip(plan_id=plan.id, vehicle_id="VPF001", trip_number=1, status="IN_TRANSIT")
+        db_session.add(trip)
+        db_session.flush()
+
+        stop = Stop(trip_id=trip.id, outlet_id="PF001", sequence=1, status="ARRIVED")
+        db_session.add(stop)
+        db_session.flush()
+
+        batch = {
+            "events": [
+                {
+                    "client_op_id": "op_valid_1",
+                    "stop_id": stop.id,
+                    "outcome": "DELIVERED",
+                    "receiver_name": "Valid User",
+                },
+                {
+                    "client_op_id": "op_invalid_9999",
+                    "stop_id": 999999,  # Non-existent stop
+                    "outcome": "DELIVERED",
+                }
+            ]
+        }
+        headers = {"Authorization": f"Bearer {driver_token}"}
+        resp = client.post("/api/v1/driver/sync", json=batch, headers=headers)
+        assert resp.status_code == 200
+        res = resp.json()
+        assert len(res) == 2
+        assert res[0]["accepted"] is True
+        assert res[1]["accepted"] is False
+        assert res[1]["message"] == "stop_not_found"
+
+        # Verify valid stop was committed
+        db_session.refresh(stop)
+        assert stop.status == "COMPLETED"
+
 
 class TestHealth:
     def test_health(self, client):
