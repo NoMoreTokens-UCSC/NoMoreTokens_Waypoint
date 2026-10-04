@@ -1,6 +1,6 @@
 import type { Order } from '../../../../domain/models'
 import { receiptLabel } from './orderList'
-import { issueReference, kindSlash } from './orderView'
+import { issueReference, kindSlash, orderNumber } from './orderView'
 
 export type FeedKind = 'order' | 'delivery' | 'deferral' | 'receipt' | 'issue'
 export interface FeedEvent {
@@ -28,7 +28,7 @@ export const feedFilters: { value: FeedKind | 'all'; label: string }[] = [
 export function buildFeed(orders: Order[]): FeedEvent[] {
   const events: FeedEvent[] = []
   for (const order of orders) {
-    const what = `${order.id} · ${kindSlash(order)}`
+    const what = `${orderNumber(order)} · ${kindSlash(order)}`
     const add = (
       kind: FeedKind,
       suffix: string,

@@ -1,3 +1,4 @@
+import { realBackend } from '../../../session/realBackend'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { formatClock, formatLongDate, formatWeekday } from '../../../../domain/calendar'
@@ -10,7 +11,6 @@ import {
   Action,
   ActionLink,
   Callout,
-  FieldInput,
   OfflineNotice,
   PageIntro,
   Pill,
@@ -23,8 +23,9 @@ import {
 import { ParcelIcon } from '../components/StoreIcons'
 import { WindowPicker } from '../components/WindowPicker'
 import { cutoffLabel } from '../lib/cutoff'
+import { formatTime12 } from '../lib/windows'
 import { parseForm, useOrderForm } from '../lib/orderForm'
-import { orderKinds, temperatures, totals } from '../lib/orderView'
+import { orderKinds, temperatures, totals, orderNumber } from '../lib/orderView'
 import { useOnline } from '../lib/useOnline'
 import { deliveryDayLabel, lastOrders } from '../lib/orderList'
 import { useStoreHistory, useStoreOrders, useStoreProfile } from '../lib/useStore'
@@ -37,18 +38,21 @@ export default function CreateOrdersPage() {
   if (!loaded) return null
   // Style and Tech order as one order on their own schedule; the Fresh form is two orders a day.
   if (profile && profile.brand !== 'Fresh') return <BrandOrderPage profile={profile} />
-  return clock.cutoffPassed ? <CutoffPassed /> : <CreateOrders />
+  // With a server, late orders are simply placed for the following run; the draft screen is for the demo.
+  return clock.cutoffPassed && !realBackend ? <CutoffPassed /> : <CreateOrders />
 }
 
 function CreateOrders() {
   const navigate = useNavigate()
   const clock = useBusinessClock()
   const online = useOnline()
-  const { orders, outletId, byTemperature } = useStoreOrders()
+  const { orders, outletId, byTemperature } = useStoreOrders('next')
   const { history } = useStoreHistory()
+  const { profile } = useStoreProfile()
+  const fixedWindow = profile?.window
   const previous = lastOrders(history)
   const form = useOrderForm(orders)
-  const parsed = parseForm(form.values, form.included)
+  const parsed = parseForm(form.values, form.included, fixedWindow)
   const placing = temperatures.filter((temperature) => form.included[temperature])
   const typed = totals(
     placing.map((temperature) => ({
@@ -73,9 +77,15 @@ function CreateOrders() {
     <StorePage>
       <PageIntro
         title="Create orders"
-        context={`Delivery ${formatLongDate(clock.deliveryDate)} · ${outletId}`}
+        context={`Delivery ${formatLongDate(clock.orderDate)} · ${outletId}`}
       />
       {!online && <OfflineNotice cutoff={cutoffLabel(clock.cutoff)} />}
+      {clock.cutoffPassed ? (
+        <Callout title="Today’s cutoff has passed">
+          {formatWeekday(clock.deliveryDate)}’s intake is locked. Orders you place now are for{' '}
+          {formatLongDate(clock.orderDate)}, the following run.
+        </Callout>
+      ) : null}
       <Callout title={`Confirm before ${cutoffLabel(clock.cutoff)}`}>
         {outletId} · Fresh only. Dry groceries are ordered every operating day; chilled groceries
         only on the days you need them. Check quantities and receiving windows.
@@ -138,37 +148,30 @@ function CreateOrders() {
                       onChange={(next) => form.change(temperature, 'cases', next)}
                       onStep={(by) => form.stepCases(temperature, by)}
                     />
-                    <FieldInput
-                      label="Weight · kg"
-                      inputMode="decimal"
-                      value={values.weight}
-                      error={problems?.weight}
-                      onChange={(event) => form.change(temperature, 'weight', event.target.value)}
-                    />
-                    <FieldInput
-                      label="Volume · m³"
-                      inputMode="decimal"
-                      value={values.volume}
-                      error={problems?.volume}
-                      onChange={(event) => form.change(temperature, 'volume', event.target.value)}
-                    />
                   </div>
                   <p className="sm-note">
-                    {values.adjusted
-                      ? 'Weight and volume are as you entered them.'
-                      : 'Weight and volume follow the number of cases. Change them if you know the exact figures.'}
+                    {Number(values.cases) > 0
+                      ? `Estimated load · ${values.weight} kg · ${values.volume} m³, worked out from the number of cases.`
+                      : 'Enter the number of cases. The weight and volume are worked out for you.'}
                   </p>
-                  <WindowPicker
-                    value={values.window}
-                    error={problems?.window}
-                    onChange={(next) => form.setWindow(temperature, next)}
-                  />
+                  {fixedWindow ? (
+                    <p className="sm-note">
+                      Receiving window · {formatTime12(fixedWindow.start)} –{' '}
+                      {formatTime12(fixedWindow.end)}, set for your outlet
+                    </p>
+                  ) : (
+                    <WindowPicker
+                      value={values.window}
+                      error={problems?.window}
+                      onChange={(next) => form.setWindow(temperature, next)}
+                    />
+                  )}
                   <p className="sm-note">{kind.rule}</p>
                 </>
               ) : (
                 <p className="sm-muted">
                   {existing
-                    ? `No change to your ${kind.short.toLowerCase()} order ${existing.id}. It stays as it is.`
+                    ? `No change to your ${kind.short.toLowerCase()} order ${orderNumber(existing)}. It stays as it is.`
                     : `You are not placing a ${kind.short.toLowerCase()} order for this delivery.`}
                 </p>
               )}
@@ -199,8 +202,9 @@ function CutoffPassed() {
   const action = useStoreAction()
   const clock = useBusinessClock()
   const { orders, outletId } = useStoreOrders()
+  const { profile } = useStoreProfile()
   const form = useOrderForm(orders)
-  const parsed = parseForm(form.values, form.included)
+  const parsed = parseForm(form.values, form.included, profile?.window)
   const draft = totals(parsed.inputs)
   const missed = formatWeekday(clock.deliveryDate)
   const next = formatWeekday(clock.nextRunDate)

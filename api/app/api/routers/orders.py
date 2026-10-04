@@ -16,7 +16,7 @@ from app.models.issue import Issue
 from app.models.order import Order, OrderLine
 from app.models.plan import Plan, Stop, StopOrder, Trip
 from app.models.receipt import Receipt
-from app.models.reference import Outlet
+from app.models.reference import CalendarDay, Outlet
 from app.schemas.order import (
     DeferralHistoryOut,
     IssueCreate,
@@ -28,6 +28,7 @@ from app.schemas.order import (
 from app.schemas.plan import StopOut
 from app.services.audit import log_action
 from app.services.calendar import previous_operating_day
+from app.services.order_sizing import MAX_UNITS, TECH_ITEM_KG, estimate_load
 from app.services.state_machine import transition_order
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -41,6 +42,84 @@ def _generate_reference(db: Session, delivery_date: dt.date) -> str:
         or 0
     )
     return f"ORD-{delivery_date.strftime('%Y%m%d')}-{count + 1:04d}"
+
+
+def _intake_closed(db: Session, delivery_date: dt.date) -> bool:
+    """True once orders for `delivery_date` can no longer join its plan."""
+    published_plan = (
+        db.query(Plan)
+        .filter(Plan.delivery_date == delivery_date, Plan.status == "PUBLISHED")
+        .first()
+    )
+    unclosed_count = (
+        db.query(Order)
+        .filter(Order.delivery_date == delivery_date, Order.status.in_(["PLACED", "CONFIRMED"]))
+        .count()
+    )
+    total_count = db.query(Order).filter(Order.delivery_date == delivery_date).count()
+    # A close is recorded for one delivery day, so match the day stored with it.
+    intake_closed_log = any(
+        (log.after_json or {}).get("delivery_date") == str(delivery_date)
+        for log in db.query(AuditLog).filter(
+            AuditLog.action == "CLOSE_INTAKE", AuditLog.entity_type == "Intake"
+        )
+    )
+    return (
+        clock.is_past_cutoff()
+        or intake_closed_log
+        or (total_count > 0 and unclosed_count == 0)
+        or published_plan is not None
+    )
+
+
+def _next_operating_day(db: Session, after: dt.date) -> dt.date:
+    """The next delivery day after `after`: Monday to Saturday, skipping holidays in the calendar."""
+    day = after
+    for _ in range(14):
+        day += dt.timedelta(days=1)
+        entry = db.get(CalendarDay, day)
+        if entry is None:
+            if day.weekday() != 6:
+                return day
+        elif entry.is_operating and not entry.is_holiday:
+            return day
+    return after + dt.timedelta(days=1)
+
+
+def _order_day(db: Session) -> dt.date:
+    """The day an order placed now is delivered. After the cutoff it waits for the following run."""
+    planning_day = clock.delivery_date()
+    return _next_operating_day(db, planning_day) if _intake_closed(db, planning_day) else planning_day
+
+
+def _check_quantity(brand: str, units: int, temperature_class: str, weight: Optional[float] = None) -> None:
+    """Reject orders the business cannot have: bad counts, chilled goods outside Fresh, odd Tech weights."""
+    if temperature_class not in ("CHILLED", "AMBIENT"):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_TEMPERATURE", "message": "Temperature must be CHILLED or AMBIENT."},
+        )
+    if temperature_class == "CHILLED" and brand != "Fresh":
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_TEMPERATURE", "message": "Only Fresh orders can be chilled."},
+        )
+    most = MAX_UNITS.get(brand, MAX_UNITS["Fresh"])
+    if units < 1 or units > most:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_QUANTITY", "message": f"An order has 1 to {most} units."},
+        )
+    if weight is not None and brand == "Tech":
+        low, high = TECH_ITEM_KG[0] * units, TECH_ITEM_KG[1] * units
+        if not low <= weight <= high:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "INVALID_WEIGHT",
+                    "message": f"{units} Tech item(s) weigh between {low:g} and {high:g} kg.",
+                },
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -64,23 +143,30 @@ def create_order(
 
     outlet = db.query(Outlet).filter(Outlet.outlet_id == body.outlet_id).first()
     brand = body.brand or (outlet.brand if outlet else "Fresh")
-    delivery_date = body.delivery_date or clock.delivery_date()
-    # A Fresh outlet orders at most one dry and one chilled order per delivery day;
-    # a second one of the same type must edit the existing order instead.
-    if brand == "Fresh":
+    # Orders placed after the cutoff wait for the following run (the next operating day).
+    delivery_date = body.delivery_date or _order_day(db)
+    total_cases = body.total_cases if body.total_cases > 0 else (body.cases or 0)
+    stated_weight = body.total_weight if (body.total_weight or 0) > 0 else None
+    _check_quantity(brand, total_cases, body.temperature_class, stated_weight)
+    # A Fresh outlet orders at most one dry and one chilled order per delivery day, and a Style outlet
+    # one order a day (as in the training data); a second one must edit the existing order instead.
+    if brand in ("Fresh", "Style"):
+        same_kind = [Order.temperature_class == body.temperature_class] if brand == "Fresh" else []
         existing = (
             db.query(Order)
             .filter(
                 Order.outlet_id == body.outlet_id,
                 Order.delivery_date == delivery_date,
-                Order.brand == "Fresh",
-                Order.temperature_class == body.temperature_class,
+                Order.brand == brand,
                 Order.status != "CANCELLED",
+                *same_kind,
             )
             .first()
         )
         if existing:
-            kind = "chilled" if body.temperature_class == "CHILLED" else "dry"
+            kind = (
+                "Style" if brand == "Style" else "chilled" if body.temperature_class == "CHILLED" else "dry"
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
@@ -89,19 +175,18 @@ def create_order(
                     "order_id": existing.id,
                 },
             )
-    total_cases = body.total_cases if body.total_cases > 0 else (body.cases or 0)
-    total_weight = (
-        body.total_weight
-        if (body.total_weight is not None and body.total_weight > 0)
-        else round(total_cases * 12.0, 2)
-    )
-    total_volume = (
-        body.total_volume
-        if (body.total_volume is not None and body.total_volume > 0)
-        else round(total_cases * 0.04, 3)
-    )
+    # Weight and volume follow from the units. A store's own figures are not trusted, since the
+    # plan's capacity checks depend on them; a dispatcher entering an order by hand may set them.
+    total_weight, total_volume = estimate_load(brand, total_cases)
+    if brand == "Tech" and stated_weight is not None:
+        total_weight = stated_weight  # a store may state its Tech items' weight (checked above)
+    if current_user.role == "DISPATCHER":
+        if body.total_weight is not None and body.total_weight > 0:
+            total_weight = body.total_weight
+        if body.total_volume is not None and body.total_volume > 0:
+            total_volume = body.total_volume
 
-    past_cutoff = clock.is_past_cutoff()
+    past_cutoff = clock.is_past_cutoff() or delivery_date != clock.delivery_date()
     # An outlet skipped on the previous operating day gets priority on its next order.
     skipped_yesterday = (
         db.query(Deferral)
@@ -192,31 +277,18 @@ def list_order_stops(
 @router.get("/intake-status")
 def get_intake_status(db: DbDep, current_user: CurrentUser):
     """Return whether cutoff is passed and whether a plan has been published for tomorrow's delivery."""
-    past_cutoff = clock.is_past_cutoff()
     delivery_date = clock.delivery_date()
     published_plan = (
         db.query(Plan)
         .filter(Plan.delivery_date == delivery_date, Plan.status == "PUBLISHED")
         .first()
     )
-    unclosed_count = (
-        db.query(Order)
-        .filter(Order.delivery_date == delivery_date, Order.status.in_(["PLACED", "CONFIRMED"]))
-        .count()
-    )
-    total_count = db.query(Order).filter(Order.delivery_date == delivery_date).count()
-    # A close is for one delivery day only, so match the day recorded with it.
-    intake_closed_log = any(
-        (log.after_json or {}).get("delivery_date") == str(delivery_date)
-        for log in db.query(AuditLog).filter(
-            AuditLog.action == "CLOSE_INTAKE", AuditLog.entity_type == "Intake"
-        )
-    )
-    is_closed = past_cutoff or intake_closed_log or (total_count > 0 and unclosed_count == 0) or published_plan is not None
     return {
-        "cutoff_closed": is_closed,
+        "cutoff_closed": _intake_closed(db, delivery_date),
         "published": published_plan is not None,
         "delivery_date": str(delivery_date),
+        # The day an order placed now is delivered; later than `delivery_date` once intake has closed.
+        "next_delivery_date": str(_order_day(db)),
         "now": clock.now().isoformat(),
     }
 
@@ -340,17 +412,17 @@ def update_order(
     before = {"total_cases": order.total_cases, "total_weight": order.total_weight, "total_volume": order.total_volume}
     new_cases = body.cases if body.cases is not None else body.total_cases
     if new_cases is not None:
+        stated = body.total_weight if (body.total_weight or 0) > 0 else None
+        _check_quantity(order.brand, new_cases, order.temperature_class, stated)
         order.total_cases = new_cases
-        order.total_weight = (
-            body.total_weight
-            if (body.total_weight is not None and body.total_weight > 0)
-            else round(new_cases * 12.0, 2)
-        )
-        order.total_volume = (
-            body.total_volume
-            if (body.total_volume is not None and body.total_volume > 0)
-            else round(new_cases * 0.04, 3)
-        )
+        order.total_weight, order.total_volume = estimate_load(order.brand, new_cases)
+        if order.brand == "Tech" and stated is not None:
+            order.total_weight = stated
+        if current_user.role == "DISPATCHER":
+            if body.total_weight is not None and body.total_weight > 0:
+                order.total_weight = body.total_weight
+            if body.total_volume is not None and body.total_volume > 0:
+                order.total_volume = body.total_volume
     if body.notes is not None:
         order.notes = body.notes
 
