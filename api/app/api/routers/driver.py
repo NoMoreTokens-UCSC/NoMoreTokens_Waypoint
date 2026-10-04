@@ -220,37 +220,44 @@ def sync_events(body: SyncBatch, db: DbDep, current_user: CurrentUser, _: None =
                 results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=True, message="duplicate"))
                 continue
             try:
-                stop = db.get(Stop, event_in.stop_id)
-                if not stop:
-                    results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=False, message="stop_not_found"))
-                    continue
-                event = DeliveryEvent(
-                    stop_id=event_in.stop_id,
-                    order_id=event_in.order_id,
-                    outcome=event_in.outcome,
-                    note=event_in.note,
-                    pod_photo_path=event_in.pod_photo_path,
-                    pod_signature_path=event_in.pod_signature_path,
-                    receiver_name=event_in.receiver_name,
-                    receiver_pin_ok=event_in.receiver_pin_ok,
-                    recorded_at=event_in.recorded_at,
-                    client_op_id=event_in.client_op_id,
-                    recorded_by=current_user.id,
-                )
-                db.add(event)
-                _process_delivery_event(db, stop, event_in, current_user.id)
-                db.flush()
-                results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=True))
+                with db.begin_nested():
+                    stop = db.get(Stop, event_in.stop_id)
+                    if not stop:
+                        results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=False, message="stop_not_found"))
+                        continue
+                    event = DeliveryEvent(
+                        stop_id=event_in.stop_id,
+                        order_id=event_in.order_id,
+                        outcome=event_in.outcome,
+                        note=event_in.note,
+                        pod_photo_path=event_in.pod_photo_path,
+                        pod_signature_path=event_in.pod_signature_path,
+                        receiver_name=event_in.receiver_name,
+                        receiver_pin_ok=event_in.receiver_pin_ok,
+                        recorded_at=event_in.recorded_at,
+                        client_op_id=event_in.client_op_id,
+                        recorded_by=current_user.id,
+                    )
+                    db.add(event)
+                    _process_delivery_event(db, stop, event_in, current_user.id)
+                    db.flush()
+                    results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=True))
             except IntegrityError:
-                db.rollback()
                 results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=True, message="duplicate"))
+            except Exception as exc:
+                results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=False, message=str(exc)))
         else:
-            stop = db.get(Stop, event_in.stop_id)
-            if not stop:
-                results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=False, message="stop_not_found"))
-                continue
-            _process_delivery_event(db, stop, event_in, current_user.id)
-            results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=True))
+            try:
+                with db.begin_nested():
+                    stop = db.get(Stop, event_in.stop_id)
+                    if not stop:
+                        results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=False, message="stop_not_found"))
+                        continue
+                    _process_delivery_event(db, stop, event_in, current_user.id)
+                    db.flush()
+                    results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=True))
+            except Exception as exc:
+                results.append(DeliveryEventResult(client_op_id=event_in.client_op_id, accepted=False, message=str(exc)))
     db.commit()
     return results
 

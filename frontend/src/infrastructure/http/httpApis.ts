@@ -841,53 +841,39 @@ function createHttpDeliveryApi(): DeliveryApi {
     },
 
     async arrive(stopId) {
-      const id = crypto.randomUUID()
-      await request(`/driver/stops/${stopId}/events`, {
-        method: 'POST',
-        body: JSON.stringify({
-          client_op_id: id,
-          stop_id: Number(stopId),
-          outcome: 'ARRIVED',
-        }),
-      })
+      const opId = `op_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
+      try {
+        await request(`/driver/stops/${stopId}/events`, {
+          method: 'POST',
+          body: JSON.stringify({
+            client_op_id: opId,
+            stop_id: Number(stopId),
+            outcome: 'ARRIVED',
+          }),
+        })
+      } catch {
+        // Offline fallback: queue arrival event for later sync
+        await localDb.queue.put({
+          id: opId,
+          evidenceId: opId,
+          stopId,
+          createdAt: new Date().toISOString(),
+          status: 'pending',
+          attempts: 0,
+          revision: 1,
+          kind: 'delivery',
+        })
+      }
     },
 
     async saveProof(stopId, proof) {
-      const id = crypto.randomUUID()
+      const opId = `op_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
       let photoUrl = ''
-      if (proof.photo) {
-        const form = new FormData()
-        form.append('file', proof.photo)
-        form.append('stop_id', stopId)
-        const uploadResp = await request<{ path: string }>('/driver/uploads', {
-          method: 'POST',
-          body: form,
-        }).catch(() => null)
-        if (uploadResp?.path) {
-          const serverOrigin = (
-            import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
-          ).replace(/\/api\/v1\/?$/, '')
-          photoUrl = `${serverOrigin}${uploadResp.path}`
-        }
-      }
 
-      await request(`/driver/stops/${stopId}/events`, {
-        method: 'POST',
-        body: JSON.stringify({
-          client_op_id: id,
-          stop_id: Number(stopId),
-          outcome: 'DELIVERED',
-          note: `Delivered ${proof.quantity} cases`,
-          pod_photo_path: photoUrl || null,
-          receiver_name: proof.receiver || null,
-          receiver_pin_ok: true,
-        }),
-      })
-
-      const evidenceId = photoUrl || id
+      // 1. Always store full evidence locally in IndexedDB first
       await localDb.evidence
         .put({
-          id: evidenceId,
+          id: opId,
           kind: 'delivery',
           entityId: stopId,
           photo: proof.photo,
@@ -899,67 +885,187 @@ function createHttpDeliveryApi(): DeliveryApi {
           managerSignOff: proof.managerSignOff,
           receiverException: proof.exception,
           revision: proof.capturedRevision ?? 1,
-          accepted: true,
+          accepted: false,
         })
         .catch(() => {})
 
       await localDb.driverProofDrafts.delete(stopId).catch(() => {})
+
+      // 2. Try online upload if connected
+      let onlineSuccess = false
+      try {
+        if (proof.photo) {
+          const form = new FormData()
+          form.append('file', proof.photo)
+          form.append('stop_id', stopId)
+          const uploadResp = await request<{ path: string }>('/driver/uploads', {
+            method: 'POST',
+            body: form,
+          }).catch(() => null)
+          if (uploadResp?.path) {
+            const serverOrigin = (
+              import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+            ).replace(/\/api\/v1\/?$/, '')
+            photoUrl = `${serverOrigin}${uploadResp.path}`
+          }
+        }
+
+        await request(`/driver/stops/${stopId}/events`, {
+          method: 'POST',
+          body: JSON.stringify({
+            client_op_id: opId,
+            stop_id: Number(stopId),
+            outcome: 'DELIVERED',
+            note: `Delivered ${proof.quantity} cases`,
+            pod_photo_path: photoUrl || null,
+            receiver_name: proof.receiver || null,
+            receiver_pin_ok: true,
+          }),
+        })
+
+        // Online sync succeeded; mark evidence accepted
+        const ev = await localDb.evidence.get(opId)
+        if (ev) {
+          ev.accepted = true
+          await localDb.evidence.put(ev).catch(() => {})
+        }
+        onlineSuccess = true
+      } catch {
+        onlineSuccess = false
+      }
+
+      // 3. If offline or request failed, queue action for background sync
+      if (!onlineSuccess) {
+        await localDb.queue.put({
+          id: opId,
+          evidenceId: opId,
+          stopId,
+          createdAt: new Date().toISOString(),
+          status: 'pending',
+          attempts: 0,
+          revision: proof.capturedRevision ?? 1,
+          kind: 'delivery',
+        })
+      }
     },
 
     async reportIssue(stopId, issue) {
-      const id = crypto.randomUUID()
-      await request(`/driver/stops/${stopId}/events`, {
-        method: 'POST',
-        body: JSON.stringify({
-          client_op_id: id,
-          stop_id: Number(stopId),
-          outcome: 'FAILED',
-          note: issue,
-        }),
-      })
+      const opId = `op_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
+      try {
+        await request(`/driver/stops/${stopId}/events`, {
+          method: 'POST',
+          body: JSON.stringify({
+            client_op_id: opId,
+            stop_id: Number(stopId),
+            outcome: 'FAILED',
+            note: issue,
+          }),
+        })
+      } catch {
+        await localDb.queue.put({
+          id: opId,
+          evidenceId: opId,
+          stopId,
+          createdAt: new Date().toISOString(),
+          status: 'pending',
+          attempts: 0,
+          revision: 1,
+          kind: 'attempt',
+          message: issue,
+        })
+      }
     },
 
     async saveAttemptProof(stopId, photo, issue) {
-      const id = crypto.randomUUID()
+      const opId = `op_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
       let photoUrl = ''
       if (photo) {
-        const form = new FormData()
-        form.append('file', photo)
-        form.append('stop_id', stopId)
-        const uploadResp = await request<{ path: string }>('/driver/uploads', {
-          method: 'POST',
-          body: form,
-        }).catch(() => null)
-        if (uploadResp?.path) {
-          const serverOrigin = (
-            import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
-          ).replace(/\/api\/v1\/?$/, '')
-          photoUrl = `${serverOrigin}${uploadResp.path}`
-        }
+        await localDb.evidence
+          .put({
+            id: opId,
+            kind: 'attempt',
+            entityId: stopId,
+            photo,
+            fileName: photo?.name ?? 'attempt-proof.jpg',
+            createdAt: new Date().toISOString(),
+            receiverException: issue,
+            revision: 1,
+            accepted: false,
+          })
+          .catch(() => {})
       }
 
-      await request(`/driver/stops/${stopId}/events`, {
-        method: 'POST',
-        body: JSON.stringify({
-          client_op_id: id,
-          stop_id: Number(stopId),
-          outcome: 'FAILED',
-          note: photoUrl ? `${issue} | Proof: ${photoUrl}` : issue,
-        }),
-      })
+      try {
+        if (photo) {
+          const form = new FormData()
+          form.append('file', photo)
+          form.append('stop_id', stopId)
+          const uploadResp = await request<{ path: string }>('/driver/uploads', {
+            method: 'POST',
+            body: form,
+          }).catch(() => null)
+          if (uploadResp?.path) {
+            const serverOrigin = (
+              import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+            ).replace(/\/api\/v1\/?$/, '')
+            photoUrl = `${serverOrigin}${uploadResp.path}`
+          }
+        }
+
+        await request(`/driver/stops/${stopId}/events`, {
+          method: 'POST',
+          body: JSON.stringify({
+            client_op_id: opId,
+            stop_id: Number(stopId),
+            outcome: 'FAILED',
+            note: photoUrl ? `${issue} | Proof: ${photoUrl}` : issue,
+          }),
+        })
+
+        const ev = await localDb.evidence.get(opId)
+        if (ev) {
+          ev.accepted = true
+          await localDb.evidence.put(ev).catch(() => {})
+        }
+      } catch {
+        await localDb.queue.put({
+          id: opId,
+          evidenceId: opId,
+          stopId,
+          createdAt: new Date().toISOString(),
+          status: 'pending',
+          attempts: 0,
+          revision: 1,
+          kind: 'attempt',
+          message: issue,
+        })
+      }
     },
 
     async retryStop(stopId) {
-      const id = crypto.randomUUID()
-      await request(`/driver/stops/${stopId}/events`, {
-        method: 'POST',
-        body: JSON.stringify({
-          client_op_id: id,
-          stop_id: Number(stopId),
-          outcome: 'ARRIVED',
-          note: 'Retry stop',
-        }),
-      })
+      const opId = `op_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
+      try {
+        await request(`/driver/stops/${stopId}/events`, {
+          method: 'POST',
+          body: JSON.stringify({
+            client_op_id: opId,
+            stop_id: Number(stopId),
+            outcome: 'ARRIVED',
+            note: 'Retry stop',
+          }),
+        })
+      } catch {
+        await localDb.queue.put({
+          id: opId,
+          evidenceId: opId,
+          stopId,
+          createdAt: new Date().toISOString(),
+          status: 'pending',
+          attempts: 0,
+          revision: 1,
+          kind: 'delivery',
+        })
+      }
     },
 
     async confirmManagerHandoff(_outletId, stopId, proof) {
@@ -967,11 +1073,11 @@ function createHttpDeliveryApi(): DeliveryApi {
     },
 
     async reportDelay(stopId, note, revisedEta, kind) {
-      const id = crypto.randomUUID()
+      const opId = `op_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
       await request(`/driver/stops/${stopId}/events`, {
         method: 'POST',
         body: JSON.stringify({
-          client_op_id: id,
+          client_op_id: opId,
           stop_id: Number(stopId),
           outcome: 'PARTIAL',
           note: `${kind ?? 'delay'}: ${note}${revisedEta ? ` (ETA: ${revisedEta})` : ''}`,
@@ -1036,9 +1142,126 @@ function createHttpDeliveryApi(): DeliveryApi {
       return localDb.queue.toArray()
     },
 
-    async sync(_isOnline) {},
+    async sync(isOnline, options) {
+      if (!isOnline) return
+      const allQueued = await localDb.queue.toArray()
+      const eligible = allQueued.filter((item) =>
+        options?.retryFailed
+          ? item.status === 'pending' || item.status === 'retry'
+          : item.status === 'pending',
+      )
+      if (!eligible.length) return
 
-    async reviewQueuedRecord(_id) {},
+      // Sort by creation time (epoch order)
+      eligible.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+
+      // Mark items as syncing
+      for (const item of eligible) {
+        item.status = 'syncing'
+        item.attempts += 1
+        await localDb.queue.put(item)
+      }
+
+      // Step 1: Upload any pending photos first
+      const serverOrigin = (
+        import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+      ).replace(/\/api\/v1\/?$/, '')
+
+      const photoPaths: Record<string, string> = {}
+      for (const item of eligible) {
+        const ev = await localDb.evidence.get(item.evidenceId)
+        if (ev?.photo && !photoPaths[item.id]) {
+          try {
+            const form = new FormData()
+            form.append('file', ev.photo, ev.fileName || 'delivery-proof.jpg')
+            form.append('stop_id', item.stopId)
+            const uploadResp = await request<{ path: string }>('/driver/uploads', {
+              method: 'POST',
+              body: form,
+            })
+            if (uploadResp?.path) {
+              photoPaths[item.id] = `${serverOrigin}${uploadResp.path}`
+            }
+          } catch {
+            // Upload failure will be caught or retried
+          }
+        }
+      }
+
+      // Step 2: Build sync batch events
+      const events = []
+      for (const item of eligible) {
+        const ev = await localDb.evidence.get(item.evidenceId)
+        if (item.kind === 'delivery') {
+          events.push({
+            client_op_id: item.id,
+            stop_id: Number(item.stopId),
+            outcome: 'DELIVERED',
+            note: ev?.quantity !== undefined ? `Delivered ${ev.quantity} cases` : 'Delivered',
+            pod_photo_path: photoPaths[item.id] || null,
+            receiver_name: ev?.receiver || null,
+            receiver_pin_ok: true,
+            recorded_at: item.createdAt,
+          })
+        } else {
+          events.push({
+            client_op_id: item.id,
+            stop_id: Number(item.stopId),
+            outcome: 'FAILED',
+            note: photoPaths[item.id]
+              ? `${item.message || 'Delivery attempt failed'} | Proof: ${photoPaths[item.id]}`
+              : (item.message || 'Delivery attempt failed'),
+            pod_photo_path: photoPaths[item.id] || null,
+            recorded_at: item.createdAt,
+          })
+        }
+      }
+
+      // Step 3: Dispatch batch to /driver/sync
+      try {
+        const results = await request<
+          Array<{ client_op_id: string; accepted: boolean; message?: string }>
+        >('/driver/sync', {
+          method: 'POST',
+          body: JSON.stringify({ events }),
+        })
+
+        const resultMap = new Map(results.map((r) => [r.client_op_id, r]))
+
+        for (const item of eligible) {
+          const res = resultMap.get(item.id)
+          if (res?.accepted) {
+            item.status = 'accepted'
+            await localDb.queue.put(item)
+            const ev = await localDb.evidence.get(item.evidenceId)
+            if (ev) {
+              ev.accepted = true
+              await localDb.evidence.put(ev).catch(() => {})
+            }
+          } else {
+            item.status = 'retry'
+            item.message = res?.message || 'Server rejected event'
+            await localDb.queue.put(item)
+          }
+        }
+      } catch (err: unknown) {
+        // Network or server error: set to retry
+        for (const item of eligible) {
+          item.status = 'retry'
+          item.message = err instanceof Error ? err.message : 'Sync request failed'
+          await localDb.queue.put(item)
+        }
+        throw err
+      }
+    },
+
+    async reviewQueuedRecord(id) {
+      const item = await localDb.queue.get(id)
+      if (item) {
+        item.status = 'pending'
+        await localDb.queue.put(item)
+      }
+    },
   }
 }
 
