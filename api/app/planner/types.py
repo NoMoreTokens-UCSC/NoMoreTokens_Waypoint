@@ -104,3 +104,7 @@ class PlannerContext:
     is_monsoon: bool = False
     avg_speed_kmh: float = 40.0            # default; overridden by district config
     road_factor: float = 1.3              # haversine to road distance factor
+    # (district, depot) -> (depot_to_district_min, inter_stop_min), from district_travel.csv
+    district_travel: dict[tuple[str, str], tuple[float, float]] = field(default_factory=dict)
+    # (brand, dock_type) -> minutes, from service_allowance.csv
+    service_allowance: dict[tuple[str, str], float] = field(default_factory=dict)

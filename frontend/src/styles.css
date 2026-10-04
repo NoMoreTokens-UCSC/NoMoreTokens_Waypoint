@@ -612,6 +612,9 @@ h3 {
 .metrics.four {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
+.metrics.five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
 .metric {
   background: white;
   border: 1px solid var(--color-border);
@@ -1966,4 +1969,119 @@ h3 {
   font-size: 13px;
   font-weight: 600;
   text-align: right;
+}
+
+.window-stack-part.is-forecast {
+  opacity: 0.45;
+  border: 1px dashed currentColor;
+}
+
+.forecast-table-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.forecast-table th,
+.forecast-table td {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.forecast-table thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+
+.forecast-chart {
+  height: 170px;
+  margin-top: 8px;
+  justify-content: flex-start;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.forecast-chart .window-volume-group {
+  flex: 0 0 52px;
+  min-width: 52px;
+  gap: 6px;
+}
+.forecast-chart .window-stack {
+  height: 130px;
+  gap: 3px;
+  width: auto;
+}
+.forecast-chart .window-stack-part {
+  flex: 0 0 14px;
+  min-width: 14px;
+}
+
+.forecast-week-label {
+  white-space: nowrap;
+}
+
+.forecast-table tr.bridging-row td {
+  color: #8c9096;
+  background: #faf9f7;
+}
+.bridging-tag {
+  margin-left: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #8c9096;
+}
+
+.load-menu {
+  position: relative;
+  width: 100%;
+}
+.load-menu-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #d9d6d0;
+  border-radius: 8px;
+  background: #fff;
+  color: #22252a;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.load-menu-button:hover {
+  border-color: #c9c5be;
+}
+.load-menu-list {
+  /* Expands in the page flow: the panel clips anything that floats outside it. */
+  margin: 6px 0 0;
+  padding: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #e5e2dd;
+  border-radius: 8px;
+}
+.load-menu-option {
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #22252a;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.load-menu-option:hover {
+  background: #fdfbf8;
+}
+.load-menu-option.selected {
+  background: #fff3ec;
+  color: #a8410f;
+  font-weight: 600;
 }

@@ -1,6 +1,9 @@
 """DB <-> planner dataclass adapters."""
 from __future__ import annotations
 
+import csv
+from pathlib import Path
+
 import datetime as dt
 
 from sqlalchemy.orm import Session
@@ -124,7 +127,42 @@ def build_context(db: Session, delivery_date: dt.date) -> PlannerContext:
         vehicles=vehicles,
         orders=orders,
         is_monsoon=cal.monsoon if cal else False,
+        district_travel=_load_district_travel(),
+        service_allowance=_load_service_allowance(),
     )
+
+
+def _reference_dir() -> Path:
+    from app.core.config import get_settings
+
+    return Path(get_settings().data_dir)
+
+
+def _load_district_travel() -> dict[tuple[str, str], tuple[float, float]]:
+    """Depot-to-district and inter-stop minutes. Empty when the CSV is not mounted."""
+    path = _reference_dir() / "district_travel.csv"
+    if not path.exists():
+        return {}
+    with path.open(newline="", encoding="utf-8") as handle:
+        return {
+            (row["district"], row["depot"]): (
+                float(row["depot_to_district_freeflow_min"]),
+                float(row["inter_stop_freeflow_min"]),
+            )
+            for row in csv.DictReader(handle)
+        }
+
+
+def _load_service_allowance() -> dict[tuple[str, str], float]:
+    """Handling minutes per brand and dock type. Empty when the CSV is not mounted."""
+    path = _reference_dir() / "service_allowance.csv"
+    if not path.exists():
+        return {}
+    with path.open(newline="", encoding="utf-8") as handle:
+        return {
+            (row["brand"], row["dock_type"]): float(row["service_allowance_min"])
+            for row in csv.DictReader(handle)
+        }
 
 
 def persist_plan(db: Session, planner_plan: PlannerPlan, created_by: int | None = None) -> Plan:

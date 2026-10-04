@@ -2,6 +2,9 @@ import { lazy, Suspense, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { MapPin, Truck, ArrowRight, ChevronRight } from 'lucide-react'
 import { useOperations } from '../../../hooks/useOperations'
+import type { Order, Stop, Vehicle } from '../../../../domain/models'
+import { useApiQuery } from '../../../hooks/useApiQuery'
+import type { DemandWeek } from '../../../../domain/api/analytics'
 import { Button } from '../../../shared/atoms/button'
 import {
   PageHeading,
@@ -15,6 +18,28 @@ import {
   EmptyState,
 } from '../../../shared/molecules/Common'
 const OperationsMap = lazy(() => import('../../../shared/organisms/OperationsMap'))
+
+/** A vehicle is reporting when its device has sent a fix that is not stale. */
+function reportingCount(vehicles: Vehicle[]) {
+  return vehicles.filter((v) => v.positionSource === 'device' && v.status !== 'Offline').length
+}
+
+/** True when any stop still to be delivered on this vehicle's orders is due after its window closes. */
+function isRunningLate(orders: Order[], stops: Stop[], vehicleId: string) {
+  const own = orders.filter((o) => o.vehicleId === vehicleId && o.windowEnd)
+  return stops.some(
+    (s) =>
+      s.status !== 'Delivered' &&
+      own.some((o) => s.orderIds.includes(o.id) && s.eta > (o.windowEnd as string)),
+  )
+}
+
+/** Minutes from one HH:MM time to another. */
+function minutesBetween(from: string, to: string) {
+  const [fh, fm] = from.split(':').map(Number)
+  const [th, tm] = to.split(':').map(Number)
+  return th * 60 + tm - (fh * 60 + fm)
+}
 
 export function FleetPage({ tracking = false }: { tracking?: boolean }) {
   const { data } = useOperations(),
@@ -45,22 +70,35 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
   )
   const selectedId = selected ?? (tracking ? data.vehicles.find((v) => v.status === "En route")?.id ?? null : null)
   const vehicle = data.vehicles.find((v) => v.id === selectedId)
-  const vehicleOrder = data.orders.find((o) => o.vehicleId === vehicle?.id && o.trip === 1)
+  const vehicleOrder = data.orders
+    .filter((o) => o.vehicleId === vehicle?.id)
+    .sort((a, b) => (a.trip ?? 1) - (b.trip ?? 1))[0]
   const vehicleStop = vehicleOrder
     ? data.stops.find((stop) => stop.orderIds.includes(vehicleOrder.id))
     : undefined
-  const isDelayedVehicle = vehicle?.id === 'VEH027'
-  const delayedVehicleIds = ['VEH027']
-  const expectedArrival = vehicleStop?.eta,
-    windowEnd = vehicleOrder?.windowEnd ?? '07:30',
-    deliveryDelay = isDelayedVehicle || Boolean(expectedArrival && expectedArrival > windowEnd)
-  const usage = (id: string, key: 'volume' | 'weight') =>
-    data.orders.filter((o) => o.vehicleId === id && o.trip === 1).reduce((n, o) => n + o[key], 0)
+  // Only vehicles on the road can be delayed; an idle vehicle has no route to be late on.
+  const delayedVehicleIds = data.vehicles
+    .filter((v) => v.status === 'En route' && isRunningLate(data.orders, data.stops, v.id))
+    .map((v) => v.id)
+  const expectedArrival = vehicleStop?.eta
+  const windowEnd = vehicleOrder?.windowEnd
+  const deliveryDelay = Boolean(vehicle && delayedVehicleIds.includes(vehicle.id))
+  const delayMinutes = expectedArrival && windowEnd ? minutesBetween(windowEnd, expectedArrival) : 0
+  // Each trip is limited to the vehicle's capacity, so usage is the busier trip's load.
+  const usage = (id: string, key: 'volume' | 'weight') => {
+    const byTrip = new Map<number, number>()
+    for (const o of data.orders) {
+      if (o.vehicleId !== id) continue
+      const trip = o.trip ?? 1
+      byTrip.set(trip, (byTrip.get(trip) ?? 0) + o[key])
+    }
+    return Math.max(0, ...byTrip.values())
+  }
   const current = Math.min(page, Math.max(0, Math.ceil(vehicles.length / 10) - 1))
   const fleetFilters = (
     <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b">
       <div className="filter-tabs">
-        {['All', 'Available', 'Loading', 'En route', 'Offline'].map((s) => (
+        {['All', 'Available', 'Loading', 'Ready', 'En route', 'Offline'].map((s) => (
           <button
             key={s}
             className={`filter-tab ${status === s ? 'selected' : ''}`}
@@ -100,7 +138,7 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
           <div className="fleet-heading-actions">
             <div className="fleet-reporting-summary">
               <span className="fleet-live-dot" />
-              {data.vehicles.filter((v) => v.status !== 'Offline').length} reporting live
+              {reportingCount(data.vehicles)} reporting live
             </div>
             {tracking ? (
               <div className="flex gap-2">
@@ -155,8 +193,8 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
           />
         </div>
       ) : (
-        <div className="metrics four">
-          {['Available', 'Loading', 'En route', 'Offline'].map((s) => (
+        <div className="metrics five">
+          {['Available', 'Loading', 'Ready', 'En route', 'Offline'].map((s) => (
             <Metric
               key={s}
               label={s}
@@ -191,7 +229,7 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
           <div className="panel-body flex flex-wrap gap-4 text-xs text-muted-foreground">
             <span>
               <span className="inline-block w-2 h-2 rounded-full bg-primary mr-2" />
-              {data.vehicles.filter((v) => v.status !== 'Offline').length} reporting live
+              {reportingCount(data.vehicles)} reporting live
             </span>
             <span>
               <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground mr-2" />
@@ -220,7 +258,15 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
               </thead>
               <tbody>
                 {vehicles.slice(current * 10, current * 10 + 10).map((v) => (
-                  <tr key={v.id} className="fleet-row">
+                  <tr
+                    key={v.id}
+                    className="fleet-row"
+                    tabIndex={0}
+                    onClick={() => setSelected(v.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') setSelected(v.id)
+                    }}
+                  >
                     <td>
                       <div className="fleet-identity">
                         <Truck size={24} strokeWidth={1.8} />
@@ -258,7 +304,7 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
                     </td>
                     <td>
                       <StatusBadge tone={delayedVehicleIds.includes(v.id) ? 'danger' : undefined}>
-                        {delayedVehicleIds.includes(v.id) ? 'Delayed · +20 min' : v.status}
+                        {delayedVehicleIds.includes(v.id) ? 'Delayed' : v.status}
                       </StatusBadge>
                     </td>
                     <td>
@@ -268,7 +314,11 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
                       </span>
                     </td>
                     <td className="text-muted-foreground">
-                      {v.updatedMinutes ? `${v.updatedMinutes}m ago` : 'Just now'}
+                      {v.positionUpdatedAt || v.updatedMinutes
+                        ? v.updatedMinutes
+                          ? `${v.updatedMinutes}m ago`
+                          : 'Just now'
+                        : 'No report'}
                     </td>
                     <td>
                       <span className="row-arrow">
@@ -316,7 +366,7 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
             ? `${vehicle.brand} · ${vehicle.reefer ? 'Refrigerated' : 'Ambient'} ${vehicle.type.toLowerCase()}`
             : undefined
         }
-        open={tracking && !!vehicle}
+        open={!!vehicle}
         onOpenChange={(v) => {
           if (!v) setSelected(null)
         }}
@@ -329,7 +379,7 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
               </div>
               <h2 className="text-2xl font-semibold mb-4">{vehicle.id}</h2>
               <StatusBadge tone="neutral">
-                Offline · {vehicle.updatedMinutes || 6} minutes
+                Offline{vehicle.updatedMinutes ? ` · ${vehicle.updatedMinutes} minutes` : ''}
               </StatusBadge>
               <div className="grid gap-4 my-5 text-sm">
                 <div>
@@ -344,7 +394,10 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
                 </div>
                 <div>
                   <span className="block text-xs text-muted-foreground mb-1">Last report</span>
-                  <strong>{vehicle.updatedMinutes || 6}:00 · Position may be stale</strong>
+                  <strong>
+                    {vehicle.updatedMinutes ? `${vehicle.updatedMinutes} minutes ago` : 'Time not reported'} · Position
+                    may be stale
+                  </strong>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground mb-5">
@@ -367,7 +420,11 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
               <StatusBadge tone="danger">Forecast delay · after window</StatusBadge>
             )}
             <StatusBadge tone={deliveryDelay ? 'danger' : undefined}>
-              {deliveryDelay ? 'Forecast delay · +20 min' : `${vehicle.status} · Trip ${vehicleOrder?.trip ?? 1}`}
+              {deliveryDelay && delayMinutes > 0
+                ? `Forecast delay · +${delayMinutes} min`
+                : deliveryDelay
+                  ? 'Forecast delay'
+                  : `${vehicle.status} · Trip ${vehicleOrder?.trip ?? 1}`}
             </StatusBadge>
             <div className="grid gap-4 my-5 text-sm">
               <div>
@@ -375,18 +432,14 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
                 <strong>
                   {vehicleOrder
                     ? `${vehicleOrder.outlet} · ${vehicleOrder.brand} / ${vehicleOrder.temperature}`
-                    : isDelayedVehicle
-                      ? 'OUT045 · Tech'
-                      : vehicle.location}
+                    : `No assigned stop · ${vehicle.location}`}
                 </strong>
               </div>
               <div>
                 <span className="block text-xs text-muted-foreground mb-1">Expected arrival</span>
                 <strong>
                   {vehicleStop
-                    ? `${vehicleStop.eta} · Window ${vehicleOrder?.window}–${windowEnd}`
-                    : isDelayedVehicle
-                      ? '07:50 · Window ends 07:30'
+                    ? `${vehicleStop.eta} · Window ${vehicleOrder?.window}${windowEnd ? `–${windowEnd}` : ''}`
                     : 'Route timing unavailable'}
                 </strong>
               </div>
@@ -395,7 +448,7 @@ export function FleetPage({ tracking = false }: { tracking?: boolean }) {
                   Location freshness
                 </span>
                 <strong>
-                  {vehicle.updatedMinutes ? `${vehicle.updatedMinutes} minutes ago` : '06:06:03 · 3 seconds ago'}
+                  {vehicle.updatedMinutes ? `${vehicle.updatedMinutes} minutes ago` : 'Time not reported'}
                 </strong>
               </div>
             </div>
@@ -442,6 +495,193 @@ function barHeight(value: number, max: number, scale = 180) {
   return Math.max(8, (value / max) * scale)
 }
 
+const HISTORY_WEEKS_SHOWN = 8
+
+function weekLabel(year: number, week: number) {
+  return `Wk ${week} · ${year}`
+}
+
+function DemandForecastPanel() {
+  const query = useApiQuery(['analytics', 'demand-forecast'], (apis) => apis.analytics.demandForecast())
+  const [selectedDepot, setSelectedDepot] = useState<string | null>(null)
+
+  if (query.isPending) {
+    return (
+      <Panel title="Demand forecast">
+        <div className="panel-body">Loading demand forecast…</div>
+      </Panel>
+    )
+  }
+  if (query.isError || !query.data) {
+    return (
+      <Panel title="Demand forecast">
+        <div className="panel-body">
+          <Notice tone="danger" title="Forecast unavailable">
+            Demand history could not be loaded. Check that the API is running.
+          </Notice>
+        </div>
+      </Panel>
+    )
+  }
+
+  const { history, forecast, method, capacity, backtest } = query.data
+  const depots = [...new Set([...history, ...forecast].map((w) => w.depot))].sort()
+  if (depots.length === 0) {
+    return (
+      <Panel title="Demand forecast">
+        <EmptyState title="No demand history" description={method} />
+      </Panel>
+    )
+  }
+  const depot = selectedDepot && depots.includes(selectedDepot) ? selectedDepot : depots[0]
+  const brands = [...new Set([...history, ...forecast].map((w) => w.brand))].sort()
+
+  const weekKeys = (rows: typeof history) =>
+    [...new Set(rows.map((w) => `${w.isoYear}-${String(w.isoWeek).padStart(2, '0')}`))].sort()
+  const depotHistory = history.filter((w) => w.depot === depot)
+  const depotForecast = forecast.filter((w) => w.depot === depot)
+  const historyKeys = weekKeys(depotHistory).slice(-HISTORY_WEEKS_SHOWN)
+  const forecastKeys = weekKeys(depotForecast)
+  const columns = [
+    ...historyKeys.map((key) => ({ key, isForecast: false })),
+    ...forecastKeys.map((key) => ({ key, isForecast: true })),
+  ]
+
+  const lookup = new Map<string, DemandWeek>()
+  for (const w of depotHistory) lookup.set(`${w.brand}|${w.isoYear}-${String(w.isoWeek).padStart(2, '0')}|h`, w)
+  for (const w of depotForecast) lookup.set(`${w.brand}|${w.isoYear}-${String(w.isoWeek).padStart(2, '0')}|f`, w)
+  const valueOf = (brand: string, key: string, isForecast: boolean) =>
+    lookup.get(`${brand}|${key}|${isForecast ? 'f' : 'h'}`)
+  const peak = Math.max(
+    0,
+    ...columns.flatMap((c) => brands.map((b) => valueOf(b, c.key, c.isForecast)?.totalM3 ?? 0)),
+  )
+
+  // The planned horizon starts at the first test week; weeks before it only bridge the gap.
+  const horizonKeys = weekKeys(depotForecast.filter((w) => w.inTestHorizon))
+  const nextKey = horizonKeys[0]
+  const nextWeek = depotForecast.filter((w) => `${w.isoYear}-${String(w.isoWeek).padStart(2, '0')}` === nextKey)
+  const nextTotal = nextWeek.reduce((n, w) => n + w.totalM3, 0)
+  const nextChilled = nextWeek.reduce((n, w) => n + w.chilledM3, 0)
+  const nextRow = nextWeek[0]
+  const depotCapacity = capacity
+    .filter((c) => c.depot === depot)
+    .sort((a, b) => a.isoYear - b.isoYear || a.isoWeek - b.isoWeek)
+  const nextCapacity = depotCapacity.find(
+    (c) => nextRow && c.isoYear === nextRow.isoYear && c.isoWeek === nextRow.isoWeek,
+  )
+
+  return (
+    <Panel title="Demand forecast" description="Weekly volume by brand. Faded bars are forecast weeks.">
+      <div className="panel-body">
+        <div className="filter-tabs analytics-toggle" role="group" aria-label="Depot">
+          {depots.map((d) => (
+            <button
+              key={d}
+              className={`filter-tab ${depot === d ? 'selected' : ''}`}
+              aria-pressed={depot === d}
+              onClick={() => setSelectedDepot(d)}
+            >
+              {d}
+            </button>
+          ))}
+        </div>
+        <div className="metrics four">
+          <Metric
+            label="First planned week"
+            value={`${nextTotal.toFixed(1)} m³`}
+            detail={nextRow ? weekLabel(nextRow.isoYear, nextRow.isoWeek) : 'No forecast weeks'}
+          />
+          <Metric label="Chilled, next week" value={`${nextChilled.toFixed(1)} m³`} detail="Fresh only" />
+          <Metric
+            label="Vehicles and drivers, next week"
+            value={nextCapacity ? `${nextCapacity.vehiclesNeeded} of ${nextCapacity.vehiclesAvailable}` : '—'}
+            detail={nextCapacity?.shortfallVehicles ? `Short by ${nextCapacity.shortfallVehicles}` : 'One driver per vehicle'}
+          />
+          <Metric
+            label="Reefers needed, next week"
+            value={nextCapacity ? `${nextCapacity.reefersNeeded} of ${nextCapacity.reefersAvailable}` : '—'}
+            detail={nextCapacity?.shortfallReefers ? `Short by ${nextCapacity.shortfallReefers}` : 'Chilled volume, reefers available'}
+          />
+        </div>
+        <div className="analytics-legend">
+          {brands.map((b) => (
+            <span key={b}>
+              <i className={`analytics-swatch seg-${b.toLowerCase()}`} /> {b}
+            </span>
+          ))}
+          <span>All values in m³</span>
+        </div>
+        <div className="window-stack-chart forecast-chart">
+          {columns.map((c) => (
+            <div className="window-volume-group" key={`${c.key}-${c.isForecast}`}>
+              <div className="window-stack">
+                {brands.map((b) => {
+                  const w = valueOf(b, c.key, c.isForecast)
+                  const value = w?.totalM3 ?? 0
+                  return (
+                    <span
+                      key={b}
+                      className={`window-stack-part seg-${b.toLowerCase()} ${c.isForecast ? 'is-forecast' : ''}`}
+                      title={`${b} · ${value.toFixed(1)} m³${w && w.chilledM3 > 0 ? ` · chilled ${w.chilledM3.toFixed(1)} m³` : ''}${w?.isEventWeek ? ' · payday or festival' : ''}`}
+                      style={{ height: `${barHeight(value, peak, 120)}px` }}
+                    />
+                  )
+                })}
+              </div>
+              <small className="forecast-week-label">{c.key.replace(/^(\d+)-(\d+)$/, (_, y, wk) => `Wk ${Number(wk)} · ${y}`)}</small>
+            </div>
+          ))}
+        </div>
+        {depotCapacity.length > 0 && (
+          <div className="table-scroll forecast-table-scroll">
+            <table className="data-table forecast-table">
+              <thead>
+                <tr>
+                  <th>Week</th>
+                  <th>Operating days</th>
+                  <th>Volume, m³</th>
+                  <th>Vehicles needed / fleet</th>
+                  <th>Reefers needed / fleet</th>
+                  <th>Drivers needed / fleet</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {depotCapacity.map((c) => {
+                  const short = c.shortfallVehicles + c.shortfallReefers
+                  const planned = depotForecast.some(
+                    (w) => w.inTestHorizon && w.isoYear === c.isoYear && w.isoWeek === c.isoWeek,
+                  )
+                  return (
+                    <tr key={`${c.isoYear}-${c.isoWeek}`} className={planned ? undefined : 'bridging-row'}>
+                      <td>
+                        {weekLabel(c.isoYear, c.isoWeek)}
+                        {!planned && <small className="bridging-tag"> bridging</small>}
+                      </td>
+                      <td>{c.operatingDays}</td>
+                      <td>{c.totalM3.toFixed(1)}</td>
+                      <td>{c.vehiclesNeeded} / {c.vehiclesAvailable}</td>
+                      <td>{c.reefersNeeded} / {c.reefersAvailable}</td>
+                      <td>{c.driversNeeded} / {c.driversAvailable}</td>
+                      <td>{short > 0 ? `Short by ${short}` : 'Within fleet'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Notice title="How this is calculated" tone="neutral">
+          {method} {backtest.wapePercent !== null
+            ? `Backtest: ${backtest.wapePercent}% average error on the last ${backtest.weeks.length} known weeks.`
+            : 'No backtest data.'} Vehicle figures use volume only, so treat them as a minimum.
+        </Notice>
+      </div>
+    </Panel>
+  )
+}
+
 type ChartMode = 'status' | 'brand' | 'temperature'
 
 export function AnalyticsPage() {
@@ -453,7 +693,7 @@ export function AnalyticsPage() {
   const totalVolume = orders.reduce((n, o) => n + o.volume, 0)
   const totalWeight = orders.reduce((n, o) => n + o.weight, 0)
   const allocated = orders.filter((o) => o.vehicleId).length
-  const reporting = data.vehicles.filter((v) => v.status !== 'Offline').length
+  const reporting = reportingCount(data.vehicles)
 
   const volumeByWindow = [...new Set(orders.map((o) => o.window))]
     .sort()
@@ -527,6 +767,7 @@ export function AnalyticsPage() {
         title="Demand outlook"
         description="Plan vehicle capacity around the busiest delivery windows."
       />
+      <DemandForecastPanel />
       <div className="metrics four">
         <Metric
           label="Peak total volume"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   MapContainer,
   CircleMarker,
@@ -13,11 +13,17 @@ import type { Stop, Vehicle } from '../../../domain/models'
 import { RouteMapViewport } from './RouteMapViewport'
 import 'leaflet/dist/leaflet.css'
 
+/** Fits the map to the fleet once, on first load. Later data refreshes do not move the view. */
 function FitMapToPoints({ coordinates }: { coordinates: string }) {
   const map = useMap()
+  const fitted = useRef(false)
   useEffect(() => {
+    if (fitted.current) return
     const points = JSON.parse(coordinates) as [number, number][]
-    if (points.length > 1) map.fitBounds(points, { padding: [64, 64], maxZoom: 11 })
+    if (points.length > 1) {
+      map.fitBounds(points, { padding: [64, 64], maxZoom: 11 })
+      fitted.current = true
+    }
   }, [map, coordinates])
   return null
 }
@@ -54,8 +60,11 @@ export default function OperationsMap({
   const activeVehicleId = hoveredVehicleId || selectedVehicleId
 
 
+  // Vehicles with no coordinates at all are left off the map.
+  const plotted = vehicles.filter((v) => Number.isFinite(v.lat) && Number.isFinite(v.lng))
+
   // One route per vehicle: from its current position through the stops on its orders
-  const routes = vehicles.flatMap((v) => {
+  const routes = plotted.flatMap((v) => {
     if (v.status === 'Offline') return []
     const ids = new Set(vehicleOrders[v.id] ?? [])
     const vehicleStops = stops
@@ -74,14 +83,13 @@ export default function OperationsMap({
   })
 
   // Stops of the active vehicle, used for the dots while a vehicle is selected or hovered
+  const activeOrderIds = new Set(activeVehicleId ? (vehicleOrders[activeVehicleId] ?? []) : [])
   const remainingStops = activeVehicleId
-    ? stops.filter((s) =>
-        s.orderIds.some((id) => new Set(vehicleOrders[activeVehicleId] ?? []).has(id)),
-      )
+    ? stops.filter((s) => s.orderIds.some((id) => activeOrderIds.has(id)))
     : []
-  const orderedVehicles = [...vehicles].sort((a, b) => {
-    const aPriority = a.id === 'VEH027' ? 2 : a.status === 'Offline' ? 1 : 0
-    const bPriority = b.id === 'VEH027' ? 2 : b.status === 'Offline' ? 1 : 0
+  const orderedVehicles = [...plotted].sort((a, b) => {
+    const aPriority = delayedVehicleIds.includes(a.id) ? 2 : a.status === 'Offline' ? 1 : 0
+    const bPriority = delayedVehicleIds.includes(b.id) ? 2 : b.status === 'Offline' ? 1 : 0
     return aPriority - bPriority
   })
   return (
@@ -103,7 +111,7 @@ export default function OperationsMap({
         ) : !selectedVehicleId ? (
           <FitMapToPoints
             coordinates={JSON.stringify([
-              ...vehicles.map((vehicle) => [vehicle.lat, vehicle.lng]),
+              ...plotted.map((vehicle) => [vehicle.lat, vehicle.lng]),
               ...stops.map((stop) => [stop.lat, stop.lng]),
             ])}
           />
@@ -129,7 +137,7 @@ export default function OperationsMap({
         {orderedVehicles.map((v) => (
           <CircleMarker
             key={v.id}
-            center={v.id === 'VEH027' ? [v.lat + 0.002, v.lng + 0.002] : [v.lat, v.lng]}
+            center={[v.lat, v.lng]}
             radius={7}
             eventHandlers={{
               click: () => {
@@ -155,12 +163,12 @@ export default function OperationsMap({
             }}
           >
             <Tooltip
-              permanent={v.id === 'VEH027' || v.status === 'Offline'}
+              permanent={delayedVehicleIds.includes(v.id) || v.status === 'Offline'}
               direction="top"
               offset={[0, -8]}
               className="vehicle-map-label"
             >
-              {v.id}
+              {v.positionSource === 'device' ? v.id : `${v.id} · no GPS`}
             </Tooltip>
             {!onVehicleSelect && (
               <Popup>
@@ -223,7 +231,7 @@ export default function OperationsMap({
       {showCaption && (
         <div className="map-caption">
           {vehicles.some((vehicle) => vehicle.positionSource === 'device')
-            ? 'Last saved device GPS · remote sharing awaits backend'
+            ? 'Latest device GPS · offline after 15 minutes without a report'
             : 'Demo locations · not live vehicle telemetry'}
         </div>
       )}

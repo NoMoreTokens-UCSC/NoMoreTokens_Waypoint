@@ -1,3 +1,4 @@
+import type { AnalyticsApi } from './analytics'
 import type { DriverSignalsApi } from './driverSignals'
 import type { AccountApi } from './account'
 import type { DeliveryApi } from './delivery'
@@ -7,6 +8,7 @@ import type { OrdersApi } from './orders'
 import type { PlanningApi } from './planning'
 import type { TeamApi } from './team'
 
+export type * from './analytics'
 export type * from './driverSignals'
 export type * from './account'
 export type * from './delivery'
@@ -29,4 +31,5 @@ export interface Apis {
   fleet: FleetApi
   team: TeamApi
   account: AccountApi
+  analytics: AnalyticsApi
 }
