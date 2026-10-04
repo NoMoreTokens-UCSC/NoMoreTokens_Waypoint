@@ -92,6 +92,30 @@ def _order_day(db: Session) -> dt.date:
     return _next_operating_day(db, planning_day) if _intake_closed(db, planning_day) else planning_day
 
 
+def _annotate_departures(db: Session, orders: list[Order]) -> list[Order]:
+    """Attach `departed_at`: when the trip carrying each order left, from the trip-start audit entry."""
+    trip_of: dict[int, str] = {}
+    for order in orders:
+        for so in order.stop_orders or []:
+            if so.stop_rel and so.stop_rel.trip_rel:
+                trip_of[order.id] = str(so.stop_rel.trip_rel.id)
+                break
+    if trip_of:
+        left = dict(
+            db.query(AuditLog.entity_id, func.min(AuditLog.created_at))
+            .filter(
+                AuditLog.action == "START_TRIP",
+                AuditLog.entity_type == "Trip",
+                AuditLog.entity_id.in_(set(trip_of.values())),
+            )
+            .group_by(AuditLog.entity_id)
+            .all()
+        )
+        for order in orders:
+            order.departed_at = left.get(trip_of.get(order.id, ""))
+    return orders
+
+
 def _check_quantity(brand: str, units: int, temperature_class: str, weight: Optional[float] = None) -> None:
     """Reject orders the business cannot have: bad counts, chilled goods outside Fresh, odd Tech weights."""
     if temperature_class not in ("CHILLED", "AMBIENT"):
@@ -250,6 +274,11 @@ def list_order_stops(
         )
     )
 
+    # A store learns its vehicle and arrival time when the plan is published, not from a draft.
+    store_view = current_user.role == "STORE_MANAGER"
+    if store_view:
+        q = q.filter(Plan.status == "PUBLISHED")
+
     if target_outlet:
         q = q.filter(Stop.outlet_id == target_outlet)
 
@@ -258,8 +287,10 @@ def list_order_stops(
 
     stops = q.order_by(Stop.id.desc()).all()
     if not stops and target_outlet:
-        stops = (
+        earlier = (
             db.query(Stop)
+            .join(Trip, Stop.trip_id == Trip.id)
+            .join(Plan, Trip.plan_id == Plan.id)
             .options(
                 selectinload(Stop.outlet_rel),
                 selectinload(Stop.trip_rel),
@@ -267,10 +298,10 @@ def list_order_stops(
                 selectinload(Stop.stop_orders).selectinload(StopOrder.order_rel),
             )
             .filter(Stop.outlet_id == target_outlet)
-            .order_by(Stop.id.desc())
-            .limit(10)
-            .all()
         )
+        if store_view:
+            earlier = earlier.filter(Plan.status == "PUBLISHED")
+        stops = earlier.order_by(Stop.id.desc()).limit(10).all()
     return stops
 
 
@@ -347,7 +378,7 @@ def list_orders(
     if status_filter:
         q = q.filter(Order.status == status_filter)
 
-    return q.order_by(Order.placed_at.desc()).all()
+    return _annotate_departures(db, q.order_by(Order.placed_at.desc()).all())
 
 
 @router.get("/{order_id}", response_model=OrderOut)
@@ -369,6 +400,7 @@ def get_order(order_id: int, db: DbDep, current_user: CurrentUser):
     # RBAC
     if current_user.role == "STORE_MANAGER" and order.outlet_id != current_user.outlet_id:
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Not your outlet."})
+    _annotate_departures(db, [order])
     return order
 
 
@@ -516,6 +548,14 @@ def confirm_receipt(
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Order not found."})
     if order.outlet_id != current_user.outlet_id:
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Not your outlet."})
+    if order.status not in ("LOADED", "IN_TRANSIT", "DELIVERED", "PARTIAL"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INVALID_STATE",
+                "message": "Receipt can be confirmed once the order has been delivered.",
+            },
+        )
 
     outcome = (body.outcome or "").upper()
     receipt_status = body.status

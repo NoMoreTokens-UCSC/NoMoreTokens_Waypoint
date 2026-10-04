@@ -4,6 +4,7 @@ import { CutoffPanel } from '../components/CutoffPanel'
 import { ActionLink, OfflineNotice, PageIntro, Pill, StorePage } from '../components/StoreKit'
 import { ParcelIcon } from '../components/StoreIcons'
 import { cutoffLabel } from '../lib/cutoff'
+import { realBackend } from '../../../session/realBackend'
 import {
   kindOf,
   quantityText,
@@ -82,12 +83,15 @@ export default function OverviewPage() {
               <ActionLink
                 variant="grey"
                 to={
-                  brand === 'Tech' && order
-                    ? `/store-manager/orders/new?order=${order.id}`
-                    : '/store-manager/orders/new'
+                  // After the cutoff the planned day's order is locked: show it instead of editing it.
+                  realBackend && order && clock.cutoffPassed
+                    ? `/store-manager/orders/${order.id}`
+                    : brand === 'Tech' && order
+                      ? `/store-manager/orders/new?order=${order.id}`
+                      : '/store-manager/orders/new'
                 }
               >
-                {order ? 'Edit order' : 'Create order'}
+                {order ? (realBackend && clock.cutoffPassed ? 'View order' : 'Edit order') : 'Create order'}
               </ActionLink>
             </section>
           )

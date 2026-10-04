@@ -16,6 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core import clock
 from app.db.base import Base
 
 
@@ -39,7 +40,9 @@ class Issue(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     photo_path: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     status: Mapped[str] = mapped_column(String(10), default="OPEN")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=clock.now, server_default=func.now()
+    )
 
     order_rel: Mapped["Order"] = relationship("Order", back_populates="issues")  # type: ignore[name-defined]
     stop_rel: Mapped["Stop"] = relationship("Stop", back_populates="issues")  # type: ignore[name-defined]

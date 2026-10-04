@@ -135,6 +135,24 @@ class Order(Base):
         return None
 
     @property
+    def scheduled_at(self) -> Optional[dt.datetime]:
+        """When the plan carrying this order was published (the order is then scheduled)."""
+        for so in self.stop_orders or []:
+            trip = so.stop_rel.trip_rel if so.stop_rel else None
+            plan = trip.plan_rel if trip else None
+            if plan and plan.status == "PUBLISHED" and plan.published_at:
+                return plan.published_at
+        return None
+
+    @property
+    def deferral_acknowledged_at(self) -> Optional[dt.datetime]:
+        """When the store acknowledged this order's deferral notice (recorded as a note on the order)."""
+        for iss in reversed(self.issues or []):
+            if iss.type == "OTHER" and iss.description == "Deferral acknowledged by store manager.":
+                return iss.created_at
+        return None
+
+    @property
     def receipt_report(self) -> Optional[dict]:
         import json
         for iss in reversed(self.issues or []):

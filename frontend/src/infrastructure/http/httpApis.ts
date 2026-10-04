@@ -122,6 +122,10 @@ function mapOrder(o: ApiOrder, published = false): Order {
     trip: o.trip,
     deferralReason: toFrontendReason(o.deferral_reason),
     receipt: mapReceiptStatus(o.receipt_status),
+    scheduledAt: o.scheduled_at,
+    departedAt: o.departed_at,
+    deferralAcknowledged: Boolean(o.deferral_acknowledged_at),
+    deferralAcknowledgedAt: o.deferral_acknowledged_at,
     receiptReport: o.receipt_report
       ? {
           kind: o.receipt_report.kind as 'Missing' | 'Damaged',
@@ -232,6 +236,9 @@ interface ApiOrder {
   window_open?: string
   window_close?: string
   receipt_status?: string
+  deferral_acknowledged_at?: string
+  scheduled_at?: string
+  departed_at?: string
   receipt_report?: {
     kind: string
     received: number
@@ -314,7 +321,24 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
       const day = filter.day === 'next' ? intake?.next : intake?.date
       return orders
         .filter((o) => !day || o.delivery_date === day)
-        .map((o) => mapOrder(o, intake?.published))
+        .map((o) => {
+          const order = mapOrder(o, intake?.published)
+          // A store learns its vehicle, or that it was deferred, once the plan is published; before that
+          // the plan is only the dispatcher's draft and can still change.
+          if (
+            filter.outletId &&
+            !intake?.published &&
+            (order.status === 'Allocated' || order.status === 'Deferred')
+          )
+            return {
+              ...order,
+              status: 'Confirmed' as const,
+              vehicleId: undefined,
+              trip: undefined,
+              deferralReason: undefined,
+            }
+          return order
+        })
     },
 
     async listDrafts() {
@@ -439,7 +463,7 @@ function createHttpOrdersApi(outletId?: string): OrdersApi {
       await request(`/orders/${orderId}/issues`, {
         method: 'POST',
         body: JSON.stringify({ type: 'OTHER', description: 'Deferral acknowledged by store manager.' }),
-      }).catch(() => {})
+      })
     },
 
     async listHistory(filter = {}) {
@@ -1420,7 +1444,10 @@ function createHttpFleetApi(): FleetApi {
           lng?: number
         }>>('/reference/vehicles').catch(() => []),
         request<ApiTrip[]>('/loading/trips').catch(() => [] as ApiTrip[]),
-        request<ApiDevicePosition[]>('/driver/positions/latest').catch(() => [] as ApiDevicePosition[]),
+        // Only dispatchers and drivers may read vehicle positions; other roles would be refused.
+        ['DISPATCHER', 'DRIVER'].includes(getUser()?.role ?? '')
+          ? request<ApiDevicePosition[]>('/driver/positions/latest').catch(() => [] as ApiDevicePosition[])
+          : Promise.resolve([] as ApiDevicePosition[]),
         request<Array<{ code: string; lat: number | null; lng: number | null }>>('/reference/depots').catch(
           () => [] as Array<{ code: string; lat: number | null; lng: number | null }>,
         ),

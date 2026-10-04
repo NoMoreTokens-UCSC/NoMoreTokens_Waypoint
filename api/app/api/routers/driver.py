@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.models.position import VehiclePosition
 from app.schemas.position import PositionIn, PositionOut
 from app.api.deps import CurrentUser, DbDep, require_role
+from app.core import clock
 from app.core.config import get_settings
 from app.models.delivery import DeliveryEvent
 from app.models.order import Order
@@ -46,8 +47,10 @@ def current_trip(db: DbDep, current_user: CurrentUser, _: None = _DRIVER):
     return trip
 
 
-def _orders_in_transit(db: DbDep, trip: Trip) -> None:
+def _orders_in_transit(db: DbDep, trip: Trip, user_id: Optional[int] = None) -> None:
     """Orders on a trip that has left the depot are in transit, so stores can see them en route."""
+    log_action(db, "START_TRIP", "Trip", trip.id, actor_user_id=user_id,
+               before={"status": "LOADED"}, after={"status": "IN_TRANSIT"})
     stop_ids = [stop.id for stop in trip.stops]
     if not stop_ids:
         return
@@ -80,9 +83,7 @@ def start_driver_trip(db: DbDep, current_user: CurrentUser, _: None = _DRIVER):
         )
 
     transition_trip(trip, "IN_TRANSIT")
-    _orders_in_transit(db, trip)
-    log_action(db, "START_TRIP", "Trip", trip.id, actor_user_id=current_user.id,
-               before={"status": "LOADED"}, after={"status": "IN_TRANSIT"})
+    _orders_in_transit(db, trip, current_user.id)
     db.commit()
     return {"ok": True, "status": trip.status}
 
@@ -110,12 +111,12 @@ def _process_delivery_event(db: DbDep, stop: Stop, event_in: DeliveryEventIn, us
                 transition_stop(stop, "ARRIVED")
             except HTTPException:
                 pass
-        stop.actual_arrival = dt.datetime.now(dt.timezone.utc)
+        stop.actual_arrival = clock.now()
         trip = db.get(Trip, stop.trip_id)
         if trip and trip.status == "LOADED":
             try:
                 transition_trip(trip, "IN_TRANSIT")
-                _orders_in_transit(db, trip)
+                _orders_in_transit(db, trip, user_id)
             except HTTPException:
                 pass
 
@@ -131,7 +132,7 @@ def _process_delivery_event(db: DbDep, stop: Stop, event_in: DeliveryEventIn, us
                 transition_stop(stop, new_stop_status)
             except HTTPException:
                 pass
-        stop.actual_departure = dt.datetime.now(dt.timezone.utc)
+        stop.actual_departure = clock.now()
 
     # Transition orders on this stop
     new_order_status = outcome_to_order.get(event_in.outcome)

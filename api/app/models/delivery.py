@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core import clock
 from app.db.base import Base
 
 
@@ -44,7 +45,9 @@ class DeliveryEvent(Base):
     # Device time (sent by driver app)
     recorded_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Server time (when received)
-    received_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    received_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=clock.now, server_default=func.now()
+    )
     # Idempotency key for offline sync
     client_op_id: Mapped[str] = mapped_column(String(100))
     recorded_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)

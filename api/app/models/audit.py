@@ -15,6 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core import clock
 from app.db.base import Base
 
 
@@ -35,4 +36,6 @@ class AuditLog(Base):
     entity_id: Mapped[str] = mapped_column(String(50))
     before_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     after_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=clock.now, server_default=func.now()
+    )

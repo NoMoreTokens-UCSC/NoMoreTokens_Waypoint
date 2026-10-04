@@ -26,13 +26,6 @@ const ROLE_HOME_MAP: Record<string, string> = {
   ADMIN: '/administration/team',
 }
 
-const DEMO_ACCOUNTS = [
-  { label: 'Loader', user: 'loader', pass: 'demo-loader-1' },
-  { label: 'Dispatcher', user: 'dispatcher', pass: 'demo-dispatch-1' },
-  { label: 'Driver', user: 'driver', pass: 'demo-driver-1' },
-  { label: 'Store Mgr', user: 'store_manager', pass: 'demo-store-1' },
-]
-
 export default function LoginPage() {
   const navigate = useNavigate()
   const [identifier, setIdentifier] = useState('')
@@ -152,34 +145,6 @@ export default function LoginPage() {
             <span className="entry-hide-mobile">Continue with Waypoint SSO</span>
             <span className="entry-show-mobile">Continue with SSO</span>
           </button>
-          <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>Quick demo sign-in:</span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
-              {DEMO_ACCOUNTS.map((acc) => (
-                <button
-                  key={acc.user}
-                  type="button"
-                  style={{
-                    padding: '0.4rem 0.6rem',
-                    fontSize: '0.8rem',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    background: '#f8fafc',
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    fontWeight: 500,
-                  }}
-                  onClick={() => {
-                    setIdentifier(acc.user)
-                    setPassword(acc.pass)
-                    void performLogin(acc.user, acc.pass)
-                  }}
-                >
-                  {acc.label}
-                </button>
-              ))}
-            </div>
-          </div>
           <p className="entry-login-help">
             Trouble signing in? Contact your dispatcher administrator.
           </p>

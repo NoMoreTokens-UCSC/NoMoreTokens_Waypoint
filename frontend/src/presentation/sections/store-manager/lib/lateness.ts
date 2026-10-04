@@ -1,4 +1,4 @@
-import { formatClock } from '../../../../domain/calendar'
+import { TIME_ZONE, formatClock } from '../../../../domain/calendar'
 import type { Order, Stop } from '../../../../domain/models'
 import { windowEnd } from './orderView'
 import { minutes } from './windows'
@@ -26,7 +26,15 @@ export function runningLate(order: Order, stop?: Stop): Lateness | undefined {
 /** Minutes after the window closed that a delivered order arrived, when it did. */
 export function deliveredLate(order: Order): number | undefined {
   if (order.status !== 'Delivered' || !order.deliveredAt) return undefined
-  const late = minutes(formatClock(order.deliveredAt)) - minutes(windowEnd(order))
+  // The window belongs to the delivery day: an arrival on an earlier day is early, a later one is late.
+  const arrivedOn = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(
+    new Date(order.deliveredAt),
+  )
+  const daysLate = order.deliveryDate
+    ? Math.round((Date.parse(arrivedOn) - Date.parse(order.deliveryDate)) / 86_400_000)
+    : 0
+  if (daysLate < 0) return undefined
+  const late = daysLate * 1440 + minutes(formatClock(order.deliveredAt)) - minutes(windowEnd(order))
   return late > 0 ? late : undefined
 }
 

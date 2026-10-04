@@ -163,3 +163,19 @@ def test_driver_operational_endpoints(client, db_session, driver_user, driver_to
 
     updated_trip = db_session.get(Trip, trip.id)
     assert updated_trip.status == "COMPLETED"
+
+    # Everything people read as a time is on the business clock (9 April), like when orders are placed,
+    # so a delivery is never reported hours late because of a different calendar date.
+    from app.models.audit import AuditLog
+    from app.models.delivery import DeliveryEvent
+
+    business_day = dt.date(2024, 4, 9)
+    assert updated_stop.actual_departure.date() == business_day
+    assert updated_order.delivered_at.date() == business_day
+    started = db_session.query(AuditLog).filter(
+        AuditLog.action == "START_TRIP", AuditLog.entity_id == str(trip.id)
+    ).one()
+    assert started.created_at.date() == business_day
+    event = db_session.query(DeliveryEvent).filter(DeliveryEvent.stop_id == stop.id).first()
+    assert event.received_at.date() == business_day
+

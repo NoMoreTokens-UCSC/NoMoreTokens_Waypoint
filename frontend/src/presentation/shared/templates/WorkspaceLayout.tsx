@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom'
 import { DropdownMenu } from 'radix-ui'
-import { ArrowLeftRight, CloudUpload, LogOut, Menu, Settings, User } from 'lucide-react'
+import { CloudUpload, LogOut, Menu, Settings, User } from 'lucide-react'
 import { WorkspaceNavItem } from '../molecules/WorkspaceNavItem'
 import { SearchField, Modal, Notice } from '../molecules/Common'
 import { Button } from '../atoms/button'
@@ -127,9 +127,10 @@ export default function WorkspaceLayout() {
             <strong>{identity.title}</strong>
             <p>{identity.subtitle}</p>
           </div>
-          <Link to="/workspaces" className="switch-workspace">
-            Switch workspace
-          </Link>
+          <button type="button" className="switch-workspace" onClick={() => setConfirmLogout(true)}>
+            <LogOut size={16} aria-hidden="true" />
+            Log out
+          </button>
         </div>
       </aside>
       <div className="workspace-main">
@@ -275,13 +276,14 @@ export default function WorkspaceLayout() {
               className=""
             />
           ))}
-          <Link
-            to="/workspaces"
+          <button
+            type="button"
             className="flex flex-col items-center gap-1 p-1 text-[9px] text-muted-foreground"
+            onClick={() => setConfirmLogout(true)}
           >
-            <ArrowLeftRight size={20} />
-            Workspace
-          </Link>
+            <LogOut size={20} />
+            Log out
+          </button>
         </nav>
       )}
       <Dialog open={menu} onOpenChange={setMenu}>

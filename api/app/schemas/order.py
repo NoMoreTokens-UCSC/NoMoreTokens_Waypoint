@@ -85,6 +85,9 @@ class OrderOut(OrmModel):
     receipt_status: Optional[str] = None
     receipt_report: Optional[ReceiptReportOut] = None
     delivered_at: Optional[dt.datetime] = None
+    deferral_acknowledged_at: Optional[dt.datetime] = None
+    scheduled_at: Optional[dt.datetime] = None
+    departed_at: Optional[dt.datetime] = None
     created_at: Optional[dt.datetime] = None
     updated_at: Optional[dt.datetime] = None
 
