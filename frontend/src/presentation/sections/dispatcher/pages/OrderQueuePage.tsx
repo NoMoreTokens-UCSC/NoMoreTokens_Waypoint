@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { RefreshCw, Package, Snowflake, Clock, ArrowRight } from 'lucide-react'
+import { RefreshCw, Package, Snowflake, Clock, ArrowRight, PackageCheck, CalendarClock, PackageX } from 'lucide-react'
 import { useOperations, useAction } from '../../../hooks/useOperations'
 import { useServices } from '../../../providers/ServicesContext'
 import {
@@ -55,7 +55,7 @@ export default function OrderQueuePage() {
           label={closed ? 'Confirmed' : 'Incoming'}
           value={data.orders.length}
           detail={closed ? 'Fixed after cutoff' : 'Total confirmed orders'}
-          icon={<Package size={17} />}
+          icon={closed ? <PackageCheck size={17} /> : <Package size={17} />}
         />
         {!closed && (
           <Metric
@@ -65,12 +65,13 @@ export default function OrderQueuePage() {
             icon={<Snowflake size={17} />}
           />
         )}
-        <Metric label="Deferred" value={deferred} detail="Orders moved to the next run" />
+        <Metric label="Deferred" value={deferred} detail="Orders moved to the next run" icon={<CalendarClock size={17} />} />
         {closed && (
           <Metric
             label="Unassigned"
             value={unassigned}
             detail="Orders still needing a trip"
+            icon={<PackageX size={17} />}
           />
         )}
         {closed && (
@@ -123,7 +124,7 @@ export default function OrderQueuePage() {
             ))}
           </div>
           <div className="w-full sm:w-[240px]">
-            <SearchField value={search} onChange={setSearch} placeholder="Order or outlet" />
+            <SearchField value={search} onChange={setSearch} placeholder="Order, outlet or brand" />
           </div>
         </div>
         <OrderTable
