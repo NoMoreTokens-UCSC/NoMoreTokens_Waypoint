@@ -156,7 +156,10 @@ function outletReferences(): Promise<Map<string, OutletRef>> {
               name: `${o.brand} ${o.district}`,
               lat: o.lat ?? undefined,
               lng: o.lng ?? undefined,
-              window: o.window_open_time?.slice(0, 5) ?? undefined,
+              window:
+                o.window_open_time && o.window_close_time
+                  ? `${o.window_open_time.slice(0, 5)}–${o.window_close_time.slice(0, 5)}`
+                  : undefined,
             },
           ]),
         ),
@@ -184,7 +187,12 @@ function mapStop(s: ApiStop, refs?: Map<string, OutletRef>): Stop {
     outlet: s.outlet_id,
     name: refs?.get(s.outlet_id)?.name ?? s.outlet_id,
     address: s.district ?? '',
-    window: s.window_open ?? refs?.get(s.outlet_id)?.window ?? '',
+    // "open–close": the delivery deadline checks read the end of the range.
+    window: s.window_open
+      ? s.window_close
+        ? `${s.window_open}–${s.window_close}`
+        : s.window_open
+      : (refs?.get(s.outlet_id)?.window ?? ''),
     eta: etaText,
     lat: s.lat ?? refs?.get(s.outlet_id)?.lat ?? 0,
     lng: s.lng ?? refs?.get(s.outlet_id)?.lng ?? 0,
@@ -261,6 +269,7 @@ interface ApiStop {
   status: string
   planned_eta?: string
   window_open?: string
+  window_close?: string
   lat?: number
   lng?: number
   order_ids?: number[]

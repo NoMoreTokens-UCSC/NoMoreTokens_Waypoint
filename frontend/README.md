@@ -86,17 +86,12 @@ Dexie stores snapshots, image blobs, and queue entries in IndexedDB. Evidence, i
 ## Project documentation
 
 - `docs/ROLE_MODULES.md`: module ownership, adding screens, the data contract and backend integration.
-- `docs/ROLE_GUIDES.md`: current state, definition of done, and the to-do list for each role.
 - `docs/DRIVER_IMPLEMENTATION.md`: native Driver route/state map, file inventory, verification and mocked integrations.
 - `docs/ARCHITECTURE.md`: layers, transactions, backend integration seams.
-- `docs/FIGMA_DEAD_CODE.md`: the unrouted Figma renderer and how to delete it.
-- `docs/SCREEN_COVERAGE.md`, `docs/figma/`: records from the Figma-rendered build (historical).
-- `docs/REFERENCES.md`: Guide, Personas, and AI Disclosure reference pages.
-- `docs/VERIFICATION.md`: verification scope and limitations.
 
 ## Driver design continuity
 
-Driver now uses separate native React pages for the Figma journey and recovery states. The obsolete Driver frame renderer was removed; exported JSON remains reference material for other roles. The shared web shell and design tokens are retained. Driver uses the same React Leaflet map as Dispatcher, with saved-stop overlays and functional zoom/recentering. Navigation instructions and upload acknowledgements remain explicitly simulated. Driver components follow atoms, molecules, organisms, templates, pages and hooks, styled with Tailwind. See [the Driver report](docs/DRIVER_IMPLEMENTATION.md) for implementation details and intentional differences from the prototype.
+Driver now uses separate native React pages for the Figma journey and recovery states. The obsolete Driver frame renderer was removed. The shared web shell and design tokens are retained. Driver uses the same React Leaflet map as Dispatcher, with saved-stop overlays and functional zoom/recentering. Navigation instructions and upload acknowledgements remain explicitly simulated. Driver components follow atoms, molecules, organisms, templates, pages and hooks, styled with Tailwind. See [the Driver report](docs/DRIVER_IMPLEMENTATION.md) for implementation details and intentional differences from the prototype.
 
 ## Stack
 

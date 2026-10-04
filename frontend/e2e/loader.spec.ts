@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 const photo = {
   name: 'dock-proof.png',
   mimeType: 'image/png',
-  buffer: readFileSync(new URL('../public/figma/originals/Images/Goods.png', import.meta.url)),
+  buffer: readFileSync(new URL('./fixtures/Goods.png', import.meta.url)),
 }
 
 async function publish(page: Page) {

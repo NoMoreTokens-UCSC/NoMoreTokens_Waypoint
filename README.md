@@ -11,6 +11,13 @@ and the store confirms receipt.
 | `data/` | The shared CSV datasets the database is seeded from |
 | `docs/` | Data model (ER diagram) and design notes |
 
+## Live deployment
+
+- App: <https://waypoint-w7kt.onrender.com>
+- API docs: <https://waypoint-api-p2lj.onrender.com/docs>
+
+Sign in with the seeded accounts below. If the first load is slow, wait a moment and refresh.
+
 ## Run it
 
 ```bash
@@ -63,7 +70,15 @@ The system runs on a fixed business date so the seeded data lines up whenever yo
 
 ## Judge walkthrough
 
-The walkthrough follows the order through the system. Use two browser windows or log out between roles.
+The walkthrough follows an order through the system in five parts. Use **Log out** at the bottom of the
+sidebar to move between roles. The loader and the driver are built for phones: for those two parts open the
+browser's device toolbar (F12, then the phone icon) at 390 px wide.
+
+The 4:00 PM cutoff follows the real clock, and the walkthrough works either side of it:
+
+- **Before 4:00 PM** the dispatcher starts by closing intake (part 2, step 1).
+- **After 4:00 PM** intake is already closed. The store manager's new orders in part 1 are for the following
+  operating day, and the dispatcher plans the 10 April orders that were seeded.
 
 ### Store manager: place tomorrow's orders
 
@@ -93,6 +108,64 @@ Rules the system enforces (each returns a clear message):
 - 1 to 300 cases (Fresh), 150 cartons (Style) or 25 items (Tech) per order.
 - **After the 4:00 PM cutoff** the day being planned is locked. The page says so, and orders placed now
   are for the following operating day (Monday to Saturday, skipping holidays).
+
+### Dispatcher: close intake, plan, defer and publish
+
+1. Sign in as `dispatcher` (password `demo-dispatch-1`). The **Orders** page shows the day being planned
+   (Wednesday, 10 April), the number of confirmed orders, how many need a trip and how many are chilled. A
+   badge reads **Accepting orders** or **Intake closed**. Before 4:00 PM choose **Close intake**; after 4:00 PM
+   it is already closed.
+2. The step bar along the top follows the workflow: Order queue, Allocation, Deferrals, Review, Release, Live.
+   Choose **Start allocation**, then **Propose allocations**. The planner assigns orders to vehicles and trips
+   within weight, volume, temperature, outlet access and the two-trip limit, and reports how many were
+   allocated and how many deferred (for example "159 allocated · 4 deferred").
+3. Each vehicle panel shows its trips with their weight and volume use. Use **Remove** to take an order off a
+   trip; an unassigned order can be assigned again, and an assignment that breaks a rule is refused with the
+   reason (for example chilled goods on an ambient vehicle).
+4. Open **Deferrals**. Each order the planner could not fit is listed with its reason, such as "Insufficient
+   Weight Capacity". These orders get priority on the next run.
+5. Choose **Review allocation**. The page checks that intake is closed, vehicle constraints hold, no vehicle
+   has more than two trips and every deferral has a reason. Choose **Confirm allocation review**, then
+   **Review publication**, then **Publish revision**. Publishing shares the plan with the loaders, drivers and
+   stores.
+6. The **Release** page lists each published load. Pick a load in the **Select a load** menu to see its loading
+   record. Departure is authorised only after the loader has finished.
+7. **Fleet**, **Live tracking** and **Analytics** show the fleet, vehicle positions on the map and a demand
+   outlook.
+
+### Loader: load a vehicle to the stop sequence
+
+Use a phone-sized window. Sign in as `loader` (password `demo-loader-1`, Peliyagoda depot).
+
+1. The **Shift dashboard** lists the loads for the depot with the cases still to load.
+2. Open `VEH001 · Trip 1` (the load the demo driver will take); if it is not easy to find in the list, open
+   `/loader/loading/1`. The load workspace lists the stops from the rear of the truck to the front.
+3. For each stop choose **Confirm N** once the counted cases match. The counter at the top shows
+   "N / total cases loaded".
+4. Tick the three safety checks: refrigeration, goods condition, and restraints with stop order.
+5. Photo capture unlocks once the checks are done. Choose **Choose photo** (or **Take photo**), pick an image
+   and choose **Save photograph**.
+6. Choose **Confirm loading complete**. The page reads "Loading complete on this device. Await Dispatcher
+   release." Use **Report an issue** instead if goods are missing or damaged; the shortfall must be resolved
+   before the vehicle can leave.
+
+### Driver: start the route and record a delivery
+
+Use a phone-sized window. Sign in as `driver` (password `demo-driver-1`, vehicle VEH001).
+
+1. **Home** shows the assigned trip (`VEH001 · Trip 1`, its stops and cases) and "Loaded and cleared" once the
+   loader has finished.
+2. Choose **Before-you-leave check**, tick the vehicle check and choose **Confirm and start route**.
+3. **Current route** shows the map, the next stop and its delivery window. If the window has already passed
+   the app says so and offers **Report a delay or delivery issue**.
+4. At the stop choose **Mark Arrival at Stop**. The page reads "Arrived and safely parked".
+5. Choose **Capture delivery photo**, then **Capture photo** (or **Choose an existing photograph**) and
+   **Use this photo**.
+6. Choose **Manager signs on this device**. Check the received quantities, enter the store manager's name and
+   remarks, tick the confirmation, draw a signature and choose **Continue to submission review**.
+7. Choose **Submit delivery proof**, then **Confirm submission**. The delivery is recorded and the order shows
+   as delivered. **Saved records** lists proofs that are waiting to sync; when the connection drops, the
+   photograph and signature are kept on the device and sent when it returns.
 
 ### Store manager: follow the delivery and confirm receipt
 
@@ -135,15 +208,22 @@ docker compose exec db psql -U waypoint -d postgres -c "CREATE DATABASE waypoint
 docker compose exec -e TEST_DATABASE_URL=postgresql+psycopg://waypoint:waypoint@db:5432/waypoint_test api pytest
 ```
 
-## How the store manager's ordering follows the booklet
+## Departures from the Figma design
 
-These are choices made against the challenge booklet, listed because they differ from a simple order form:
+Where the built screens differ from the Figma designs we submitted, and why.
 
-- **The receiving window belongs to the outlet** (`outlets.csv`), not to the order. Orders carry no window.
-- **Stores enter units only.** Weight and volume come from the unit count using the per-unit figures in the
-  training data (the system's capacity checks depend on them, so the server does not trust typed figures).
-- **Late orders wait for the following run.** After the cutoff an order is accepted for the next operating
-  day instead of being kept as a local draft.
-- **Order numbers are references** (`ORD-<delivery date>-<number>`), as people read them out.
-- **A store sees its vehicle and arrival time only once the plan is published,** not from the dispatcher's
-  draft.
+### Store manager
+
+
+### Dispatcher
+
+### loader 
+
+### Driver
+
+## More documentation
+
+- `docs/architecture.md`: components, how an order moves through them, and the main design decisions.
+- `docs/data-model.md`: tables, relationships and the ER diagram.
+- `docs/ai-tool-disclosure.md`: which work was AI-assisted and how the tools were used.
+- `frontend/docs/`: role guides and the frontend architecture notes.

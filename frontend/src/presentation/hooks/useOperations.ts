@@ -114,12 +114,14 @@ export function useAction() {
   const mutation = useMutation({
     networkMode: 'always',
     mutationFn: (action: () => Promise<unknown>) => action(),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: snapshotKey })
+    // Wait for the refresh: callers navigate right after a write, and the next screen's guards must see
+    // the saved data, not the old copy.
+    onSuccess: async () => {
       void client.invalidateQueries({ queryKey: ['orders'] })
       void client.invalidateQueries({ queryKey: ['planning'] })
       void client.invalidateQueries({ queryKey: ['loads'] })
       void client.invalidateQueries({ queryKey: ['fleet'] })
+      await client.invalidateQueries({ queryKey: snapshotKey })
     },
     onError: (error: Error) => {
       toast.error(error.message)
