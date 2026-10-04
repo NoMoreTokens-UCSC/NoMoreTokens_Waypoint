@@ -181,6 +181,26 @@ The last steps of the walkthrough, after the dispatcher has published the plan a
    damaged items** on the same screen. The report appears under **Notifications** as an issue.
 4. If the dispatcher defers an order (no capacity), the store sees a deferral notice with the reason on
    **Alerts** and on the order, and acknowledges it there.
+
+### Administrator: add people, outlets and vehicles
+
+Independent of the delivery flow above. The administrator manages people and the network, not deliveries.
+
+1. Sign in as `admin` (password `demo-admin-1`). You land on **Team & access**.
+2. **Add user**: choose a role, then enter the name, mobile, email, a unique username and a temporary
+   password (**Generate** makes one). A store manager needs an outlet, a driver needs a vehicle, and a
+   loader or dispatcher needs a depot. The next screen shows the sign-in details once; the administrator
+   hands them over, since the system does not send them. The new person can sign in straight away.
+3. Open a person to **Change role**, **Reset access** (a new temporary password) or **Suspend user**. A
+   suspended account can no longer sign in. For a driver on a trip, the dialog asks you to reassign the
+   trip to another driver first, or to give a reason to suspend now.
+4. **Outlets** and **Vehicles**: **Add outlet** (brand, district, depot, receiving window of at least an
+   hour) and **Add vehicle** (type, depot, capacity, optional registration). Each gets the next free id.
+   **Assignments** links store managers to outlets and drivers to vehicles.
+5. **Audit log** lists every one of these actions with who did it and when.
+
+An administrator cannot suspend their own account, and the dispatcher, loader, driver and store manager
+screens are not open to them.
 
 ## Configuration
 
